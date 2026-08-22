@@ -1,0 +1,35 @@
+/* Caution, not failure. Uncertainty is a correct outcome in this product and
+   must not wear the colour of a crash. */
+.notice {
+  margin-top: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--caution-border);
+  border-left: 3px solid var(--caution);
+  border-radius: var(--radius-sm);
+  background: var(--caution-soft);
+}
+
+.heading {
+  margin-bottom: var(--space-2);
+  color: var(--caution);
+  font-size: 13.5px;
+  font-weight: 600;
+}
+
+.list {
+  margin: 0;
+  padding-left: var(--space-4);
+  color: var(--text-secondary);
+  font-size: 13.5px;
+}
+
+.list li + li {
+  margin-top: var(--space-1);
+}
+
+.escalation {
+  margin-top: var(--space-2);
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+}

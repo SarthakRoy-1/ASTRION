@@ -1,0 +1,114 @@
+{
+  "account_scope": [
+    "ACCT-001"
+  ],
+  "action_status": "none",
+  "answer": "Could not complete `lookup_record`: order 'ORD-2001' was not found within the caller's scope\nThis cannot be answered definitively from the available data \u2014 verify the points listed before committing to an outcome.",
+  "escalation_recommended": true,
+  "outcome": "uncertain",
+  "policy_decisions": [],
+  "proposed_action": null,
+  "reference_time": "2026-08-16T11:00:00+05:30",
+  "request_id": "REQ-fixture0001",
+  "responded_at_utc": "2026-08-16T05:30:00+00:00",
+  "role": "customer",
+  "session_id": "SES-fixture0001",
+  "sources": [
+    {
+      "account_id": null,
+      "authority_tier": 3,
+      "chunk_id": "03_cancellation_and_service_credit_sop_v4#p1#c00",
+      "citation": "03_Cancellation_and_Service_Credit_SOP_v4.pdf p.1",
+      "document_id": "03_cancellation_and_service_credit_sop_v4",
+      "document_title": "ParcelPilot Cancellation & Service Credit SOP v4",
+      "excerpt": "ParcelPilot Cancellation & Service Credit SOP v4\nStatus: CURRENT\nEffective: 15 June 2026",
+      "is_authoritative": true,
+      "is_deprecated": false,
+      "page": 1,
+      "section": null,
+      "source_file": "03_Cancellation_and_Service_Credit_SOP_v4.pdf",
+      "topic": "general"
+    },
+    {
+      "account_id": null,
+      "authority_tier": 3,
+      "chunk_id": "03_cancellation_and_service_credit_sop_v4#p1#c01",
+      "citation": "03_Cancellation_and_Service_Credit_SOP_v4.pdf p.1 \u00a71. Order cancellation",
+      "document_id": "03_cancellation_and_service_credit_sop_v4",
+      "document_title": "ParcelPilot Cancellation & Service Credit SOP v4",
+      "excerpt": "1. Order cancellation\n\u25cf DRAFT: May be cancelled with no fee.\n\u25cf BOOKED, not yet PICKED_UP: May be cancelled. No fee within 30 minutes of booking. After 30 minutes,\ncharge INR 250 unless a customer agreement explicitly waives the cancellation fee.\n\u25cf PICKED_UP: Do not cancel. Use the return-to-origin workflow if the customer wants the parcel returned.\n\u25cf DELIVERED: Cannot be cancelled.",
+      "is_authoritative": true,
+      "is_deprecated": false,
+      "page": 1,
+      "section": "1. Order cancellation",
+      "source_file": "03_Cancellation_and_Service_Credit_SOP_v4.pdf",
+      "topic": "cancellation"
+    },
+    {
+      "account_id": null,
+      "authority_tier": 3,
+      "chunk_id": "03_cancellation_and_service_credit_sop_v4#p1#c02",
+      "citation": "03_Cancellation_and_Service_Credit_SOP_v4.pdf p.1 \u00a72. Failed-pickup service credits",
+      "document_id": "03_cancellation_and_service_credit_sop_v4",
+      "document_title": "ParcelPilot Cancellation & Service Credit SOP v4",
+      "excerpt": "2. Failed-pickup service credits\nUnder the default policy, a customer is eligible for a service credit when the pickup is more than 2 hours past the end\nof the scheduled pickup window, the carrier is at fault, and there is no customer-caused issue. The default credit is\nthe lower of INR 500 or 10% of the shipment fee.\nA signed customer agreement may replace the default delay threshold, credit amou\u2026",
+      "is_authoritative": true,
+      "is_deprecated": false,
+      "page": 1,
+      "section": "2. Failed-pickup service credits",
+      "source_file": "03_Cancellation_and_Service_Credit_SOP_v4.pdf",
+      "topic": "service_credit"
+    },
+    {
+      "account_id": null,
+      "authority_tier": 3,
+      "chunk_id": "03_cancellation_and_service_credit_sop_v4#p1#c03",
+      "citation": "03_Cancellation_and_Service_Credit_SOP_v4.pdf p.1 \u00a73. Approval and uncertainty",
+      "document_id": "03_cancellation_and_service_credit_sop_v4",
+      "document_title": "ParcelPilot Cancellation & Service Credit SOP v4",
+      "excerpt": "3. Approval and uncertainty\n\u25cf Any individual credit above INR 1,000 requires manager approval.\n\u25cf Do not promise a credit when carrier fault, pickup timing, or customer fault is unknown.\n\u25cf When data conflicts, identify the conflict and request verification before a state-changing action.",
+      "is_authoritative": true,
+      "is_deprecated": false,
+      "page": 1,
+      "section": "3. Approval and uncertainty",
+      "source_file": "03_Cancellation_and_Service_Credit_SOP_v4.pdf",
+      "topic": "general"
+    },
+    {
+      "account_id": "ACCT-001",
+      "authority_tier": 1,
+      "chunk_id": "05_northstar_logistics_enterprise_agreement#p1#c02",
+      "citation": "05_Northstar_Logistics_Enterprise_Agreement.pdf p.1 \u00a72. Shipment cancellation",
+      "document_id": "05_northstar_logistics_enterprise_agreement",
+      "document_title": "ParcelPilot - Northstar Logistics Enterprise Agreement",
+      "excerpt": "2. Shipment cancellation\nNorthstar may cancel any BOOKED shipment before pickup with no cancellation fee, regardless of how long ago the\nshipment was booked. Once a shipment is PICKED_UP, the standard return-to-origin process applies.",
+      "is_authoritative": true,
+      "is_deprecated": false,
+      "page": 1,
+      "section": "2. Shipment cancellation",
+      "source_file": "05_Northstar_Logistics_Enterprise_Agreement.pdf",
+      "topic": "cancellation"
+    }
+  ],
+  "step_budget_exhausted": false,
+  "tools_used": [
+    {
+      "message": "order 'ORD-2001' was not found within the caller's scope",
+      "status": "not_found",
+      "step": 1,
+      "summary": "order lookup",
+      "tool_name": "lookup_record"
+    },
+    {
+      "message": null,
+      "status": "ok",
+      "step": 2,
+      "summary": "5 evidence item(s)",
+      "tool_name": "search_documents"
+    }
+  ],
+  "uncertainties": [
+    "order 'ORD-2001' was not found within the caller's scope"
+  ],
+  "user_id": "customer.northstar"
+}

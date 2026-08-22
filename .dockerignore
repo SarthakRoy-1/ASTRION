@@ -1,0 +1,39 @@
+# Governs the backend build context (Dockerfile.backend, built from the
+# repo root). Keeps the frontend, its node_modules, and every local/generated
+# artifact out of the image — the backend build never needs them.
+
+app/frontend/
+.git/
+.github/
+
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+data/processed/*
+data/index/*
+!data/processed/.gitkeep
+!data/index/.gitkeep
+
+.env
+.env.*
+!.env.example
+
+*.log
+logs/
+tmp/
+.tmp/
+
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+docs/
+tests/

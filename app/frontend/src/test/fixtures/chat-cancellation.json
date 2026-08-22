@@ -1,0 +1,199 @@
+{
+  "account_scope": [
+    "ACCT-001",
+    "ACCT-002",
+    "ACCT-003",
+    "ACCT-004"
+  ],
+  "action_status": "none",
+  "answer": "Order ORD-1001 can be cancelled with no cancellation fee.\nRule applied: A signed customer agreement waives the cancellation fee for a BOOKED order before pickup, overriding the SOP's default fee.\nCalculation: fee waived by customer agreement -> 0\nSource: 05_Northstar_Logistics_Enterprise_Agreement.pdf p.1 \u00a72. Shipment cancellation\nPrecedence: 05_Northstar_Logistics_Enterprise_Agreement.pdf p.1 \u00a72. Shipment cancellation (tier 1 CUSTOMER_AGREEMENT) outranks 03_Cancellation_and_Service_Credit_SOP_v4.pdf p.1 \u00a71. Order cancellation (tier 3 CURRENT_OPERATIONAL_DOC) on topic 'cancellation'",
+  "escalation_recommended": false,
+  "outcome": "answered",
+  "policy_decisions": [
+    {
+      "account_id": "ACCT-001",
+      "amount": "0.00",
+      "amount_label": "cancellation_fee",
+      "applies": false,
+      "calculation": "fee waived by customer agreement -> 0",
+      "controlling_rule": "A signed customer agreement waives the cancellation fee for a BOOKED order before pickup, overriding the SOP's default fee.",
+      "controlling_sources": [
+        "05_Northstar_Logistics_Enterprise_Agreement.pdf p.1 \u00a72. Shipment cancellation"
+      ],
+      "currency": "INR",
+      "decision_type": "cancellation",
+      "evidence_chunk_ids": [
+        "05_northstar_logistics_enterprise_agreement#p1#c02"
+      ],
+      "inputs": {
+        "booked_at": "2026-08-16T09:00:00+05:30",
+        "cancellation_requested_at": "2026-08-16T11:00:00+05:30",
+        "evaluated_against": "2026-08-16T11:00:00+05:30",
+        "order_status": "BOOKED",
+        "pickup_actual_at": null,
+        "reference_time_source": "order.cancellation_requested_at"
+      },
+      "order_id": "ORD-1001",
+      "outcome": "allowed",
+      "overrides": [
+        "05_Northstar_Logistics_Enterprise_Agreement.pdf p.1 \u00a72. Shipment cancellation (tier 1 CUSTOMER_AGREEMENT) outranks 03_Cancellation_and_Service_Credit_SOP_v4.pdf p.1 \u00a71. Order cancellation (tier 3 CURRENT_OPERATIONAL_DOC) on topic 'cancellation'"
+      ],
+      "requires_verification": false,
+      "verification_reasons": []
+    }
+  ],
+  "proposed_action": null,
+  "reference_time": "2026-08-16T11:00:00+05:30",
+  "request_id": "REQ-fixture0001",
+  "responded_at_utc": "2026-08-16T05:30:00+00:00",
+  "role": "support_agent",
+  "session_id": "SES-fixture0001",
+  "sources": [
+    {
+      "account_id": "ACCT-001",
+      "authority_tier": 1,
+      "chunk_id": "05_northstar_logistics_enterprise_agreement#p1#c00",
+      "citation": "05_Northstar_Logistics_Enterprise_Agreement.pdf p.1",
+      "document_id": "05_northstar_logistics_enterprise_agreement",
+      "document_title": "ParcelPilot - Northstar Logistics Enterprise Agreement",
+      "excerpt": "ParcelPilot - Northstar Logistics Enterprise\nAgreement\nAccount: ACCT-001\nCustomer: Northstar Logistics\nTerm: 1 January 2026 to 31 December 2026\nStatus: ACTIVE",
+      "is_authoritative": true,
+      "is_deprecated": false,
+      "page": 1,
+      "section": null,
+      "source_file": "05_Northstar_Logistics_Enterprise_Agreement.pdf",
+      "topic": "general"
+    },
+    {
+      "account_id": "ACCT-001",
+      "authority_tier": 1,
+      "chunk_id": "05_northstar_logistics_enterprise_agreement#p1#c01",
+      "citation": "05_Northstar_Logistics_Enterprise_Agreement.pdf p.1 \u00a71. Support terms",
+      "document_id": "05_northstar_logistics_enterprise_agreement",
+      "document_title": "ParcelPilot - Northstar Logistics Enterprise Agreement",
+      "excerpt": "1. Support terms\nFor Northstar Logistics, the following first-response targets replace ParcelPilot's standard support-policy targets:\n\u25cf P1: 15 minutes, 24x7\n\u25cf P2: 1 hour\n\u25cf P3: 8 business hours",
+      "is_authoritative": true,
+      "is_deprecated": false,
+      "page": 1,
+      "section": "1. Support terms",
+      "source_file": "05_Northstar_Logistics_Enterprise_Agreement.pdf",
+      "topic": "support_response"
+    },
+    {
+      "account_id": "ACCT-001",
+      "authority_tier": 1,
+      "chunk_id": "05_northstar_logistics_enterprise_agreement#p1#c02",
+      "citation": "05_Northstar_Logistics_Enterprise_Agreement.pdf p.1 \u00a72. Shipment cancellation",
+      "document_id": "05_northstar_logistics_enterprise_agreement",
+      "document_title": "ParcelPilot - Northstar Logistics Enterprise Agreement",
+      "excerpt": "2. Shipment cancellation\nNorthstar may cancel any BOOKED shipment before pickup with no cancellation fee, regardless of how long ago the\nshipment was booked. Once a shipment is PICKED_UP, the standard return-to-origin process applies.",
+      "is_authoritative": true,
+      "is_deprecated": false,
+      "page": 1,
+      "section": "2. Shipment cancellation",
+      "source_file": "05_Northstar_Logistics_Enterprise_Agreement.pdf",
+      "topic": "cancellation"
+    },
+    {
+      "account_id": "ACCT-001",
+      "authority_tier": 1,
+      "chunk_id": "05_northstar_logistics_enterprise_agreement#p1#c04",
+      "citation": "05_Northstar_Logistics_Enterprise_Agreement.pdf p.1 \u00a74. Account contact",
+      "document_id": "05_northstar_logistics_enterprise_agreement",
+      "document_title": "ParcelPilot - Northstar Logistics Enterprise Agreement",
+      "excerpt": "4. Account contact\nDedicated CSM: Priya Mehta.",
+      "is_authoritative": true,
+      "is_deprecated": false,
+      "page": 1,
+      "section": "4. Account contact",
+      "source_file": "05_Northstar_Logistics_Enterprise_Agreement.pdf",
+      "topic": "general"
+    },
+    {
+      "account_id": null,
+      "authority_tier": 3,
+      "chunk_id": "03_cancellation_and_service_credit_sop_v4#p1#c02",
+      "citation": "03_Cancellation_and_Service_Credit_SOP_v4.pdf p.1 \u00a72. Failed-pickup service credits",
+      "document_id": "03_cancellation_and_service_credit_sop_v4",
+      "document_title": "ParcelPilot Cancellation & Service Credit SOP v4",
+      "excerpt": "2. Failed-pickup service credits\nUnder the default policy, a customer is eligible for a service credit when the pickup is more than 2 hours past the end\nof the scheduled pickup window, the carrier is at fault, and there is no customer-caused issue. The default credit is\nthe lower of INR 500 or 10% of the shipment fee.\nA signed customer agreement may replace the default delay threshold, credit amou\u2026",
+      "is_authoritative": true,
+      "is_deprecated": false,
+      "page": 1,
+      "section": "2. Failed-pickup service credits",
+      "source_file": "03_Cancellation_and_Service_Credit_SOP_v4.pdf",
+      "topic": "service_credit"
+    },
+    {
+      "account_id": null,
+      "authority_tier": 3,
+      "chunk_id": "04_product_operations_guide_and_known_issues#p1#c05",
+      "citation": "04_Product_Operations_Guide_and_Known_Issues.pdf p.1 \u00a73. Resolved issue",
+      "document_id": "04_product_operations_guide_and_known_issues",
+      "document_title": "ParcelPilot Product Operations Guide",
+      "excerpt": "3. Resolved issue\nKI-176 - Address validation: Resolved 18 July 2026. Do not use this resolved issue to explain new incidents unless\nevidence specifically matches it.",
+      "is_authoritative": true,
+      "is_deprecated": false,
+      "page": 1,
+      "section": "3. Resolved issue",
+      "source_file": "04_Product_Operations_Guide_and_Known_Issues.pdf",
+      "topic": "product_known_issues"
+    },
+    {
+      "account_id": null,
+      "authority_tier": 3,
+      "chunk_id": "03_cancellation_and_service_credit_sop_v4#p1#c00",
+      "citation": "03_Cancellation_and_Service_Credit_SOP_v4.pdf p.1",
+      "document_id": "03_cancellation_and_service_credit_sop_v4",
+      "document_title": "ParcelPilot Cancellation & Service Credit SOP v4",
+      "excerpt": "ParcelPilot Cancellation & Service Credit SOP v4\nStatus: CURRENT\nEffective: 15 June 2026",
+      "is_authoritative": true,
+      "is_deprecated": false,
+      "page": 1,
+      "section": null,
+      "source_file": "03_Cancellation_and_Service_Credit_SOP_v4.pdf",
+      "topic": "general"
+    },
+    {
+      "account_id": null,
+      "authority_tier": 3,
+      "chunk_id": "03_cancellation_and_service_credit_sop_v4#p1#c01",
+      "citation": "03_Cancellation_and_Service_Credit_SOP_v4.pdf p.1 \u00a71. Order cancellation",
+      "document_id": "03_cancellation_and_service_credit_sop_v4",
+      "document_title": "ParcelPilot Cancellation & Service Credit SOP v4",
+      "excerpt": "1. Order cancellation\n\u25cf DRAFT: May be cancelled with no fee.\n\u25cf BOOKED, not yet PICKED_UP: May be cancelled. No fee within 30 minutes of booking. After 30 minutes,\ncharge INR 250 unless a customer agreement explicitly waives the cancellation fee.\n\u25cf PICKED_UP: Do not cancel. Use the return-to-origin workflow if the customer wants the parcel returned.\n\u25cf DELIVERED: Cannot be cancelled.",
+      "is_authoritative": true,
+      "is_deprecated": false,
+      "page": 1,
+      "section": "1. Order cancellation",
+      "source_file": "03_Cancellation_and_Service_Credit_SOP_v4.pdf",
+      "topic": "cancellation"
+    }
+  ],
+  "step_budget_exhausted": false,
+  "tools_used": [
+    {
+      "message": null,
+      "status": "ok",
+      "step": 1,
+      "summary": "order lookup",
+      "tool_name": "lookup_record"
+    },
+    {
+      "message": null,
+      "status": "ok",
+      "step": 2,
+      "summary": "cancellation=allowed",
+      "tool_name": "evaluate_cancellation"
+    },
+    {
+      "message": null,
+      "status": "ok",
+      "step": 3,
+      "summary": "8 evidence item(s)",
+      "tool_name": "search_documents"
+    }
+  ],
+  "uncertainties": [],
+  "user_id": "support.agent"
+}

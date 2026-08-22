@@ -1,0 +1,119 @@
+{
+  "account_scope": [
+    "ACCT-001",
+    "ACCT-002",
+    "ACCT-003",
+    "ACCT-004"
+  ],
+  "action_status": "pending_confirmation",
+  "answer": "Prepared action (NOT yet performed): Create an escalation against ticket TKT-501. Reason: Escalation requested via support agent: Investigate TKT-501 and escalate it if the outage warrants it. Confirm action ACT-fixture0001 to execute it.",
+  "escalation_recommended": false,
+  "outcome": "needs_confirmation",
+  "policy_decisions": [],
+  "proposed_action": {
+    "account_id": "ACCT-001",
+    "action_id": "ACT-fixture0001",
+    "action_type": "create_escalation",
+    "confirmation_required": true,
+    "evidence_chunk_ids": [
+      "01_support_policy_v3_current#p1#c02",
+      "01_support_policy_v3_current#p1#c04",
+      "03_cancellation_and_service_credit_sop_v4#p1#c01"
+    ],
+    "expires_at_utc": "2026-08-16T06:00:00+00:00",
+    "parameter_fingerprint": "1c5c67546fad6107f8da6ba908227218",
+    "parameters": {
+      "reason": "Escalation requested via support agent: Investigate TKT-501 and escalate it if the outage warrants it."
+    },
+    "preview": "Create an escalation against ticket TKT-501. Reason: Escalation requested via support agent: Investigate TKT-501 and escalate it if the outage warrants it.",
+    "reason": "Escalation requested via support agent: Investigate TKT-501 and escalate it if the outage warrants it.",
+    "status": "pending_confirmation",
+    "target_id": "TKT-501",
+    "target_type": "ticket"
+  },
+  "reference_time": "2026-08-16T11:00:00+05:30",
+  "request_id": "REQ-fixture0001",
+  "responded_at_utc": "2026-08-16T05:30:00+00:00",
+  "role": "support_agent",
+  "session_id": "SES-fixture0001",
+  "sources": [
+    {
+      "account_id": null,
+      "authority_tier": 2,
+      "chunk_id": "01_support_policy_v3_current#p1#c02",
+      "citation": "01_Support_Policy_v3_CURRENT.pdf p.1 \u00a72. Severity definitions",
+      "document_id": "01_support_policy_v3_current",
+      "document_title": "ParcelPilot Support Policy v3",
+      "excerpt": "2. Severity definitions\n\u25cf P1 - Critical: Complete production outage preventing all shipment creation for a customer, confirmed security\nincident or suspected credential exposure, or another event causing immediate material business risk with no\nworkaround.\n\u25cf P2 - High: Major feature unavailable or materially degraded for a customer, but core operations remain\npossible or a workaround exists.\n\u25cf P3 \u2026",
+      "is_authoritative": true,
+      "is_deprecated": false,
+      "page": 1,
+      "section": "2. Severity definitions",
+      "source_file": "01_Support_Policy_v3_CURRENT.pdf",
+      "topic": "support_response"
+    },
+    {
+      "account_id": null,
+      "authority_tier": 2,
+      "chunk_id": "01_support_policy_v3_current#p1#c04",
+      "citation": "01_Support_Policy_v3_CURRENT.pdf p.1 \u00a74. Escalation",
+      "document_id": "01_support_policy_v3_current",
+      "document_title": "ParcelPilot Support Policy v3",
+      "excerpt": "4. Escalation\nP1 incidents should be escalated immediately. If a response target is already breached, the agent should clearly\nstate the breach and recommend escalation rather than hiding uncertainty.",
+      "is_authoritative": true,
+      "is_deprecated": false,
+      "page": 1,
+      "section": "4. Escalation",
+      "source_file": "01_Support_Policy_v3_CURRENT.pdf",
+      "topic": "support_response"
+    },
+    {
+      "account_id": null,
+      "authority_tier": 3,
+      "chunk_id": "03_cancellation_and_service_credit_sop_v4#p1#c01",
+      "citation": "03_Cancellation_and_Service_Credit_SOP_v4.pdf p.1 \u00a71. Order cancellation",
+      "document_id": "03_cancellation_and_service_credit_sop_v4",
+      "document_title": "ParcelPilot Cancellation & Service Credit SOP v4",
+      "excerpt": "1. Order cancellation\n\u25cf DRAFT: May be cancelled with no fee.\n\u25cf BOOKED, not yet PICKED_UP: May be cancelled. No fee within 30 minutes of booking. After 30 minutes,\ncharge INR 250 unless a customer agreement explicitly waives the cancellation fee.\n\u25cf PICKED_UP: Do not cancel. Use the return-to-origin workflow if the customer wants the parcel returned.\n\u25cf DELIVERED: Cannot be cancelled.",
+      "is_authoritative": true,
+      "is_deprecated": false,
+      "page": 1,
+      "section": "1. Order cancellation",
+      "source_file": "03_Cancellation_and_Service_Credit_SOP_v4.pdf",
+      "topic": "cancellation"
+    }
+  ],
+  "step_budget_exhausted": false,
+  "tools_used": [
+    {
+      "message": null,
+      "status": "ok",
+      "step": 1,
+      "summary": "ticket lookup",
+      "tool_name": "lookup_record"
+    },
+    {
+      "message": null,
+      "status": "ok",
+      "step": 2,
+      "summary": "account_orders lookup",
+      "tool_name": "lookup_record"
+    },
+    {
+      "message": null,
+      "status": "ok",
+      "step": 3,
+      "summary": "3 evidence item(s)",
+      "tool_name": "search_documents"
+    },
+    {
+      "message": "Prepared and awaiting confirmation. Nothing has changed yet; the action executes only after explicit confirmation.",
+      "status": "ok",
+      "step": 4,
+      "summary": "prepared ACT-fixture0001 (pending confirmation)",
+      "tool_name": "prepare_escalation"
+    }
+  ],
+  "uncertainties": [],
+  "user_id": "support.agent"
+}

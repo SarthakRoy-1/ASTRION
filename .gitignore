@@ -1,0 +1,156 @@
+# ---------------------------------------------------------------------------
+# Secrets & environment
+# ---------------------------------------------------------------------------
+.env
+.env.*
+!.env.example
+*.env
+.envrc
+secrets/
+*.key
+*.pem
+*.p12
+*.pfx
+credentials.json
+service-account*.json
+*_secret*
+*apikey*
+*api_key*
+.openai
+.anthropic
+
+# ---------------------------------------------------------------------------
+# Python
+# ---------------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib60/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+.python-version
+
+# Tooling caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.pytype/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+*.cover
+.tox/
+.nox/
+.hypothesis/
+.ipynb_checkpoints/
+
+# ---------------------------------------------------------------------------
+# Node / Next.js / frontend
+# ---------------------------------------------------------------------------
+node_modules/
+.pnp
+.pnp.js
+.next/
+out/
+.turbo/
+.vercel/
+*.tsbuildinfo
+next-env.d.ts
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.npm/
+.eslintcache
+
+# ---------------------------------------------------------------------------
+# Generated data, databases & indexes
+#   NOTE: data/source/ holds the supplied assessment source pack (PDF/XLSX).
+#   Those are inputs, not build artifacts. Decide deliberately whether to
+#   commit them -- see docs/architecture.md. They are NOT ignored here.
+# ---------------------------------------------------------------------------
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
+*.db-wal
+*.db-shm
+# Ignore directory *contents*, not the directories themselves -- git will not
+# descend into an excluded directory, so `!dir/.gitkeep` cannot rescue a file
+# when `dir/` itself is ignored.
+data/processed/*
+data/index/*
+!data/processed/.gitkeep
+!data/index/.gitkeep
+
+# Local vector store / embedding caches
+.chroma/
+chroma/
+*.faiss
+*.index
+embeddings_cache/
+
+# ---------------------------------------------------------------------------
+# Logs & runtime artifacts
+# ---------------------------------------------------------------------------
+logs/
+*.log
+*.pid
+*.seed
+tmp/
+.tmp/
+.cache/
+
+# ---------------------------------------------------------------------------
+# IDE / editor
+# ---------------------------------------------------------------------------
+.vscode/*
+!.vscode/settings.json.example
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+*.sublime-project
+*.sublime-workspace
+.spyderproject
+.ropeproject
+
+# ---------------------------------------------------------------------------
+# OS
+# ---------------------------------------------------------------------------
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.lnk
+
+# OneDrive sync artifacts (this repo lives inside a OneDrive folder)
+*.tmp
+~$*

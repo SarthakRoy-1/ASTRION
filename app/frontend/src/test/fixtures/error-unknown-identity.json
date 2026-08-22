@@ -1,0 +1,16 @@
+{
+  "error": {
+    "code": "unauthenticated",
+    "details": {
+      "known_identities": [
+        "customer.lumenworks",
+        "customer.northstar",
+        "support.agent",
+        "support.manager",
+        "support.readonly"
+      ]
+    },
+    "message": "Unknown user identity 'nobody'.",
+    "request_id": "REQ-fixture0001"
+  }
+}

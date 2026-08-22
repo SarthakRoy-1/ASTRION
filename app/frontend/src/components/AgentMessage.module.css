@@ -1,0 +1,57 @@
+.message {
+  padding: var(--space-4) var(--space-5);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-sm);
+}
+
+.header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+.author {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+
+/* The dataset snapshot, not the wall clock. Stated on every answer because
+   every time-based verdict below was judged against it. */
+.reference {
+  font-size: 12px;
+  color: var(--text-muted);
+  cursor: help;
+}
+
+.answer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  font-size: 15px;
+  color: var(--text-primary);
+}
+
+.answer p {
+  overflow-wrap: anywhere;
+}
+
+.truncated {
+  margin-top: var(--space-3);
+  color: var(--caution);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+@media (max-width: 640px) {
+  .message {
+    padding: var(--space-4);
+  }
+}

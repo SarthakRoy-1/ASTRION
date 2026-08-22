@@ -1,0 +1,8 @@
+{
+  "error": {
+    "code": "action_not_pending",
+    "details": {},
+    "message": "action 'ACT-fixture0001' is executed, not pending confirmation",
+    "request_id": "REQ-fixture0001"
+  }
+}

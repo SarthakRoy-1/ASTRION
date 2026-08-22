@@ -1,0 +1,1366 @@
+{
+  "components": {
+    "schemas": {
+      "ActionConfirmationRequest": {
+        "additionalProperties": false,
+        "description": "Confirm or reject one prepared action.\n\nConfirmation is a distinct API call with a closed vocabulary. A user typing\n\"okay\" into the chat endpoint does not confirm anything: `/api/chat` has no\npath to execution at all, which is what makes the gate structural rather\nthan a matter of parsing intent correctly.",
+        "properties": {
+          "decision": {
+            "$ref": "#/components/schemas/ConfirmationDecision"
+          },
+          "expected_fingerprint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Fingerprint"
+          },
+          "request_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Request Id"
+          },
+          "session_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session Id"
+          },
+          "user_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Id"
+          }
+        },
+        "required": [
+          "decision"
+        ],
+        "title": "ActionConfirmationRequest",
+        "type": "object"
+      },
+      "ActionConfirmationResponse": {
+        "properties": {
+          "action": {
+            "$ref": "#/components/schemas/ExecutedActionView"
+          },
+          "action_status": {
+            "$ref": "#/components/schemas/ActionState"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "request_id": {
+            "title": "Request Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "request_id",
+          "action_status",
+          "action",
+          "message"
+        ],
+        "title": "ActionConfirmationResponse",
+        "type": "object"
+      },
+      "ActionDetailResponse": {
+        "properties": {
+          "action": {
+            "$ref": "#/components/schemas/ExecutedActionView"
+          },
+          "action_status": {
+            "$ref": "#/components/schemas/ActionState"
+          }
+        },
+        "required": [
+          "action_status",
+          "action"
+        ],
+        "title": "ActionDetailResponse",
+        "type": "object"
+      },
+      "ActionState": {
+        "description": "Action lifecycle as the API reports it.\n\nExtends `ActionStatus` with `NONE`, so a response always states the action\nsituation instead of leaving a client to infer it from a null field.\n\n`CONFIRMED` is part of the contract but is not currently emitted: Phase 4's\nstate machine confirms and executes inside one guarded transaction, so a\nsuccessfully confirmed action is already `EXECUTED` by the time anyone can\nobserve it. It is listed here so a future asynchronous executor does not\nneed a breaking contract change.",
+        "enum": [
+          "none",
+          "pending_confirmation",
+          "confirmed",
+          "executed",
+          "rejected",
+          "expired",
+          "failed"
+        ],
+        "title": "ActionState",
+        "type": "string"
+      },
+      "ChatRequest": {
+        "additionalProperties": false,
+        "description": "A natural-language request plus the identity it is made under.\n\n`user_id` establishes the authorization context; it is looked up in the\nmock principal directory server-side. It is *not* trusted to describe its\nown permissions, and nothing in `message` can alter them \u2014\nsee `app/backend/auth/principals.py`.",
+        "properties": {
+          "account_scope": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Account Scope"
+          },
+          "message": {
+            "maxLength": 4000,
+            "minLength": 1,
+            "title": "Message",
+            "type": "string"
+          },
+          "request_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Request Id"
+          },
+          "session_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Session Id"
+          },
+          "user_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "User Id"
+          }
+        },
+        "required": [
+          "message"
+        ],
+        "title": "ChatRequest",
+        "type": "object"
+      },
+      "ChatResponse": {
+        "description": "The full result of one natural-language request.",
+        "properties": {
+          "account_scope": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Account Scope",
+            "type": "array"
+          },
+          "action_status": {
+            "$ref": "#/components/schemas/ActionState",
+            "default": "none"
+          },
+          "answer": {
+            "title": "Answer",
+            "type": "string"
+          },
+          "escalation_recommended": {
+            "default": false,
+            "title": "Escalation Recommended",
+            "type": "boolean"
+          },
+          "outcome": {
+            "$ref": "#/components/schemas/ResponseOutcome"
+          },
+          "policy_decisions": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/PolicyDecisionView"
+            },
+            "title": "Policy Decisions",
+            "type": "array"
+          },
+          "proposed_action": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProposedActionView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reference_time": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference Time"
+          },
+          "request_id": {
+            "title": "Request Id",
+            "type": "string"
+          },
+          "responded_at_utc": {
+            "format": "date-time",
+            "title": "Responded At Utc",
+            "type": "string"
+          },
+          "role": {
+            "$ref": "#/components/schemas/Role"
+          },
+          "session_id": {
+            "title": "Session Id",
+            "type": "string"
+          },
+          "sources": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/SourceRef"
+            },
+            "title": "Sources",
+            "type": "array"
+          },
+          "step_budget_exhausted": {
+            "default": false,
+            "title": "Step Budget Exhausted",
+            "type": "boolean"
+          },
+          "tools_used": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ToolUse"
+            },
+            "title": "Tools Used",
+            "type": "array"
+          },
+          "uncertainties": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Uncertainties",
+            "type": "array"
+          },
+          "user_id": {
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "request_id",
+          "session_id",
+          "outcome",
+          "answer",
+          "user_id",
+          "role",
+          "account_scope",
+          "responded_at_utc"
+        ],
+        "title": "ChatResponse",
+        "type": "object"
+      },
+      "ConfirmationDecision": {
+        "description": "Explicit, unambiguous. Free text is never interpreted as consent.",
+        "enum": [
+          "approve",
+          "reject"
+        ],
+        "title": "ConfirmationDecision",
+        "type": "string"
+      },
+      "ExecutedActionView": {
+        "description": "The audit record of an action that reached a terminal state.\n\nCarries the timeline and the effect's identifier \u2014 enough to prove what\nhappened and when \u2014 without exposing table names or row internals.",
+        "properties": {
+          "account_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Account Id"
+          },
+          "action_id": {
+            "title": "Action Id",
+            "type": "string"
+          },
+          "action_type": {
+            "title": "Action Type",
+            "type": "string"
+          },
+          "confirmed_at_utc": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmed At Utc"
+          },
+          "confirmed_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmed By"
+          },
+          "evidence_chunk_ids": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Evidence Chunk Ids",
+            "type": "array"
+          },
+          "executed_at_utc": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Executed At Utc"
+          },
+          "failure_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failure Reason"
+          },
+          "parameters": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Parameters",
+            "type": "object"
+          },
+          "prepared_at_utc": {
+            "format": "date-time",
+            "title": "Prepared At Utc",
+            "type": "string"
+          },
+          "preview": {
+            "title": "Preview",
+            "type": "string"
+          },
+          "rejected_at_utc": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rejected At Utc"
+          },
+          "requested_by": {
+            "title": "Requested By",
+            "type": "string"
+          },
+          "requested_by_role": {
+            "title": "Requested By Role",
+            "type": "string"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ActionState"
+          },
+          "target_id": {
+            "title": "Target Id",
+            "type": "string"
+          },
+          "target_type": {
+            "title": "Target Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "action_id",
+          "action_type",
+          "status",
+          "target_type",
+          "target_id",
+          "account_id",
+          "preview",
+          "parameters",
+          "requested_by",
+          "requested_by_role",
+          "confirmed_by",
+          "prepared_at_utc",
+          "confirmed_at_utc",
+          "executed_at_utc",
+          "rejected_at_utc"
+        ],
+        "title": "ExecutedActionView",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "HealthResponse": {
+        "description": "Liveness plus enough configuration to know what is running.\n\nReports the provider *mode*, never its credentials, and no filesystem\npaths: `/health` is often the most-exposed endpoint in a deployment.",
+        "properties": {
+          "app_env": {
+            "title": "App Env",
+            "type": "string"
+          },
+          "checked_at_utc": {
+            "format": "date-time",
+            "title": "Checked At Utc",
+            "type": "string"
+          },
+          "database_ready": {
+            "title": "Database Ready",
+            "type": "boolean"
+          },
+          "dataset_snapshot": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dataset Snapshot"
+          },
+          "documents_indexed": {
+            "title": "Documents Indexed",
+            "type": "integer"
+          },
+          "max_tool_steps": {
+            "title": "Max Tool Steps",
+            "type": "integer"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Model"
+          },
+          "provider_mode": {
+            "title": "Provider Mode",
+            "type": "string"
+          },
+          "state_changing_actions_enabled": {
+            "title": "State Changing Actions Enabled",
+            "type": "boolean"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "app_env",
+          "provider_mode",
+          "max_tool_steps",
+          "state_changing_actions_enabled",
+          "database_ready",
+          "documents_indexed",
+          "checked_at_utc"
+        ],
+        "title": "HealthResponse",
+        "type": "object"
+      },
+      "PendingActionsResponse": {
+        "properties": {
+          "actions": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ProposedActionView"
+            },
+            "title": "Actions",
+            "type": "array"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "count"
+        ],
+        "title": "PendingActionsResponse",
+        "type": "object"
+      },
+      "PolicyDecisionView": {
+        "description": "A deterministic decision with the arithmetic that produced it.",
+        "properties": {
+          "account_id": {
+            "title": "Account Id",
+            "type": "string"
+          },
+          "amount": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount"
+          },
+          "amount_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount Label"
+          },
+          "applies": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Applies"
+          },
+          "calculation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Calculation"
+          },
+          "controlling_rule": {
+            "title": "Controlling Rule",
+            "type": "string"
+          },
+          "controlling_sources": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Controlling Sources",
+            "type": "array"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "decision_type": {
+            "title": "Decision Type",
+            "type": "string"
+          },
+          "evidence_chunk_ids": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Evidence Chunk Ids",
+            "type": "array"
+          },
+          "inputs": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "default": {},
+            "title": "Inputs",
+            "type": "object"
+          },
+          "order_id": {
+            "title": "Order Id",
+            "type": "string"
+          },
+          "outcome": {
+            "title": "Outcome",
+            "type": "string"
+          },
+          "overrides": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Overrides",
+            "type": "array"
+          },
+          "requires_verification": {
+            "default": false,
+            "title": "Requires Verification",
+            "type": "boolean"
+          },
+          "verification_reasons": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Verification Reasons",
+            "type": "array"
+          }
+        },
+        "required": [
+          "decision_type",
+          "order_id",
+          "account_id",
+          "outcome",
+          "controlling_rule",
+          "currency"
+        ],
+        "title": "PolicyDecisionView",
+        "type": "object"
+      },
+      "PrincipalView": {
+        "description": "A demo identity the API will accept. No credentials involved.",
+        "properties": {
+          "account_scope": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Account Scope",
+            "type": "array"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "role": {
+            "$ref": "#/components/schemas/Role"
+          },
+          "user_id": {
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id",
+          "display_name",
+          "role",
+          "description",
+          "account_scope"
+        ],
+        "title": "PrincipalView",
+        "type": "object"
+      },
+      "PrincipalsResponse": {
+        "properties": {
+          "principals": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/PrincipalView"
+            },
+            "title": "Principals",
+            "type": "array"
+          }
+        },
+        "title": "PrincipalsResponse",
+        "type": "object"
+      },
+      "ProposedActionView": {
+        "description": "A prepared action awaiting a human. Nothing here has happened yet.",
+        "properties": {
+          "account_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Account Id"
+          },
+          "action_id": {
+            "title": "Action Id",
+            "type": "string"
+          },
+          "action_type": {
+            "title": "Action Type",
+            "type": "string"
+          },
+          "confirmation_required": {
+            "default": true,
+            "title": "Confirmation Required",
+            "type": "boolean"
+          },
+          "evidence_chunk_ids": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Evidence Chunk Ids",
+            "type": "array"
+          },
+          "expires_at_utc": {
+            "format": "date-time",
+            "title": "Expires At Utc",
+            "type": "string"
+          },
+          "parameter_fingerprint": {
+            "title": "Parameter Fingerprint",
+            "type": "string"
+          },
+          "parameters": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Parameters",
+            "type": "object"
+          },
+          "preview": {
+            "title": "Preview",
+            "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ActionState"
+          },
+          "target_id": {
+            "title": "Target Id",
+            "type": "string"
+          },
+          "target_type": {
+            "title": "Target Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "action_id",
+          "action_type",
+          "status",
+          "target_type",
+          "target_id",
+          "account_id",
+          "parameters",
+          "preview",
+          "reason",
+          "expires_at_utc",
+          "parameter_fingerprint"
+        ],
+        "title": "ProposedActionView",
+        "type": "object"
+      },
+      "ResponseOutcome": {
+        "enum": [
+          "answered",
+          "needs_confirmation",
+          "uncertain",
+          "refused",
+          "error"
+        ],
+        "title": "ResponseOutcome",
+        "type": "string"
+      },
+      "Role": {
+        "description": "Who is asking, in the terms the authorization layer cares about.\n\nPhase 4 shipped the three internal roles. Phase 5 adds `CUSTOMER` for the\nexternal context the API must be able to demonstrate \u2014 an account holder\ntalking to the assistant about their own account. It is additive: a\ncustomer is scoped to their own account ids and, like `READ_ONLY`, may not\nchange state, so no existing behaviour shifts.",
+        "enum": [
+          "support_agent",
+          "support_manager",
+          "read_only",
+          "customer"
+        ],
+        "title": "Role",
+        "type": "string"
+      },
+      "SourceRef": {
+        "description": "One citation: where a claim came from, and how much it is worth.",
+        "properties": {
+          "account_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Account Id"
+          },
+          "authority_tier": {
+            "title": "Authority Tier",
+            "type": "integer"
+          },
+          "chunk_id": {
+            "title": "Chunk Id",
+            "type": "string"
+          },
+          "citation": {
+            "title": "Citation",
+            "type": "string"
+          },
+          "document_id": {
+            "title": "Document Id",
+            "type": "string"
+          },
+          "document_title": {
+            "title": "Document Title",
+            "type": "string"
+          },
+          "excerpt": {
+            "title": "Excerpt",
+            "type": "string"
+          },
+          "is_authoritative": {
+            "title": "Is Authoritative",
+            "type": "boolean"
+          },
+          "is_deprecated": {
+            "title": "Is Deprecated",
+            "type": "boolean"
+          },
+          "page": {
+            "title": "Page",
+            "type": "integer"
+          },
+          "section": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Section"
+          },
+          "source_file": {
+            "title": "Source File",
+            "type": "string"
+          },
+          "topic": {
+            "title": "Topic",
+            "type": "string"
+          }
+        },
+        "required": [
+          "chunk_id",
+          "document_id",
+          "source_file",
+          "page",
+          "section",
+          "citation",
+          "document_title",
+          "authority_tier",
+          "is_authoritative",
+          "is_deprecated",
+          "topic",
+          "account_id",
+          "excerpt"
+        ],
+        "title": "SourceRef",
+        "type": "object"
+      },
+      "ToolUse": {
+        "description": "One tool call, as an auditor would want to see it summarised.\n\nArguments are omitted on purpose: they are part of the planning trace, and\nthe contract promises what was consulted and how it finished, not how the\nagent phrased its query.",
+        "properties": {
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "step": {
+            "title": "Step",
+            "type": "integer"
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary"
+          },
+          "tool_name": {
+            "title": "Tool Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "step",
+          "tool_name",
+          "status"
+        ],
+        "title": "ToolUse",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "description": "Natural-language support and operations assistant over ParcelPilot's policy\npack and operational records.\n\nThe agent reasons; deterministic code decides. Account scoping, source\nprecedence, cancellation and service-credit arithmetic, and every state change\nare enforced below the model layer and cannot be influenced by the contents of\na request.\n\nState-changing actions are prepared by `POST /api/chat` and executed only by\n`POST /api/actions/{action_id}/confirm`. Nothing in a chat message can perform\none.\n",
+    "title": "ParcelPilot Support & Operations Agent API",
+    "version": "0.5.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/actions/pending": {
+      "get": {
+        "description": "Proposals awaiting confirmation, within the caller's account scope.",
+        "operationId": "pending_actions_api_actions_pending_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "user_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "User Id"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-parcelpilot-user",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Parcelpilot-User"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PendingActionsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Pending Actions",
+        "tags": [
+          "actions"
+        ]
+      }
+    },
+    "/api/actions/{action_id}": {
+      "get": {
+        "description": "The audit record for one action: state, timeline, and its effect.\n\nScoped like every other read \u2014 an action on another customer's account is\nreported as absent, not as forbidden, for the same reason the record\nlayer does.",
+        "operationId": "action_detail_api_actions__action_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "action_id",
+            "required": true,
+            "schema": {
+              "title": "Action Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "user_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "User Id"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-parcelpilot-user",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Parcelpilot-User"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionDetailResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Action Detail",
+        "tags": [
+          "actions"
+        ]
+      }
+    },
+    "/api/actions/{action_id}/confirm": {
+      "post": {
+        "description": "Execute or reject one prepared action. The only path to a state change.\n\nEvery check the Phase 4 state machine offers is applied, under the\n*confirming* caller rather than the preparing one: the action must exist\nwithin this caller's account scope, belong to this conversation, still be\npending, not have expired, still have a live target, and \u2014 when a\nfingerprint is supplied \u2014 still describe exactly what was reviewed. The\nstatus guard inside the UPDATE makes execution single-use even if two\nconfirmations race.",
+        "operationId": "confirm_action_api_actions__action_id__confirm_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "action_id",
+            "required": true,
+            "schema": {
+              "title": "Action Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "x-parcelpilot-user",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Parcelpilot-User"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ActionConfirmationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActionConfirmationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Confirm Action",
+        "tags": [
+          "actions"
+        ]
+      }
+    },
+    "/api/chat": {
+      "post": {
+        "description": "Answer one natural-language request with its evidence.\n\nThe authorization context is built from the caller's identity before the\nmessage is read, and nothing in the message can widen it. Account ids in\nprose are treated as text; the agent's scope comes from records it was\npermitted to resolve.",
+        "operationId": "chat_api_chat_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "x-parcelpilot-user",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Parcelpilot-User"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Chat",
+        "tags": [
+          "agent"
+        ]
+      }
+    },
+    "/api/principals": {
+      "get": {
+        "description": "The mock identities this deployment accepts, and the scope each holds.\n\nExists so the demo is self-describing. It lists no credentials, because\nthere are none: Phase 5's authentication is deliberately a mock, and a\nreal identity provider replaces `auth/principals.py` without touching\nanything below it.",
+        "operationId": "principals_api_principals_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PrincipalsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Principals",
+        "tags": [
+          "system"
+        ]
+      }
+    },
+    "/health": {
+      "get": {
+        "description": "Liveness plus what is actually configured.\n\nAnswers 200 even when the database has not been built, reporting\n`status: \"degraded\"` \u2014 a health check that fails to respond tells an\noperator less than one that responds saying what is missing.",
+        "operationId": "health_health_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Health",
+        "tags": [
+          "system"
+        ]
+      }
+    }
+  }
+}

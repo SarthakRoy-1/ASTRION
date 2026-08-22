@@ -1,0 +1,12 @@
+{
+  "app_env": "development",
+  "checked_at_utc": "2026-08-16T05:30:00+00:00",
+  "database_ready": true,
+  "dataset_snapshot": "2026-08-16 11:00 Asia/Kolkata",
+  "documents_indexed": 6,
+  "max_tool_steps": 8,
+  "model": null,
+  "provider_mode": "deterministic",
+  "state_changing_actions_enabled": true,
+  "status": "ok"
+}

@@ -1,0 +1,24 @@
+# Pinned to what is installed in the project's .venv (Python 3.13).
+# pandas is intentionally NOT included -- see README "Known environment notes";
+# openpyxl alone covers every XLSX need in this project.
+
+# --- Phases 1-4: ingestion, retrieval, policy engine, agent -----------------
+openpyxl==3.1.5
+pymupdf==1.28.2
+pydantic==2.13.4
+pytest==8.4.2
+
+# --- Phase 5: API surface ----------------------------------------------------
+fastapi==0.121.2
+uvicorn[standard]==0.41.0
+# httpx backs fastapi.testclient; no test makes a network call.
+httpx==0.28.1
+# Loads .env for local development. Optional at runtime -- config falls back to
+# the process environment when it is absent (app/backend/core/config.py).
+python-dotenv==1.2.3
+
+# --- Phase 5: real LLM provider ----------------------------------------------
+# Needed only for LLM_PROVIDER=real. The deterministic provider -- and the
+# entire test suite -- runs without it and without an API key; the SDK is
+# imported lazily inside app/backend/agent/factory.py.
+openai==2.14.0

@@ -1,0 +1,69 @@
+# Local production simulation and the minimum deployment configuration for
+# hosting ParcelPilot as two containers plus one persistent volume:
+#
+#   Next.js frontend  -->  FastAPI backend  -->  SQLite (named volume)
+#                                            -->  OpenAI API (LLM_PROVIDER=real)
+#
+# Usage:
+#   docker compose up --build
+#     frontend: http://localhost:3000
+#     backend:  http://localhost:8000  (docs at /docs, health at /health)
+#
+# For LLM_PROVIDER=real, put OPENAI_API_KEY in a git-ignored `.env` file next
+# to this one (docker compose reads it automatically) — never in this file,
+# never in a committed one. See .env.example.
+#
+# NEXT_PUBLIC_API_BASE_URL is a build-time value (Next.js inlines it into the
+# client bundle), so it is a build arg here, not a runtime environment
+# variable — see app/frontend/Dockerfile. Changing it means rebuilding the
+# frontend image, not just restarting the container.
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    ports:
+      - "8000:8000"
+    environment:
+      LLM_PROVIDER: ${LLM_PROVIDER:-deterministic}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o}
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
+      APP_ENV: ${APP_ENV:-production}
+      CORS_ALLOW_ORIGINS: ${CORS_ALLOW_ORIGINS:-http://localhost:3000}
+      AGENT_MAX_TOOL_STEPS: ${AGENT_MAX_TOOL_STEPS:-8}
+      AGENT_REQUEST_TIMEOUT_SECONDS: ${AGENT_REQUEST_TIMEOUT_SECONDS:-60}
+      LLM_TEMPERATURE: ${LLM_TEMPERATURE:-0}
+      ENABLE_STATE_CHANGING_ACTIONS: ${ENABLE_STATE_CHANGING_ACTIONS:-true}
+    volumes:
+      # Named volume, not a bind mount: the database is a build artifact
+      # regenerated from data/source/ on first boot (docker-entrypoint.sh),
+      # not something that should ever be read from the host filesystem.
+      - parcelpilot-data:/app/data/processed
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
+
+  frontend:
+    build:
+      context: app/frontend
+      dockerfile: Dockerfile
+      args:
+        # Only correct for this same-machine compose setup, where the browser
+        # reaches the backend via localhost. A real deployment with the
+        # frontend and backend on different hosts must override this at
+        # build time: docker compose build --build-arg
+        # NEXT_PUBLIC_API_BASE_URL=https://api.example.com frontend
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8000}
+    ports:
+      - "3000:3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  parcelpilot-data:

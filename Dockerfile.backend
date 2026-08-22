@@ -1,0 +1,47 @@
+# ParcelPilot backend — FastAPI + the deterministic/real agent.
+#
+# Build context is the REPO ROOT (not app/backend/), because the application
+# imports as `app.backend.*` and needs `scripts/` (ingestion) and the source
+# pack `data/source/` to boot. Build from the repo root:
+#
+#   docker build -f Dockerfile.backend -t parcelpilot-backend .
+#
+# The container's working directory mirrors the repo root exactly
+# (REPO_ROOT = Path(__file__).resolve().parents[3] in
+# app/backend/core/config.py and services/database.py both resolve to /app),
+# so no path configuration is needed beyond the default.
+
+FROM python:3.13-slim AS base
+
+# PyMuPDF ships manylinux wheels for this base image, so no compiler toolchain
+# is installed here deliberately — keeping the image minimal is possible
+# precisely because nothing in requirements.txt needs to build from source.
+WORKDIR /app
+
+COPY requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Application code, ingestion scripts, and the supplied source pack. Nothing
+# under data/processed/ or data/index/ is copied — those are build artifacts
+# regenerated at container startup by docker-entrypoint.sh, never baked in.
+COPY app/backend ./app/backend
+COPY scripts ./scripts
+COPY data/source ./data/source
+COPY docker-entrypoint.sh ./
+
+RUN useradd --create-home --uid 1000 parcelpilot \
+    && chmod +x docker-entrypoint.sh \
+    && mkdir -p data/processed data/index \
+    && chown -R parcelpilot:parcelpilot /app
+USER parcelpilot
+
+# Bootstraps the database from the source pack on first start (see
+# docker-entrypoint.sh), then execs uvicorn. 0.0.0.0 is required inside a
+# container — 127.0.0.1 would be unreachable from outside it.
+ENTRYPOINT ["./docker-entrypoint.sh"]
+CMD ["uvicorn", "app.backend.main:app", "--host", "0.0.0.0", "--port", "8000"]
+
+EXPOSE 8000
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)" || exit 1

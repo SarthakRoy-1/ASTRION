@@ -1,0 +1,58 @@
+{
+  "principals": [
+    {
+      "account_scope": [
+        "ACCT-001",
+        "ACCT-002",
+        "ACCT-003",
+        "ACCT-004"
+      ],
+      "description": "Internal support staff. May prepare and confirm actions.",
+      "display_name": "ParcelPilot support agent",
+      "role": "support_agent",
+      "user_id": "support.agent"
+    },
+    {
+      "account_scope": [
+        "ACCT-001",
+        "ACCT-002",
+        "ACCT-003",
+        "ACCT-004"
+      ],
+      "description": "Internal support manager. May approve escalations.",
+      "display_name": "ParcelPilot support manager",
+      "role": "support_manager",
+      "user_id": "support.manager"
+    },
+    {
+      "account_scope": [
+        "ACCT-001",
+        "ACCT-002",
+        "ACCT-003",
+        "ACCT-004"
+      ],
+      "description": "Internal read-only viewer. May not change any state.",
+      "display_name": "ParcelPilot support (read-only)",
+      "role": "read_only",
+      "user_id": "support.readonly"
+    },
+    {
+      "account_scope": [
+        "ACCT-001"
+      ],
+      "description": "External customer contact, scoped to their own account.",
+      "display_name": "Northstar Logistics (customer)",
+      "role": "customer",
+      "user_id": "customer.northstar"
+    },
+    {
+      "account_scope": [
+        "ACCT-002"
+      ],
+      "description": "External customer contact, scoped to their own account.",
+      "display_name": "LumenWorks (customer)",
+      "role": "customer",
+      "user_id": "customer.lumenworks"
+    }
+  ]
+}

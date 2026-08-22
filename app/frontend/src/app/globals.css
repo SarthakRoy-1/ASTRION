@@ -1,0 +1,185 @@
+/*
+ * Design tokens and base styles.
+ *
+ * The visual system is deliberately narrow: one neutral ramp, one accent, and
+ * three semantic tones (ok / caution / fail) that carry the only colour with
+ * meaning in the product. Everything that signals trust — evidence, authority,
+ * uncertainty, action state — draws from those three, so a support agent
+ * learns the vocabulary once.
+ *
+ * Colour is never the sole carrier of meaning. Every tone is paired with a
+ * label, so the interface reads correctly in greyscale and to a screen reader.
+ */
+
+:root {
+  color-scheme: light;
+
+  --surface-page: #f6f7f9;
+  --surface-raised: #ffffff;
+  --surface-sunken: #eef0f4;
+  --surface-inverse: #1c2432;
+
+  --border-subtle: #e2e5ea;
+  --border-default: #cdd3db;
+  --border-strong: #a9b2bf;
+
+  --text-primary: #131820;
+  --text-secondary: #4d5765;
+  --text-muted: #6d7787;
+  --text-inverse: #f6f7f9;
+
+  --accent: #1f4d8f;
+  --accent-hover: #173d73;
+  --accent-soft: #e8eef8;
+  --accent-border: #b9cbe6;
+
+  --ok: #1c6b45;
+  --ok-soft: #e5f2ec;
+  --ok-border: #b3d7c5;
+
+  --caution: #8a5a10;
+  --caution-soft: #fbf1de;
+  --caution-border: #e6cf9f;
+
+  --fail: #9a2d2d;
+  --fail-soft: #fbeaea;
+  --fail-border: #e6b7b7;
+
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
+    "Liberation Mono", monospace;
+
+  --shadow-sm: 0 1px 2px rgba(19, 24, 32, 0.06);
+  --shadow-md: 0 2px 8px rgba(19, 24, 32, 0.08);
+
+  --content-width: 880px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+
+    --surface-page: #12161d;
+    --surface-raised: #1a1f28;
+    --surface-sunken: #212734;
+    --surface-inverse: #e9ecf1;
+
+    --border-subtle: #2a313d;
+    --border-default: #39414f;
+    --border-strong: #4d5765;
+
+    --text-primary: #e9ecf1;
+    --text-secondary: #b3bac6;
+    --text-muted: #8b94a3;
+    --text-inverse: #12161d;
+
+    --accent: #7aa5e0;
+    --accent-hover: #94b8ea;
+    --accent-soft: #1c2736;
+    --accent-border: #33496b;
+
+    --ok: #6cc79a;
+    --ok-soft: #16261f;
+    --ok-border: #2c4a3a;
+
+    --caution: #d9ab5e;
+    --caution-soft: #2a2317;
+    --caution-border: #4d3f24;
+
+    --fail: #e08c8c;
+    --fail-soft: #2b1a1a;
+    --fail-border: #4d2f2f;
+
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35);
+    --shadow-md: 0 2px 10px rgba(0, 0, 0, 0.45);
+  }
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+}
+
+body {
+  background: var(--surface-page);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  margin: 0;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+p {
+  margin: 0;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+}
+
+/* A single, unmistakable focus treatment everywhere. Keyboard users should
+   never have to hunt for where they are. */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+::selection {
+  background: var(--accent-soft);
+}
+
+/* Visible to screen readers only — used for headings that give structure
+   without adding visual noise. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

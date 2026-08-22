@@ -1,0 +1,149 @@
+.card {
+  margin-top: var(--space-4);
+  padding: var(--space-4);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--surface-sunken);
+}
+
+.header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+.title {
+  font-size: 14px;
+  letter-spacing: -0.005em;
+}
+
+.order {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.verdictRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-5);
+  margin: 0 0 var(--space-3);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.field dt {
+  font-size: 11.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+
+.field dd {
+  margin: 0;
+}
+
+.amount {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  font-size: 16px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.provisional {
+  font-size: 11.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--caution);
+}
+
+/* Verification is the load-bearing state of this card: a provisional figure
+   must never be able to read as a settled one. */
+.verification {
+  margin-bottom: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid var(--caution-border);
+  border-radius: var(--radius-sm);
+  background: var(--caution-soft);
+}
+
+.verificationTitle {
+  margin-bottom: var(--space-1);
+  color: var(--caution);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.verificationList {
+  margin: 0;
+  padding-left: var(--space-4);
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.verificationList li + li {
+  margin-top: var(--space-1);
+}
+
+.rule {
+  margin-bottom: var(--space-2);
+}
+
+.ruleLabel,
+.overrideLabel,
+.calculationLabel {
+  font-size: 11.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+
+.ruleText {
+  color: var(--text-secondary);
+  font-size: 13.5px;
+}
+
+.calculation {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+
+.calculation code {
+  padding: 1px var(--space-2);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+  border: 1px solid var(--border-subtle);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-primary);
+}
+
+.overrides {
+  margin-bottom: var(--space-2);
+}
+
+.overrideText {
+  color: var(--text-secondary);
+  font-size: 12.5px;
+}
+
+.sources {
+  margin: 0;
+  padding-left: var(--space-4);
+  color: var(--text-muted);
+  font-size: 12px;
+}

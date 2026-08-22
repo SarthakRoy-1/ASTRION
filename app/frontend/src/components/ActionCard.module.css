@@ -1,0 +1,196 @@
+.card {
+  margin-top: var(--space-4);
+  padding: var(--space-4);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+}
+
+/* A pending action is the one thing on screen asking for a decision, so it
+   gets the only emphatic border in the layout. */
+.card[data-state="pending_confirmation"] {
+  border-color: var(--caution-border);
+  border-left: 3px solid var(--caution);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-sm);
+}
+
+.card[data-state="executed"] {
+  border-left: 3px solid var(--ok);
+}
+
+.card[data-state="rejected"] {
+  border-left: 3px solid var(--border-strong);
+}
+
+.card[data-state="failed"],
+.card[data-state="expired"] {
+  border-left: 3px solid var(--fail);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+.heading {
+  font-size: 14px;
+}
+
+.summary {
+  margin-bottom: var(--space-3);
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.target {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  color: var(--accent);
+}
+
+.details {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-3);
+}
+
+.detailRow {
+  display: flex;
+  gap: var(--space-3);
+  font-size: 13.5px;
+}
+
+.detailRow dt {
+  flex: none;
+  width: 72px;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding-top: 2px;
+}
+
+.detailRow dd {
+  margin: 0;
+  color: var(--text-secondary);
+  min-width: 0;
+}
+
+.mono {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+}
+
+.notice {
+  margin-bottom: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--caution-soft);
+  color: var(--caution);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+/* The two buttons are deliberately unlike each other: the consequential one is
+   filled, the reversible one is quiet. Shape as well as colour, so the
+   difference survives greyscale. */
+.confirm {
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-md);
+  background: var(--accent);
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.confirm:hover:not(:disabled) {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+}
+
+.reject {
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: transparent;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.reject:hover:not(:disabled) {
+  background: var(--surface-sunken);
+  border-color: var(--border-strong);
+}
+
+.confirm:disabled,
+.reject:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.blocked {
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunken);
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.outcome {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.outcome[data-state="executed"] {
+  color: var(--ok);
+}
+
+.outcome[data-state="failed"],
+.outcome[data-state="expired"] {
+  color: var(--fail);
+}
+
+.receipt {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--text-muted);
+}
+
+.error {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--fail-border);
+  border-radius: var(--radius-sm);
+  background: var(--fail-soft);
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.errorLabel {
+  color: var(--fail);
+  font-weight: 600;
+}

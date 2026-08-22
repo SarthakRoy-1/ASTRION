@@ -1,0 +1,206 @@
+{
+  "account_scope": [
+    "ACCT-001",
+    "ACCT-002",
+    "ACCT-003",
+    "ACCT-004"
+  ],
+  "action_status": "none",
+  "answer": "Order ORD-2002 would qualify for a service credit of INR 300.00, but this is provisional and must not be promised to the customer yet.\nMeasured 4.50h past the scheduled pickup-window end (against the dataset snapshot) versus a 4h threshold; carrier fault: True, customer fault: False.\nRule applied: Pickup more than 4 hours past the scheduled window end with carrier fault and no customer fault qualifies for a service credit.\nCalculation: fixed credit -> INR 300.00\nSource: 06_LumenWorks_Service_Agreement.pdf p.1 \u00a73. Failed-pickup credits\nPrecedence: 06_LumenWorks_Service_Agreement.pdf p.1 \u00a73. Failed-pickup credits (tier 1 CUSTOMER_AGREEMENT) outranks 03_Cancellation_and_Service_Credit_SOP_v4.pdf p.1 \u00a72. Failed-pickup service credits (tier 3 CURRENT_OPERATIONAL_DOC) on topic 'service_credit'\nThis cannot be answered definitively from the available data \u2014 verify the points listed before committing to an outcome.",
+  "escalation_recommended": true,
+  "outcome": "uncertain",
+  "policy_decisions": [
+    {
+      "account_id": "ACCT-002",
+      "amount": "300.00",
+      "amount_label": "service_credit",
+      "applies": false,
+      "calculation": "fixed credit -> INR 300.00",
+      "controlling_rule": "Pickup more than 4 hours past the scheduled window end with carrier fault and no customer fault qualifies for a service credit.",
+      "controlling_sources": [
+        "06_LumenWorks_Service_Agreement.pdf p.1 \u00a73. Failed-pickup credits"
+      ],
+      "currency": "INR",
+      "decision_type": "service_credit",
+      "evidence_chunk_ids": [
+        "06_lumenworks_service_agreement#p1#c03"
+      ],
+      "inputs": {
+        "carrier_fault": "True",
+        "customer_fault": "False",
+        "delay_hours": "4.50",
+        "evaluated_against": "2026-08-16T11:00:00+05:30",
+        "order_status": "BOOKED",
+        "pickup_actual_at": null,
+        "pickup_window_end": "2026-08-16T06:30:00+05:30",
+        "reference_time_source": "dataset snapshot 2026-08-16 11:00 Asia/Kolkata (from ParcelPilot_Assessment_Data.xlsx)",
+        "shipment_fee": "2400.0"
+      },
+      "order_id": "ORD-2002",
+      "outcome": "requires_verification",
+      "overrides": [
+        "06_LumenWorks_Service_Agreement.pdf p.1 \u00a73. Failed-pickup credits (tier 1 CUSTOMER_AGREEMENT) outranks 03_Cancellation_and_Service_Credit_SOP_v4.pdf p.1 \u00a72. Failed-pickup service credits (tier 3 CURRENT_OPERATIONAL_DOC) on topic 'service_credit'"
+      ],
+      "requires_verification": true,
+      "verification_reasons": [
+        "No pickup has been confirmed, so the delay is inferred from the dataset snapshot rather than an observed pickup. Product documentation warns that pickup confirmation can lag, so verify with the carrier before concluding the pickup failed."
+      ]
+    }
+  ],
+  "proposed_action": null,
+  "reference_time": "2026-08-16T11:00:00+05:30",
+  "request_id": "REQ-fixture0001",
+  "responded_at_utc": "2026-08-16T05:30:00+00:00",
+  "role": "support_agent",
+  "session_id": "SES-fixture0001",
+  "sources": [
+    {
+      "account_id": "ACCT-002",
+      "authority_tier": 1,
+      "chunk_id": "06_lumenworks_service_agreement#p1#c02",
+      "citation": "06_LumenWorks_Service_Agreement.pdf p.1 \u00a72. Cancellation terms",
+      "document_id": "06_lumenworks_service_agreement",
+      "document_title": "ParcelPilot - LumenWorks Service Agreement",
+      "excerpt": "2. Cancellation terms\nNo special cancellation-fee waiver applies. Use the current ParcelPilot Cancellation & Service Credit SOP.",
+      "is_authoritative": true,
+      "is_deprecated": false,
+      "page": 1,
+      "section": "2. Cancellation terms",
+      "source_file": "06_LumenWorks_Service_Agreement.pdf",
+      "topic": "cancellation"
+    },
+    {
+      "account_id": "ACCT-002",
+      "authority_tier": 1,
+      "chunk_id": "06_lumenworks_service_agreement#p1#c03",
+      "citation": "06_LumenWorks_Service_Agreement.pdf p.1 \u00a73. Failed-pickup credits",
+      "document_id": "06_lumenworks_service_agreement",
+      "document_title": "ParcelPilot - LumenWorks Service Agreement",
+      "excerpt": "3. Failed-pickup credits\nIf a pickup is more than 4 hours past the end of the scheduled pickup window, the carrier is at fault, and the customer\nis not at fault, LumenWorks receives a fixed INR 300 service credit. This clause replaces the default failed-pickup\ncredit amount and timing threshold in the SOP.",
+      "is_authoritative": true,
+      "is_deprecated": false,
+      "page": 1,
+      "section": "3. Failed-pickup credits",
+      "source_file": "06_LumenWorks_Service_Agreement.pdf",
+      "topic": "service_credit"
+    },
+    {
+      "account_id": null,
+      "authority_tier": 3,
+      "chunk_id": "03_cancellation_and_service_credit_sop_v4#p1#c00",
+      "citation": "03_Cancellation_and_Service_Credit_SOP_v4.pdf p.1",
+      "document_id": "03_cancellation_and_service_credit_sop_v4",
+      "document_title": "ParcelPilot Cancellation & Service Credit SOP v4",
+      "excerpt": "ParcelPilot Cancellation & Service Credit SOP v4\nStatus: CURRENT\nEffective: 15 June 2026",
+      "is_authoritative": true,
+      "is_deprecated": false,
+      "page": 1,
+      "section": null,
+      "source_file": "03_Cancellation_and_Service_Credit_SOP_v4.pdf",
+      "topic": "general"
+    },
+    {
+      "account_id": null,
+      "authority_tier": 3,
+      "chunk_id": "03_cancellation_and_service_credit_sop_v4#p1#c03",
+      "citation": "03_Cancellation_and_Service_Credit_SOP_v4.pdf p.1 \u00a73. Approval and uncertainty",
+      "document_id": "03_cancellation_and_service_credit_sop_v4",
+      "document_title": "ParcelPilot Cancellation & Service Credit SOP v4",
+      "excerpt": "3. Approval and uncertainty\n\u25cf Any individual credit above INR 1,000 requires manager approval.\n\u25cf Do not promise a credit when carrier fault, pickup timing, or customer fault is unknown.\n\u25cf When data conflicts, identify the conflict and request verification before a state-changing action.",
+      "is_authoritative": true,
+      "is_deprecated": false,
+      "page": 1,
+      "section": "3. Approval and uncertainty",
+      "source_file": "03_Cancellation_and_Service_Credit_SOP_v4.pdf",
+      "topic": "general"
+    },
+    {
+      "account_id": null,
+      "authority_tier": 3,
+      "chunk_id": "04_product_operations_guide_and_known_issues#p1#c01",
+      "citation": "04_Product_Operations_Guide_and_Known_Issues.pdf p.1 \u00a71. Plan capabilities",
+      "document_id": "04_product_operations_guide_and_known_issues",
+      "document_title": "ParcelPilot Product Operations Guide",
+      "excerpt": "1. Plan capabilities\n\u25cf Bulk Upload: Available on Growth and Enterprise. Supported file size is up to 5,000 rows per CSV.\n\u25cf Standard: Bulk Upload is not included.\n\u25cf Shipment status: BOOKED means the shipment is created but ParcelPilot has not yet received a pickup\nconfirmation. PICKED_UP means carrier pickup has been confirmed.",
+      "is_authoritative": true,
+      "is_deprecated": false,
+      "page": 1,
+      "section": "1. Plan capabilities",
+      "source_file": "04_Product_Operations_Guide_and_Known_Issues.pdf",
+      "topic": "product_known_issues"
+    },
+    {
+      "account_id": null,
+      "authority_tier": 3,
+      "chunk_id": "04_product_operations_guide_and_known_issues#p1#c04",
+      "citation": "04_Product_Operations_Guide_and_Known_Issues.pdf p.1 \u00a72. Current known issues > KI-211 - SwiftShip pickup webhook delay",
+      "document_id": "04_product_operations_guide_and_known_issues",
+      "document_title": "ParcelPilot Product Operations Guide",
+      "excerpt": "KI-211 - SwiftShip pickup webhook delay\nOpened: 12 August 2026\nStatus: Monitoring\nSwiftShip pickup confirmation webhooks can arrive up to 20 minutes late. A parcel may physically be collected while\nParcelPilot still shows BOOKED. Before telling a customer that a pickup did not occur, verify the carrier status or wait\nthrough the known delay window.",
+      "is_authoritative": true,
+      "is_deprecated": false,
+      "page": 1,
+      "section": "2. Current known issues > KI-211 - SwiftShip pickup webhook delay",
+      "source_file": "04_Product_Operations_Guide_and_Known_Issues.pdf",
+      "topic": "product_known_issues"
+    },
+    {
+      "account_id": null,
+      "authority_tier": 3,
+      "chunk_id": "03_cancellation_and_service_credit_sop_v4#p1#c01",
+      "citation": "03_Cancellation_and_Service_Credit_SOP_v4.pdf p.1 \u00a71. Order cancellation",
+      "document_id": "03_cancellation_and_service_credit_sop_v4",
+      "document_title": "ParcelPilot Cancellation & Service Credit SOP v4",
+      "excerpt": "1. Order cancellation\n\u25cf DRAFT: May be cancelled with no fee.\n\u25cf BOOKED, not yet PICKED_UP: May be cancelled. No fee within 30 minutes of booking. After 30 minutes,\ncharge INR 250 unless a customer agreement explicitly waives the cancellation fee.\n\u25cf PICKED_UP: Do not cancel. Use the return-to-origin workflow if the customer wants the parcel returned.\n\u25cf DELIVERED: Cannot be cancelled.",
+      "is_authoritative": true,
+      "is_deprecated": false,
+      "page": 1,
+      "section": "1. Order cancellation",
+      "source_file": "03_Cancellation_and_Service_Credit_SOP_v4.pdf",
+      "topic": "cancellation"
+    },
+    {
+      "account_id": null,
+      "authority_tier": 3,
+      "chunk_id": "03_cancellation_and_service_credit_sop_v4#p1#c02",
+      "citation": "03_Cancellation_and_Service_Credit_SOP_v4.pdf p.1 \u00a72. Failed-pickup service credits",
+      "document_id": "03_cancellation_and_service_credit_sop_v4",
+      "document_title": "ParcelPilot Cancellation & Service Credit SOP v4",
+      "excerpt": "2. Failed-pickup service credits\nUnder the default policy, a customer is eligible for a service credit when the pickup is more than 2 hours past the end\nof the scheduled pickup window, the carrier is at fault, and there is no customer-caused issue. The default credit is\nthe lower of INR 500 or 10% of the shipment fee.\nA signed customer agreement may replace the default delay threshold, credit amou\u2026",
+      "is_authoritative": true,
+      "is_deprecated": false,
+      "page": 1,
+      "section": "2. Failed-pickup service credits",
+      "source_file": "03_Cancellation_and_Service_Credit_SOP_v4.pdf",
+      "topic": "service_credit"
+    }
+  ],
+  "step_budget_exhausted": false,
+  "tools_used": [
+    {
+      "message": null,
+      "status": "ok",
+      "step": 1,
+      "summary": "order lookup",
+      "tool_name": "lookup_record"
+    },
+    {
+      "message": "No pickup has been confirmed, so the delay is inferred from the dataset snapshot rather than an observed pickup. Product documentation warns that pickup confirmation can lag, so verify with the carrier before concluding the pickup failed.",
+      "status": "uncertain",
+      "step": 2,
+      "summary": "service_credit=requires_verification",
+      "tool_name": "evaluate_service_credit"
+    },
+    {
+      "message": null,
+      "status": "ok",
+      "step": 3,
+      "summary": "8 evidence item(s)",
+      "tool_name": "search_documents"
+    }
+  ],
+  "uncertainties": [
+    "No pickup has been confirmed, so the delay is inferred from the dataset snapshot rather than an observed pickup. Product documentation warns that pickup confirmation can lag, so verify with the carrier before concluding the pickup failed."
+  ],
+  "user_id": "support.agent"
+}

@@ -1,0 +1,26 @@
+# Governs the frontend build context (app/frontend/Dockerfile, built with
+# app/frontend/ as context).
+
+node_modules/
+.next/
+out/
+*.tsbuildinfo
+next-env.d.ts
+
+.git/
+.env
+.env.*
+!.env.example
+
+src/**/*.test.ts
+src/**/*.test.tsx
+src/test/
+
+coverage/
+.eslintcache
+npm-debug.log*
+
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

@@ -1,0 +1,34 @@
+{
+  "action": {
+    "account_id": "ACCT-001",
+    "action_id": "ACT-fixture0001",
+    "action_type": "create_escalation",
+    "confirmed_at_utc": "2026-08-16T05:31:00+00:00",
+    "confirmed_by": "support.manager",
+    "evidence_chunk_ids": [
+      "01_support_policy_v3_current#p1#c02",
+      "01_support_policy_v3_current#p1#c04",
+      "03_cancellation_and_service_credit_sop_v4#p1#c01"
+    ],
+    "executed_at_utc": "2026-08-16T05:31:00+00:00",
+    "failure_reason": null,
+    "parameters": {
+      "reason": "Escalation requested via support agent: Investigate TKT-501 and escalate it if the outage warrants it."
+    },
+    "prepared_at_utc": "2026-08-16T05:30:00+00:00",
+    "preview": "Create an escalation against ticket TKT-501. Reason: Escalation requested via support agent: Investigate TKT-501 and escalate it if the outage warrants it.",
+    "rejected_at_utc": null,
+    "requested_by": "support.agent",
+    "requested_by_role": "support_agent",
+    "result": {
+      "escalation_id": "ESC-fixture0001",
+      "ticket_id": "TKT-501"
+    },
+    "status": "executed",
+    "target_id": "TKT-501",
+    "target_type": "ticket"
+  },
+  "action_status": "executed",
+  "message": "Action ACT-fixture0001 executed.",
+  "request_id": "REQ-fixture0001"
+}
