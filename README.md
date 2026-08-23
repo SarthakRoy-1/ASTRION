@@ -183,20 +183,37 @@ Optional / not currently installed:
 
 ### The short version
 
-Two terminals, no API key, no network:
+One terminal, no API key, no network:
+
+```powershell
+py -3.13 -m venv .venv; .venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+cd app/frontend; npm install; cd ../..
+python scripts\ingest_dataset.py; python scripts\ingest_documents.py
+
+python dev.py            # starts BOTH services
+```
+
+`dev.py` starts the API on <http://127.0.0.1:8000> and the UI on
+<http://localhost:3000>, prefixes each log line with the service it came from,
+and stops both on a single Ctrl+C. It refuses to start — with a specific
+message — if a port is taken or `npm install` has not been run, rather than
+failing halfway up. It uses the repository's own `.venv` whether or not the
+environment is activated.
+
+Open <http://localhost:3000>, pick a context in the header, and ask something.
+
+Running the two services separately still works exactly as before, and is
+still the right choice when you want to restart one without the other:
 
 ```powershell
 # Terminal 1 — API
-py -3.13 -m venv .venv; .venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-python scripts\ingest_dataset.py; python scripts\ingest_documents.py
 uvicorn app.backend.main:app --reload            # http://127.0.0.1:8000
 
 # Terminal 2 — UI
-cd app/frontend; npm install; npm run dev        # http://localhost:3000
+cd app/frontend; npm run dev                     # http://localhost:3000
 ```
 
-Open <http://localhost:3000>, pick a context in the header, and ask something.
 The full walkthrough is below.
 
 ### Build the data and run the tests — Windows, PowerShell, Python 3.13
