@@ -24,12 +24,12 @@
 }
 
 .title {
-  font-size: 17px;
+  font-size: var(--text-lead);
   letter-spacing: -0.01em;
 }
 
 .subtitle {
-  font-size: 13px;
+  font-size: var(--text-small);
   color: var(--text-muted);
   white-space: nowrap;
   overflow: hidden;
@@ -47,7 +47,7 @@
   border: 1px solid var(--border-default);
   border-radius: var(--radius-md);
   background: var(--surface-raised);
-  font-size: 14px;
+  font-size: var(--text-ui);
   font-weight: 500;
   cursor: pointer;
 }
@@ -73,18 +73,8 @@
   margin: 0 auto;
   padding: var(--space-2) var(--space-5);
   border-top: 1px solid var(--border-subtle);
-  font-size: 13px;
+  font-size: var(--text-small);
   color: var(--text-secondary);
-}
-
-.contextRole {
-  padding: 1px var(--space-2);
-  border: 1px solid var(--accent-border);
-  border-radius: var(--radius-sm);
-  background: var(--accent-soft);
-  color: var(--accent);
-  font-size: 12px;
-  font-weight: 600;
 }
 
 .contextName {
@@ -102,6 +92,14 @@
 
 .contextScope {
   font-variant-numeric: tabular-nums;
+}
+
+/* Wraps to its own line rather than competing with the scope: it is context a
+   reader wants once, not a value they scan for. */
+.contextDescription {
+  flex-basis: 100%;
+  color: var(--text-muted);
+  font-size: var(--text-caption);
 }
 
 @media (max-width: 640px) {

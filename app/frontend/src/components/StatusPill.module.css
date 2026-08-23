@@ -5,7 +5,7 @@
   padding: 1px var(--space-2);
   border: 1px solid;
   border-radius: 999px;
-  font-size: 12px;
+  font-size: var(--text-caption);
   font-weight: 600;
   letter-spacing: 0.01em;
   white-space: nowrap;

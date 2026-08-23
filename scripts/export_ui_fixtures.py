@@ -58,6 +58,14 @@ CHAT_SCENARIOS: tuple[tuple[str, str, str], ...] = (
         SUPPORT_AGENT,
         "Why does a SwiftShip order still show BOOKED after the driver collected it?",
     ),
+    # A breached first-response target under a customer agreement that replaces
+    # the plan default. The severity is stated in the message because the SLA
+    # tool will not infer one — see app/backend/policies/sla.py.
+    (
+        "chat-sla-breach",
+        SUPPORT_AGENT,
+        "TKT-501 is a P1. Has its first response SLA been breached?",
+    ),
     (
         "chat-uncertain",
         SUPPORT_AGENT,
@@ -102,6 +110,40 @@ def _build_database(workspace: Path) -> Path:
     return db_path
 
 
+def _record_provisional_credit(client) -> dict:
+    """Record the response the UI must render for a credit it may not promise.
+
+    The supplied dataset records a carrier-fault value on every order, so the
+    state the SOP forbids resolving by assumption — "do not promise a credit
+    when carrier fault ... is unknown" — does not occur naturally in it. The
+    accessor is patched for the duration of this one request so the recorded
+    body is still a genuine API response rather than a hand-written one; the
+    database is not modified.
+    """
+    from unittest.mock import patch
+
+    from app.backend.policies import service_credit as module
+
+    real_get_order = module.get_order
+
+    def unknown_fault(connection, order_id, **kwargs):
+        order = real_get_order(connection, order_id, **kwargs)
+        if order is None or order.order_id != "ORD-2002":
+            return order
+        return order.model_copy(update={"carrier_fault": None})
+
+    with patch.object(module, "get_order", unknown_fault):
+        return _expect(
+            client.post(
+                "/api/chat",
+                json={
+                    "message": "Is ORD-2002 eligible for a failed pickup service credit?",
+                    "user_id": SUPPORT_AGENT,
+                },
+            )
+        )
+
+
 def record(db_path: Path | None = None) -> dict[str, dict]:
     """Drive the real application and collect every response body.
 
@@ -132,6 +174,10 @@ def record(db_path: Path | None = None) -> dict[str, dict]:
                         "/api/chat", json={"message": message, "user_id": identity}
                     )
                 )
+
+            recorded["chat-service-credit-provisional"] = _record_provisional_credit(
+                client
+            )
 
             # The confirmation leg, recorded against the proposal just made so
             # the executed-action fixture is a genuine continuation of the

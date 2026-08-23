@@ -1,17 +1,23 @@
 # ParcelPilot Support & Operations AI Agent
 
-> **Status: Phase 6 — working chat UI on the Phase 5 API.** Source pack
-> verified (Phase 1); SQLite structured-data layer (Phase 2); document
-> ingestion and authority-ranked retrieval (Phase 3); agent orchestration,
-> deterministic policy decisions, and confirmation-gated actions (Phase 4);
-> FastAPI surface, mock auth context, and an OpenAI-backed provider behind the
-> Phase 4 seam (Phase 5); Next.js chat interface with evidence, tool activity
-> and the confirmation gate (Phase 6).
+> **Status: Phase 8 — deployment configuration verified, not yet hosted.**
+> Source pack verified (Phase 1); SQLite structured-data layer (Phase 2);
+> document ingestion and authority-ranked retrieval (Phase 3); agent
+> orchestration, deterministic policy decisions, and confirmation-gated
+> actions (Phase 4); FastAPI surface, mock auth context, and an OpenAI-backed
+> provider behind the Phase 4 seam (Phase 5); Next.js chat interface with
+> evidence, tool activity and the confirmation gate (Phase 6); deterministic
+> first-response SLA targets and breach detection, plus an adversarial pass
+> over account isolation, source authority and the confirmation gate
+> (Phase 7); both Docker images verified to build and run end to end, a
+> database-path consistency fix, and a secrets/CORS/health audit (Phase 8).
 >
 > The whole stack runs end to end with **no API key**:
 > `LLM_PROVIDER=deterministic` is the default and exercises every safety
-> boundary, which is also what both test suites run on. No production
-> authentication provider yet. Nothing is hosted.
+> boundary, which is also what both test suites run on. **Authentication is
+> still a mock in every mode, including the deployment config below** — see
+> [Before deploying this publicly](#before-deploying-this-publicly-authentication-is-still-a-mock).
+> Nothing is hosted yet.
 
 ## Purpose
 
@@ -33,9 +39,9 @@ Built for the ParcelPilot AI Engineer assessment. The system must support:
 | Natural-language Q&A | Free-form questions from support staff |
 | Document retrieval | Over the supplied policy/SOP/agreement pack |
 | Account / order / ticket lookup | Structured operational records |
-| Deterministic policy calculation | SLA, cancellation fees, service credits |
+| Deterministic policy calculation | SLA targets and breach, cancellation fees, service credits |
 | Customer-agreement precedence | Signed agreements override general policy |
-| SLA reasoning | Response/resolution targets, breach detection |
+| SLA reasoning | Plan and agreement first-response targets, breach detection, P1 escalation |
 | Known-issue reasoning | Match a symptom to a documented known issue |
 | Multi-step tool use | Chain retrieval → lookup → calculation |
 | Role/account-based access control | Enforced in code, never by prompt |
@@ -45,14 +51,14 @@ Built for the ParcelPilot AI Engineer assessment. The system must support:
 
 ### Required agent tools
 
-At minimum three distinct tools — all implemented in Phase 4
-(`app/backend/tools/`):
+At minimum three distinct tools, all in `app/backend/tools/` — the first three
+categories shipped in Phase 4; `evaluate_sla` was added in Phase 7:
 
 1. **Document search / retrieval** — `search_documents`, `get_document_evidence`;
    authority-ranked search over the source pack.
 2. **Structured lookup + calculation** — `lookup_record` for records, plus
-   `evaluate_cancellation` / `evaluate_service_credit` for deterministic rule
-   evaluation.
+   `evaluate_cancellation` / `evaluate_service_credit` (Phase 4) and
+   `evaluate_sla` (Phase 7) for deterministic rule evaluation.
 3. **State-changing action** — `prepare_escalation` / `prepare_ticket_note`
    produce a proposal; execution happens only via an explicit confirmation
    call that no tool can reach — `POST /api/actions/{id}/confirm`.
@@ -109,6 +115,34 @@ Rules (implemented for document sources in Phase 3 —
 
 Design detail lives in [docs/architecture.md](docs/architecture.md).
 
+## What the engine refuses to decide
+
+Three places where the deterministic layer returns "verify this" rather than a
+figure. Each is a rule the supplied documents state, implemented literally.
+
+**Severity is never inferred.** `evaluate_sla` computes a first-response target
+and a breach, but it will not decide whether a ticket is P1, P2 or P3 — that is
+a judgement about business impact, which the policy's severity definitions are
+written for a person (or the model) to apply. Called without a `severity`, the
+tool reports the elapsed time and every target it read, and asserts no breach.
+An earlier draft scored ticket text against the severity definitions and picked
+the best match; it rated a billing question P1 on one shared word and then
+announced a breach against a 15-minute target, so it was removed. A confident
+verdict resting on a guessed severity is the failure this system exists to
+prevent.
+
+**Business-hours targets are reported, not converted.** The corpus states
+targets like "4 business hours" but defines no business calendar anywhere.
+Converting one into a deadline would invent the calendar and the breach verdict
+together, so those targets come back with the arithmetic explicitly unresolved.
+
+**Unknown inputs stop a credit.** The SOP's "do not promise a credit when
+carrier fault, pickup timing, or customer fault is unknown" is enforced as
+written. What it does *not* do is treat an unconfirmed pickup as doubt in its
+own right: a documented webhook lag is matched against the order's own carrier
+and its stated window, so one carrier's known issue cannot withhold a credit a
+signed agreement grants on another carrier's shipment.
+
 ## Planned technology stack
 
 | Layer | Choice | Notes |
@@ -140,8 +174,10 @@ Verified present on the development machine:
 Optional / not currently installed:
 
 - **GitHub CLI (`gh`)** — needed only to create the remote from the terminal.
-- **Docker** — installed but the daemon is not running. Not required; the whole
-  stack runs natively.
+- **Docker** — verified working (Phase 8): both images build cleanly, the
+  compose stack starts, and `/health` responds. Not required for local
+  development — the whole stack also runs natively — but is the path to
+  [Deployment](#deployment).
 
 ## Setup
 
@@ -258,6 +294,10 @@ confirmation gate are identical in both modes. The `openai` SDK is imported
 lazily, so the application and the test suite run on a machine that never
 installed it.
 
+This is still local-only — your machine, your key, nobody else can reach it.
+See [Deployment](#deployment) for what additionally changes (and what does
+not) once this runs on a public host.
+
 ### Frontend — the chat UI
 
 The UI is a pure client of the API above. It holds no database connection, no
@@ -339,7 +379,12 @@ Next.js frontend  --->  FastAPI backend  --->  SQLite (persistent volume)
 `Dockerfile.backend` (repo root, build context = repo root — the app imports
 as `app.backend.*` and needs `scripts/` and `data/source/`),
 `app/frontend/Dockerfile` (context = `app/frontend/`), and
-`docker-compose.yml` wire this together.
+`docker-compose.yml` wire this together. Verified directly (Phase 8): both
+images build cleanly, `docker compose up` reaches a healthy backend and a
+serving frontend, a container restart against the same volume skips
+re-ingestion and preserves data, CORS rejects an unlisted origin, and no
+credential appears in any image layer or in `/health` under either provider
+mode.
 
 ```powershell
 docker compose up --build
@@ -351,15 +396,82 @@ For `LLM_PROVIDER=real`, put `OPENAI_API_KEY` in a git-ignored `.env` next to
 `docker-compose.yml` — compose reads it automatically. Never in a committed
 file.
 
+### Three distinct modes — do not conflate them
+
+| | Local deterministic demo | Local real-LLM mode | Production deployment |
+| --- | --- | --- | --- |
+| How to run | `uvicorn` + `npm run dev` natively, or `docker compose up` with `LLM_PROVIDER` unset | Same, with `LLM_PROVIDER=real` and a real `OPENAI_API_KEY` in `.env` | `docker compose up --build` (or the two images hosted separately) on a real host, real domain, real `OPENAI_API_KEY` if using `real` |
+| API key / network | None. Fully offline. | Yes — calls the live OpenAI API | Yes, if `LLM_PROVIDER=real` |
+| Authentication | **Mock** — `user_id` / `X-ParcelPilot-User`, no token | **Mock** — unchanged | **Still mock** — nothing in Phase 5–8 replaced it. See below before exposing this publicly. |
+| Who should reach it | Only you, on your machine | Only you, on your machine | Anyone who can reach the port — treat as public the moment it is |
+| What it proves | Every safety boundary (scoping, precedence, confirmation gate), with no key and no network | The same boundaries, plus real natural-language planning | The same application the two demo modes already exercised, not a different one |
+
+The deterministic planner is not a stub kept around for convenience — it is
+what the entire test suite runs on, and it is what makes every boundary in
+this system verifiable with no API key. Switching `LLM_PROVIDER` changes which
+tools get called; it changes nothing about what any tool is permitted to do.
+
+### Before deploying this publicly: authentication is still a mock
+
+This matters more once the API is reachable from outside your machine than it
+does in local development, so it is repeated here rather than left only in
+[Identity](#identity).
+
+There is no token, no session, and no password anywhere in this build. A
+request identifies itself by putting a plain string — `support.agent`,
+`customer.northstar`, and so on — in `user_id` or the `X-ParcelPilot-User`
+header, and the server looks that string up in a fixed, in-code directory
+(`app/backend/auth/principals.py`). `GET /api/principals` lists the full
+directory, unauthenticated, by design (the demo UI's context switcher needs it
+before any identity is chosen). **Anyone who can reach the deployed API can
+call it as any of the five demo identities, including `support.manager`,
+simply by naming it — no credential check is performed on `user_id` itself.**
+
+What *is* real, and does not depend on fixing this: once an identity is
+accepted, the account scope and role it carries are enforced in SQL below the
+model — nothing in a message can widen them, and every finding in Phase 7's
+adversarial pass held. What is not real is the acceptance step itself. Do not
+put this build on a public host without addressing that — either put it
+behind a network you already trust (VPN, internal-only ingress), or replace
+the authentication layer first.
+
+**What replacing it for real would take**, concretely, without touching
+anything below `auth/principals.py`:
+
+1. A real identity provider (an OAuth/OIDC provider, a session cookie backed
+   by a real login, or signed API tokens issued out-of-band) in place of the
+   static `MOCK_PRINCIPALS` directory.
+2. `resolve_principal` (`app/backend/api/dependencies.py`) verifying a
+   signature or introspecting a token instead of doing a dictionary lookup on
+   a client-supplied string.
+3. `AUTH_SECRET_KEY` / `AUTH_TOKEN_TTL_MINUTES` — already reserved in
+   `.env.example` and unused today — wired to that verification.
+4. `GET /api/principals` either authenticated or replaced: it is a documented,
+   deliberate exception for the demo UI, not something a production identity
+   directory should expose to an anonymous caller.
+5. Everything downstream of `AgentContext` — scoping, precedence, the
+   confirmation gate — needs no change at all. That boundary was built to be
+   independent of how identity is established, which is the point of Phase
+   5's design: replace the module that produces `AgentContext`, and nothing
+   that consumes it has to change.
+
 ### The database is never baked into the image
 
 `docker-entrypoint.sh` runs `ingest_dataset.py` + `ingest_documents.py` on
-container start *only if* `data/processed/parcelpilot.db` is not already
-present at the mounted volume path — so a fresh deployment always builds
-correctly from `data/source/` alone, and a restart of an existing deployment
-does not silently wipe an in-progress demo's confirmed actions. The deployed
-backend never depends on a database file that exists only on a developer's
-machine.
+container start *only if* the database file is not already present at the
+mounted volume path — so a fresh deployment always builds correctly from
+`data/source/` alone, and a restart of an existing deployment does not
+silently wipe an in-progress demo's confirmed actions. The deployed backend
+never depends on a database file that exists only on a developer's machine.
+
+The entrypoint derives that path from `DATABASE_URL` (Phase 8: previously it
+checked a separate, unset variable and happened to agree with the
+application's own default only because nobody had customised either one —
+fixed so both the ingestion-skip check and the running application are
+guaranteed to agree on one file, not two independently-defaulted paths).
+Passed through `docker-compose.yml`; override it there if you relocate the
+volume, and keep it under the `/app/data/processed` mount or it will not
+persist across restarts.
 
 ### `NEXT_PUBLIC_API_BASE_URL` is a build-time value
 
@@ -410,13 +522,26 @@ the message can widen them.
 customer.northstar    customer         ACCT-001 only
 customer.lumenworks   customer         ACCT-002 only
 support.agent         support_agent    every account; may prepare and confirm
-support.manager       support_manager  every account; may approve escalations
+support.manager       support_manager  every account; may prepare and confirm
 support.readonly      read_only        every account; may not change any state
 ```
 
 Authentication itself is a **mock** in this phase: there is no token and no
 signature. What is real is the boundary — the server, never the request,
-decides the scope, and enforcement lives in SQL below the model.
+decides the scope, and enforcement lives in SQL below the model. Before
+running this anywhere reachable by someone other than you, read
+[Before deploying this publicly](#before-deploying-this-publicly-authentication-is-still-a-mock).
+
+**`support_manager` currently grants nothing `support_agent` does not.** The
+one authorization distinction the system enforces is whether a role may change
+state at all, which separates both internal staff roles from `read_only` and
+from customers. The manager role is modelled and carried through so a
+manager-only capability has somewhere to attach; none exists yet. The SOP's
+"any individual credit above INR 1,000 requires manager approval" is computed
+and reported by the policy engine rather than enforced, because neither
+state-changing action this system ships — create an escalation, add a ticket
+note — issues a credit. Gating it would mean gating an action that does not
+exist. See [docs/product.md](docs/product.md#roles-and-what-each-may-do).
 
 ### Ask a question
 
@@ -509,7 +634,7 @@ default — **no `.env` is required** to run in deterministic mode.
 | `OPENAI_MODEL` / `OPENAI_BASE_URL` | Chat model; base URL for a compatible gateway |
 | `AGENT_MAX_TOOL_STEPS` | Caps the orchestration loop |
 | `AGENT_REQUEST_TIMEOUT_SECONDS` / `LLM_TEMPERATURE` | Provider call tuning |
-| `DATABASE_URL` | SQLite path (under `data/processed/`) |
+| `DATABASE_URL` | SQLite path (under `data/processed/`). Read by the application *and* by `docker-entrypoint.sh`'s ingestion-skip check — the same value, so they cannot disagree about where the database lives. |
 | `APP_ENV` / `CORS_ALLOW_ORIGINS` | Environment label; browser origins allowed to call the API |
 | `AUTH_SECRET_KEY` / `AUTH_TOKEN_TTL_MINUTES` | Reserved for the real identity provider; unused today |
 | `ENABLE_STATE_CHANGING_ACTIONS` | Kill switch: unregisters the preparation tools *and* closes the confirm endpoint |
@@ -567,8 +692,8 @@ nothing in them is a source of truth.
 | **4** | Agent orchestration, tools, policy engine, confirmed actions | **Done** |
 | **5** | FastAPI surface; mock auth context; real LLM provider; confirmation API | **Done** |
 | **6** | Next.js UI: chat, citations, tool activity, confirmation cards | **Done** |
-| **7** | Proactive issue detection; further action types; evaluation | Next |
-| **8** | Deployment configuration (Docker Compose, entrypoint ingestion, prod build) | **Done** — hosting itself pending an actual platform/account |
+| **7** | Deterministic SLA targets/breach; assessment test matrix; adversarial pass | **Done** |
+| **8** | Deployment configuration verified: both images build, compose stack runs end to end, `DATABASE_URL` consistency fixed, secrets/CORS/health audited | **Done** — hosting itself pending an actual platform/account |
 
 Phase 5 absorbed what earlier planning had split across phases 5, 6 and 8:
 the authorization hook the Phase 2/3 repositories already carried needed a

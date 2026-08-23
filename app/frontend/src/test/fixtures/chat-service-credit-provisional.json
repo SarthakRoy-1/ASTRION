@@ -6,15 +6,15 @@
     "ACCT-004"
   ],
   "action_status": "none",
-  "answer": "Order ORD-2002 qualifies for a failed-pickup service credit of INR 300.00.\nMeasured 4.50h past the scheduled pickup-window end (against the dataset snapshot) versus a 4h threshold; carrier fault: True, customer fault: False.\nRule applied: Pickup more than 4 hours past the scheduled window end with carrier fault and no customer fault qualifies for a service credit.\nCalculation: fixed credit -> INR 300.00\nSource: 06_LumenWorks_Service_Agreement.pdf p.1 \u00a73. Failed-pickup credits\nPrecedence: 06_LumenWorks_Service_Agreement.pdf p.1 \u00a73. Failed-pickup credits (tier 1 CUSTOMER_AGREEMENT) outranks 03_Cancellation_and_Service_Credit_SOP_v4.pdf p.1 \u00a72. Failed-pickup service credits (tier 3 CURRENT_OPERATIONAL_DOC) on topic 'service_credit'",
-  "escalation_recommended": false,
-  "outcome": "answered",
+  "answer": "Order ORD-2002 would qualify for a service credit of INR 300.00, but this is provisional and must not be promised to the customer yet.\nMeasured 4.50h past the scheduled pickup-window end (against the dataset snapshot) versus a 4h threshold; carrier fault: None, customer fault: False.\nRule applied: Pickup more than 4 hours past the scheduled window end with carrier fault and no customer fault qualifies for a service credit.\nCalculation: fixed credit -> INR 300.00\nSource: 06_LumenWorks_Service_Agreement.pdf p.1 \u00a73. Failed-pickup credits\nPrecedence: 06_LumenWorks_Service_Agreement.pdf p.1 \u00a73. Failed-pickup credits (tier 1 CUSTOMER_AGREEMENT) outranks 03_Cancellation_and_Service_Credit_SOP_v4.pdf p.1 \u00a72. Failed-pickup service credits (tier 3 CURRENT_OPERATIONAL_DOC) on topic 'service_credit'\nThis cannot be answered definitively from the available data \u2014 verify the points listed before committing to an outcome.",
+  "escalation_recommended": true,
+  "outcome": "uncertain",
   "policy_decisions": [
     {
       "account_id": "ACCT-002",
       "amount": "300.00",
       "amount_label": "service_credit",
-      "applies": true,
+      "applies": false,
       "breached": null,
       "calculation": "fixed credit -> INR 300.00",
       "controlling_rule": "Pickup more than 4 hours past the scheduled window end with carrier fault and no customer fault qualifies for a service credit.",
@@ -29,7 +29,7 @@
       ],
       "inputs": {
         "carrier": "RoadRunner",
-        "carrier_fault": "True",
+        "carrier_fault": null,
         "customer_fault": "False",
         "delay_hours": "4.50",
         "documented_pickup_confirmation_lag_minutes": null,
@@ -41,16 +41,18 @@
         "shipment_fee": "2400.0"
       },
       "order_id": "ORD-2002",
-      "outcome": "eligible",
+      "outcome": "requires_verification",
       "overrides": [
         "06_LumenWorks_Service_Agreement.pdf p.1 \u00a73. Failed-pickup credits (tier 1 CUSTOMER_AGREEMENT) outranks 03_Cancellation_and_Service_Credit_SOP_v4.pdf p.1 \u00a72. Failed-pickup service credits (tier 3 CURRENT_OPERATIONAL_DOC) on topic 'service_credit'"
       ],
       "requires_immediate_escalation": false,
-      "requires_verification": false,
+      "requires_verification": true,
       "severity": null,
       "target_text": null,
       "ticket_id": null,
-      "verification_reasons": []
+      "verification_reasons": [
+        "Carrier fault is unknown; the SOP forbids promising a credit until it is established."
+      ]
     }
   ],
   "proposed_action": null,
@@ -191,10 +193,10 @@
       "tool_name": "lookup_record"
     },
     {
-      "message": null,
-      "status": "ok",
+      "message": "Carrier fault is unknown; the SOP forbids promising a credit until it is established.",
+      "status": "uncertain",
       "step": 2,
-      "summary": "service_credit=eligible",
+      "summary": "service_credit=requires_verification",
       "tool_name": "evaluate_service_credit"
     },
     {
@@ -205,6 +207,8 @@
       "tool_name": "search_documents"
     }
   ],
-  "uncertainties": [],
+  "uncertainties": [
+    "Carrier fault is unknown; the SOP forbids promising a credit until it is established."
+  ],
   "user_id": "support.agent"
 }

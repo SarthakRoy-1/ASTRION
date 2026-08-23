@@ -1,3 +1,5 @@
+import { useId } from "react";
+
 import { splitEvidence } from "@/lib/presentation";
 import { EvidenceCard } from "./EvidenceCard";
 import type { SourceRef } from "@/lib/types";
@@ -13,13 +15,18 @@ import styles from "./EvidenceSection.module.css";
  * that lost. What the UI must never do is present them as equivalent.
  */
 export function EvidenceSection({ sources }: { sources: SourceRef[] }) {
+  // Every agent turn renders one of these. A literal id would repeat down the
+  // transcript, and `aria-labelledby` resolves to the first match in the
+  // document — so from turn two onward every region was named after turn one.
+  const headingId = useId();
+
   if (sources.length === 0) return null;
 
   const { governing, contextual } = splitEvidence(sources);
 
   return (
-    <section className={styles.section} aria-labelledby="sources-heading">
-      <h3 id="sources-heading" className={styles.heading}>
+    <section className={styles.section} aria-labelledby={headingId}>
+      <h3 id={headingId} className={styles.heading}>
         Sources
         <span className={styles.count}>
           {sources.length} {sources.length === 1 ? "document" : "documents"}

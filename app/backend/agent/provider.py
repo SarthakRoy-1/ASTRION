@@ -23,6 +23,7 @@ from enum import StrEnum
 from typing import Protocol
 
 from app.backend.models.agent import AgentContext, ToolResult, ToolStatus
+from app.backend.policies.terms import severity_stated_in
 from app.backend.tools.base import ToolRegistry
 
 _ORDER_ID = re.compile(r"\bORD-\d+\b", re.IGNORECASE)
@@ -33,6 +34,7 @@ _ACCOUNT_ID = re.compile(r"\bACCT-\d+\b", re.IGNORECASE)
 class Intent(StrEnum):
     CANCELLATION = "cancellation"
     SERVICE_CREDIT = "service_credit"
+    SLA = "sla"
     ESCALATION = "escalation"
     INVESTIGATION = "investigation"
 
@@ -40,6 +42,20 @@ class Intent(StrEnum):
 _INTENT_KEYWORDS: tuple[tuple[Intent, tuple[str, ...]], ...] = (
     (Intent.CANCELLATION, ("cancel", "cancellation")),
     (Intent.SERVICE_CREDIT, ("service credit", "credit", "refund", "compensat")),
+    (
+        Intent.SLA,
+        (
+            "sla",
+            "response target",
+            "first response",
+            "first-response",
+            "breach",
+            "overdue",
+            "response time",
+            "responded",
+            "severity",
+        ),
+    ),
     (Intent.ESCALATION, ("escalate", "escalation")),
 )
 
@@ -191,6 +207,29 @@ class DeterministicPlanner:
                 if ("evaluate_service_credit", _key(call.arguments)) not in called:
                     return PlannerStep([call])
 
+        if Intent.SLA in intents:
+            # A severity the request states is passed through; one it does not
+            # state is left absent, and the tool declines to assert a breach.
+            # The planner has no basis for judging severity itself.
+            stated = severity_stated_in(message)
+            for ticket_id in resolved_tickets:
+                arguments: dict = {"ticket_id": ticket_id}
+                if stated is not None:
+                    arguments["severity"] = stated.value
+                if ("evaluate_sla", _key(arguments)) not in called:
+                    return PlannerStep([ToolCall("evaluate_sla", arguments)])
+
+        # --- 3b. the reference clock, when the question is about it --------
+        #
+        # Every time-based answer is already measured against the snapshot and
+        # every decision records it, but a question asked *directly* about the
+        # clock has no record to resolve and would otherwise fall through to a
+        # document search that cannot answer it.
+        if _asks_about_the_snapshot(message):
+            call = ToolCall("lookup_record", {"entity": "dataset_metadata"})
+            if ("lookup_record", _key(call.arguments)) not in called:
+                return PlannerStep([call])
+
         # --- 4. supporting documentation ----------------------------------
         search_args: dict = {"query": message}
         if account_id:
@@ -210,6 +249,24 @@ class DeterministicPlanner:
                     return PlannerStep([ToolCall("prepare_escalation", arguments)])
 
         return PlannerStep()
+
+
+#: Phrasings that ask what "now" is for this dataset, rather than asking a
+#: question that merely happens to involve time.
+_SNAPSHOT_PHRASES = (
+    "snapshot",
+    "what time is it",
+    "current time",
+    "reference time",
+    "as of when",
+    "how current",
+    "today's date",
+)
+
+
+def _asks_about_the_snapshot(message: str) -> bool:
+    lowered = message.lower()
+    return any(phrase in lowered for phrase in _SNAPSHOT_PHRASES)
 
 
 def _key(arguments: dict) -> str:

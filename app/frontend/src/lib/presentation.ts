@@ -12,7 +12,13 @@
  * it does not form one.
  */
 
-import type { ActionState, PolicyDecisionView, SourceRef, ToolUse } from "./types";
+import type {
+  ActionState,
+  PolicyDecisionView,
+  ProposedActionView,
+  SourceRef,
+  ToolUse,
+} from "./types";
 
 /** Broad capability a tool belongs to, for the investigation summary. */
 export type ToolCategory =
@@ -140,8 +146,25 @@ export function summariseInvestigation(tools: ToolUse[]): InvestigationStep[] {
 }
 
 /** Heading for a policy decision card. */
+const DECISION_TITLES: Record<string, string> = {
+  cancellation: "Cancellation",
+  service_credit: "Service credit",
+  sla: "Response SLA",
+};
+
 export function decisionTitle(decision: PolicyDecisionView): string {
-  return decision.decision_type === "cancellation" ? "Cancellation" : "Service credit";
+  return DECISION_TITLES[decision.decision_type] ?? "Service credit";
+}
+
+/**
+ * The record a decision is about.
+ *
+ * Cancellation and service-credit decisions concern an order; an SLA decision
+ * concerns a ticket. Exactly one is populated, so the card shows whichever it
+ * was given rather than an empty slot.
+ */
+export function decisionSubject(decision: PolicyDecisionView): string {
+  return decision.order_id ?? decision.ticket_id ?? "";
 }
 
 /** The label for the decision's monetary figure, if it has one. */
@@ -150,11 +173,34 @@ export function decisionAmountLabel(decision: PolicyDecisionView): string {
 }
 
 /**
+ * What the verdict row is a verdict *about*.
+ *
+ * A cancellation or credit decision answers "does this apply"; an SLA decision
+ * answers "has the target been missed". Labelling the second one "Eligible"
+ * made a breached SLA read as "Eligible: not allowed", which is not what the
+ * backend said and not a sentence anyone can act on.
+ */
+export function decisionVerdictLabel(decision: PolicyDecisionView): string {
+  if (decision.decision_type === "sla") return "First response";
+  // Not "Cancellation": that is already the card's heading, and repeating it
+  // as the field label makes the card say the same word twice about two
+  // different things.
+  if (decision.decision_type === "cancellation") return "Outcome";
+  return "Eligible";
+}
+
+/**
  * How the decision's verdict should read.
  *
- * `requires_verification` wins over `applies`, because the backend returning a
- * provisional figure alongside "verify this first" must never be shown as a
- * settled yes. That is the single most important rendering rule in this file.
+ * `requires_verification` wins over every other signal, because the backend
+ * returning a provisional figure alongside "verify this first" must never be
+ * shown as a settled yes. That is the single most important rendering rule in
+ * this file, and it applies to an unresolved SLA exactly as it does to a
+ * provisional credit.
+ *
+ * An SLA verdict is then driven by `breached`, which is deliberately tri-state
+ * on the wire: `null` means the question was not settled — not that nothing was
+ * breached — so it must never render as "Within target".
  */
 export function decisionVerdict(decision: PolicyDecisionView): {
   label: string;
@@ -163,9 +209,100 @@ export function decisionVerdict(decision: PolicyDecisionView): {
   if (decision.requires_verification || decision.outcome === "requires_verification") {
     return { label: "Uncertain", tone: "caution" };
   }
+  if (decision.decision_type === "sla") {
+    if (decision.breached === true) return { label: "Breached", tone: "fail" };
+    if (decision.breached === false) return { label: "Within target", tone: "ok" };
+    return { label: "Not determined", tone: "caution" };
+  }
+  // A cancellation's `applies` carries `fee_applies`, not "may this be
+  // cancelled". Reading it as an eligibility verdict rendered an order that
+  // could be cancelled free as "Eligible: No" — and rendered a DELIVERED
+  // order, which cannot be cancelled at all, exactly the same way. The
+  // question the reader is asking is answered by `outcome`.
+  if (decision.decision_type === "cancellation") {
+    if (decision.outcome === "allowed") return { label: "Allowed", tone: "ok" };
+    if (decision.outcome === "not_allowed") return { label: "Not allowed", tone: "fail" };
+    return { label: decision.outcome.replace(/_/g, " "), tone: "caution" };
+  }
   if (decision.applies === true) return { label: "Yes", tone: "ok" };
   if (decision.applies === false) return { label: "No", tone: "ok" };
   return { label: decision.outcome.replace(/_/g, " "), tone: "caution" };
+}
+
+/**
+ * The SLA facts worth showing beside the verdict, as label/value pairs.
+ *
+ * Empty for a decision that is not an SLA, so the card can render this
+ * unconditionally without branching twice. Every value is passed through as the
+ * backend computed it: `elapsed_minutes` arrives as a string for the same
+ * reason money does, and is not parsed here.
+ */
+export function slaFacts(
+  decision: PolicyDecisionView,
+): { label: string; value: string }[] {
+  if (decision.decision_type !== "sla") return [];
+  const facts: { label: string; value: string }[] = [];
+  if (decision.severity) facts.push({ label: "Severity", value: decision.severity });
+  if (decision.target_text) facts.push({ label: "Target", value: decision.target_text });
+  if (decision.elapsed_minutes !== null && decision.elapsed_minutes !== undefined) {
+    facts.push({ label: "Elapsed", value: `${decision.elapsed_minutes} min` });
+  }
+  return facts;
+}
+
+/** How a nullable boolean-ish input reads on a decision card. */
+function faultLabel(value: string | null | undefined): string {
+  if (value === null || value === undefined || value === "") return "Unknown";
+  return value === "True" ? "Confirmed" : "Ruled out";
+}
+
+/**
+ * The inputs a verdict actually rested on, as label/value pairs.
+ *
+ * `decision.inputs` is the backend's own record of what it read — order
+ * status, measured delay, whether fault was established. Showing a curated
+ * subset answers "why" with the system's evidence rather than its prose.
+ *
+ * Deliberately curated rather than dumped: `inputs` also carries raw ISO
+ * timestamps and `reference_time_source`, which would bury the two or three
+ * facts a reader is actually looking for.
+ *
+ * The vocabulary here avoids "Yes" and "No" on purpose. Those words are the
+ * service-credit *verdict*, and a fact reading "Yes" beside a verdict reading
+ * "Yes" makes the card ambiguous about which question was answered.
+ */
+export function decisionFacts(
+  decision: PolicyDecisionView,
+): { label: string; value: string }[] {
+  if (decision.decision_type === "sla") return slaFacts(decision);
+
+  const inputs = decision.inputs ?? {};
+  const facts: { label: string; value: string }[] = [];
+
+  if (decision.decision_type === "cancellation") {
+    if (inputs.order_status) {
+      facts.push({ label: "Order status", value: inputs.order_status });
+    }
+    return facts;
+  }
+
+  if (decision.decision_type === "service_credit") {
+    if (inputs.order_status) {
+      facts.push({ label: "Order status", value: inputs.order_status });
+    }
+    if (inputs.delay_hours) {
+      facts.push({ label: "Pickup delay", value: `${inputs.delay_hours} h` });
+    }
+    if ("carrier_fault" in inputs) {
+      facts.push({ label: "Carrier fault", value: faultLabel(inputs.carrier_fault) });
+    }
+    if ("customer_fault" in inputs) {
+      facts.push({ label: "Customer fault", value: faultLabel(inputs.customer_fault) });
+    }
+    return facts;
+  }
+
+  return facts;
 }
 
 /**
@@ -176,8 +313,19 @@ export function decisionVerdict(decision: PolicyDecisionView): {
  * the backend went out of its way to avoid. So it is never parsed — only
  * trimmed of a redundant `.00` for display.
  */
-export function formatAmount(currency: string, amount: string | null): string | null {
+/**
+ * Render a decision's monetary figure, or nothing.
+ *
+ * Both arguments are nullable because not every decision produces money — an
+ * SLA decision has neither an amount nor a currency. A figure without its
+ * currency is never rendered: "300" beside a credit is worse than silence.
+ */
+export function formatAmount(
+  currency: string | null | undefined,
+  amount: string | null | undefined,
+): string | null {
   if (amount === null || amount === undefined) return null;
+  if (currency === null || currency === undefined) return null;
   const trimmed = amount.replace(/\.00$/, "");
   return `${currency} ${trimmed}`;
 }
@@ -250,4 +398,122 @@ export function actionOutcomeMessage(
   return actionType === "create_escalation"
     ? "Escalation created."
     : "Internal note added.";
+}
+
+/** One labelled line the backend appended to its answer. */
+export interface AnswerNote {
+  label: string;
+  text: string;
+}
+
+/** An answer, separated into what it concluded and what it cited. */
+export interface ParsedAnswer {
+  /** The conclusion, in the backend's own words. */
+  lead: string[];
+  /** Rule, calculation, source and precedence lines, in order. */
+  notes: AnswerNote[];
+}
+
+/**
+ * The prefixes the backend uses when it appends provenance to an answer.
+ *
+ * Each of these is already rendered structurally elsewhere — `Rule applied`
+ * and `Calculation` on the decision card, `Source` in the evidence section,
+ * `Precedence` in the decision card's precedence block. Left inline they
+ * outnumbered the conclusion roughly eight to one on an SLA answer.
+ */
+const ANSWER_NOTE_PREFIXES = ["Rule applied", "Calculation", "Source", "Precedence"];
+
+/**
+ * Separate an answer's conclusion from the citation lines beneath it.
+ *
+ * The split is purely by prefix, and anything unrecognised stays in `lead`.
+ * That direction matters: a line the backend adds later must default to being
+ * *shown*, never silently folded away.
+ */
+export function parseAnswer(answer: string): ParsedAnswer {
+  const lead: string[] = [];
+  const notes: AnswerNote[] = [];
+
+  for (const raw of answer.split("\n")) {
+    const line = raw.trim();
+    if (!line) continue;
+
+    const separator = line.indexOf(":");
+    const prefix = separator === -1 ? "" : line.slice(0, separator).trim();
+
+    if (separator !== -1 && ANSWER_NOTE_PREFIXES.includes(prefix)) {
+      notes.push({ label: prefix, text: line.slice(separator + 1).trim() });
+    } else {
+      lead.push(line);
+    }
+  }
+
+  return { lead, notes };
+}
+
+/** Compare two pieces of backend prose ignoring incidental whitespace. */
+function sameText(value: string): string {
+  return value.trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+/**
+ * Drop the notes that are already on screen as structure.
+ *
+ * Every `Rule applied` / `Calculation` / `Source` / `Precedence` line the
+ * backend appends is normally also rendered by the decision card or the
+ * evidence section — better, because there it is laid out rather than
+ * concatenated. Showing both puts the same sentence on the page twice.
+ *
+ * The comparison is against what this response *actually renders*, not
+ * against the prefix: a line the structured sections do not cover survives
+ * and stays available. That direction is the point — deduplicating must never
+ * be able to drop a citation the rest of the UI never showed.
+ */
+export function undisplayedNotes(
+  notes: AnswerNote[],
+  decisions: PolicyDecisionView[],
+  sources: SourceRef[],
+): AnswerNote[] {
+  const rendered = new Set<string>();
+
+  for (const decision of decisions) {
+    if (decision.controlling_rule) rendered.add(sameText(decision.controlling_rule));
+    if (decision.calculation) rendered.add(sameText(decision.calculation));
+    for (const override of decision.overrides) rendered.add(sameText(override));
+    for (const source of decision.controlling_sources) rendered.add(sameText(source));
+  }
+
+  for (const source of sources) {
+    if (source.citation) rendered.add(sameText(source.citation));
+  }
+
+  return notes.filter((note) => !rendered.has(sameText(note.text)));
+}
+
+/**
+ * Drop the answer line that only restates a prepared action.
+ *
+ * A `needs_confirmation` answer reads "Prepared action (NOT yet performed):
+ * <preview>. Confirm action ACT-… to execute it." The action card states all
+ * of that — what will happen, that nothing has happened yet, and the controls
+ * to decide — without exposing the internal action id.
+ *
+ * Keyed on the proposal's own `preview` and `action_id` rather than on the
+ * "Prepared action" wording, so a line that merely *mentions* the action in
+ * passing is kept and only a genuine restatement is removed.
+ */
+export function withoutActionRestatement(
+  lead: string[],
+  proposal: ProposedActionView | null | undefined,
+): string[] {
+  if (!proposal) return lead;
+
+  const preview = proposal.preview?.trim();
+
+  return lead.filter((line) => {
+    if (preview && line.includes(preview)) return false;
+    if (proposal.action_id && line.includes(proposal.action_id)) return false;
+    return true;
+  });
 }

@@ -234,16 +234,125 @@ def test_agreement_threshold_and_fixed_amount_are_applied(conn):
     assert decision.carrier_fault is True
 
 
-def test_unconfirmed_pickup_forces_verification_not_a_promise(conn):
-    """The SOP forbids promising a credit when pickup timing is unknown, and
-    the product guide warns pickup confirmation can lag."""
+def test_unconfirmed_pickup_outside_any_documented_lag_is_decided_not_deferred(conn):
+    """An absent pickup confirmation is not, by itself, a reason to withhold.
+
+    ORD-2002 is 4.5h past its window on a carrier no known issue covers, with
+    carrier fault recorded and customer fault ruled out — every condition the
+    governing agreement states. Deferring here would withhold a credit the
+    agreement grants, on the strength of a known issue that does not apply.
+    """
+    decision = evaluate_service_credit(conn, "ORD-2002")
+
+    assert decision.outcome is PolicyOutcome.ELIGIBLE
+    assert decision.eligible is True
+    assert decision.provisional is False
+    assert decision.pickup_confirmed is False
+    assert decision.credit_amount == Decimal("300.00")
+    assert decision.verification_reasons == []
+    assert decision.inputs["documented_pickup_confirmation_lag_minutes"] is None
+
+
+def test_cancelling_inside_a_documented_lag_cites_the_known_issue(conn, monkeypatch):
+    """A BOOKED status inside the documented webhook window is not proof that
+    collection did not happen — the product guide says so explicitly, and
+    cancelling on that assumption would cancel a collected parcel.
+
+    The carrier and the window both come from the corpus: the order's own
+    carrier value is matched against the known-issue text, and the bound is
+    the one that text states.
+    """
+    from app.backend.policies import cancellation as module
+
+    real_get_order = module.get_order
+
+    def just_past_window(connection, order_id, **kwargs):
+        order = real_get_order(connection, order_id, **kwargs)
+        if order is None or order.order_id != "ORD-1001":
+            return order
+        # ORD-1001 is a SwiftShip shipment. Close its window 10 minutes before
+        # the snapshot: inside the documented 20-minute confirmation lag.
+        return order.model_copy(
+            update={
+                "pickup_window_end": order.pickup_window_end.replace(hour=10, minute=50)
+            }
+        )
+
+    monkeypatch.setattr(module, "get_order", just_past_window)
+    decision = evaluate_cancellation(conn, "ORD-1001")
+
+    assert decision.requires_verification is True
+    assert any(
+        "pickup-confirmation lag" in reason and "SwiftShip" in reason
+        for reason in decision.verification_reasons
+    )
+    assert any("not evidence" in reason for reason in decision.verification_reasons)
+
+
+def test_cancelling_well_past_a_documented_lag_gives_the_generic_caution(conn, monkeypatch):
+    """Outside the documented window the known issue no longer explains the
+    missing confirmation, so the caution must not claim that it does."""
+    from app.backend.policies import cancellation as module
+
+    real_get_order = module.get_order
+
+    def long_past_window(connection, order_id, **kwargs):
+        order = real_get_order(connection, order_id, **kwargs)
+        if order is None or order.order_id != "ORD-1001":
+            return order
+        return order.model_copy(
+            update={"pickup_window_end": order.pickup_window_end.replace(hour=8)}
+        )
+
+    monkeypatch.setattr(module, "get_order", long_past_window)
+    decision = evaluate_cancellation(conn, "ORD-1001")
+
+    assert decision.requires_verification is True
+    assert any(
+        "verify carrier pickup status" in reason
+        for reason in decision.verification_reasons
+    )
+    assert not any(
+        "pickup-confirmation lag" in reason for reason in decision.verification_reasons
+    )
+
+
+def test_documented_lag_is_matched_to_the_orders_own_carrier(conn):
+    """The SwiftShip webhook issue must not be applied to another carrier.
+
+    Nothing in the policy layer names a carrier: the order's recorded carrier
+    is what is looked for in the known-issue text, so a renamed or additional
+    carrier issue changes behaviour without a code change.
+    """
+    swiftship = evaluate_service_credit(conn, "ORD-1001")
+    roadrunner = evaluate_service_credit(conn, "ORD-2002")
+
+    assert swiftship.inputs["carrier"] == "SwiftShip"
+    assert swiftship.inputs["documented_pickup_confirmation_lag_minutes"] == "20"
+    assert roadrunner.inputs["carrier"] == "RoadRunner"
+    assert roadrunner.inputs["documented_pickup_confirmation_lag_minutes"] is None
+
+
+def test_unknown_carrier_fault_still_forces_verification(conn, monkeypatch):
+    """The SOP's own rule is untouched by the lag scoping: an unknown fault
+    input defers regardless of which carrier is involved."""
+    from app.backend.policies import service_credit as module
+
+    real_get_order = module.get_order
+
+    def unknown_fault(connection, order_id, **kwargs):
+        order = real_get_order(connection, order_id, **kwargs)
+        if order is None or order.order_id != "ORD-2002":
+            return order
+        return order.model_copy(update={"carrier_fault": None})
+
+    monkeypatch.setattr(module, "get_order", unknown_fault)
     decision = evaluate_service_credit(conn, "ORD-2002")
 
     assert decision.outcome is PolicyOutcome.REQUIRES_VERIFICATION
     assert decision.eligible is False
     assert decision.provisional is True
-    assert decision.pickup_confirmed is False
-    assert any("verify" in r.lower() for r in decision.verification_reasons)
+    assert any("carrier fault" in r.lower() for r in decision.verification_reasons)
 
 
 def test_order_not_yet_late_is_not_eligible(conn):

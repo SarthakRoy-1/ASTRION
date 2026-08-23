@@ -24,7 +24,7 @@
   border-radius: var(--radius-lg);
   background: var(--surface-raised);
   color: var(--text-secondary);
-  font-size: 14px;
+  font-size: var(--text-ui);
 }
 
 /* A single honest indicator: the request is in flight. No fake token stream,
@@ -51,14 +51,14 @@
 
 .emptyTitle {
   margin-bottom: var(--space-3);
-  font-size: 20px;
+  font-size: var(--text-title);
   letter-spacing: -0.01em;
 }
 
 .emptyBody {
   max-width: 62ch;
   color: var(--text-secondary);
-  font-size: 14.5px;
+  font-size: var(--text-ui);
 }
 
 @media (max-width: 640px) {

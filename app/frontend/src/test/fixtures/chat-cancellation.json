@@ -15,6 +15,7 @@
       "amount": "0.00",
       "amount_label": "cancellation_fee",
       "applies": false,
+      "breached": null,
       "calculation": "fee waived by customer agreement -> 0",
       "controlling_rule": "A signed customer agreement waives the cancellation fee for a BOOKED order before pickup, overriding the SOP's default fee.",
       "controlling_sources": [
@@ -22,6 +23,7 @@
       ],
       "currency": "INR",
       "decision_type": "cancellation",
+      "elapsed_minutes": null,
       "evidence_chunk_ids": [
         "05_northstar_logistics_enterprise_agreement#p1#c02"
       ],
@@ -38,7 +40,11 @@
       "overrides": [
         "05_Northstar_Logistics_Enterprise_Agreement.pdf p.1 \u00a72. Shipment cancellation (tier 1 CUSTOMER_AGREEMENT) outranks 03_Cancellation_and_Service_Credit_SOP_v4.pdf p.1 \u00a71. Order cancellation (tier 3 CURRENT_OPERATIONAL_DOC) on topic 'cancellation'"
       ],
+      "requires_immediate_escalation": false,
       "requires_verification": false,
+      "severity": null,
+      "target_text": null,
+      "ticket_id": null,
       "verification_reasons": []
     }
   ],

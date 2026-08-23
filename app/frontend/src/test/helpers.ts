@@ -19,6 +19,8 @@ import chatCrossAccountDenied from "./fixtures/chat-cross-account-denied.json";
 import chatKnownIssue from "./fixtures/chat-known-issue.json";
 import chatPendingAction from "./fixtures/chat-pending-action.json";
 import chatServiceCredit from "./fixtures/chat-service-credit.json";
+import chatServiceCreditProvisional from "./fixtures/chat-service-credit-provisional.json";
+import chatSlaBreach from "./fixtures/chat-sla-breach.json";
 import chatSupersededPolicy from "./fixtures/chat-superseded-policy.json";
 import chatUncertain from "./fixtures/chat-uncertain.json";
 import errorActionNotPending from "./fixtures/error-action-not-pending.json";
@@ -37,6 +39,8 @@ export const fixtures = {
   health: health as HealthResponse,
   cancellation: chatCancellation as ChatResponse,
   serviceCredit: chatServiceCredit as ChatResponse,
+  serviceCreditProvisional: chatServiceCreditProvisional as ChatResponse,
+  slaBreach: chatSlaBreach as ChatResponse,
   knownIssue: chatKnownIssue as ChatResponse,
   supersededPolicy: chatSupersededPolicy as ChatResponse,
   uncertain: chatUncertain as ChatResponse,

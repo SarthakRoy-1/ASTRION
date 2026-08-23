@@ -20,6 +20,7 @@ from app.backend.models.policy import (
     CancellationDecision,
     PolicyOutcome,
     ServiceCreditDecision,
+    SlaDecision,
 )
 
 # A policy question needs an order to evaluate. If one was asked and none was
@@ -49,6 +50,8 @@ def compose(
             lines.extend(_cancellation_lines(decision))
         elif isinstance(decision, ServiceCreditDecision):
             lines.extend(_service_credit_lines(decision))
+        elif isinstance(decision, SlaDecision):
+            lines.extend(_sla_lines(decision))
         uncertainties.extend(decision.verification_reasons)
         for override in decision.overrides:
             lines.append(f"Precedence: {override}")
@@ -102,6 +105,13 @@ def compose(
         )
 
     if not lines:
+        # No decision, action or failure to report: the records that *were*
+        # resolved are the answer. Stating them is not interpretation — every
+        # field below was returned by `lookup_record` under the caller's own
+        # scope, so a record that appears here is one this caller may read.
+        record_lines = _record_lines(history)
+        lines.extend(record_lines)
+
         governing = _governing_evidence(history)
         if governing:
             # Name the governing sections rather than counting them. Without
@@ -119,7 +129,10 @@ def compose(
                 "evidence list, and treat it as context rather than as policy."
             )
             uncertainties.append("no authoritative source matched this question")
-        else:
+        elif not record_lines:
+            # Only now is "nothing found" true. Saying it while a resolved
+            # record sat unreported in the tool history would be a false
+            # negative about data the caller is entitled to see.
             lines.append(
                 "I could not find enough information in the supplied sources to answer that."
             )
@@ -210,6 +223,51 @@ def _service_credit_lines(decision: ServiceCreditDecision) -> list[str]:
     return lines
 
 
+def _sla_lines(decision: SlaDecision) -> list[str]:
+    lines: list[str] = []
+
+    if decision.breached is True:
+        lines.append(
+            f"Ticket {decision.ticket_id} has BREACHED its {decision.severity} "
+            f"first-response target of {decision.target_text}."
+        )
+    elif decision.breached is False:
+        lines.append(
+            f"Ticket {decision.ticket_id} is within its {decision.severity} "
+            f"first-response target of {decision.target_text}."
+        )
+    elif decision.target_text is not None:
+        lines.append(
+            f"The {decision.severity} first-response target for ticket "
+            f"{decision.ticket_id} is {decision.target_text}, but whether it has been "
+            f"breached cannot be determined here."
+        )
+    else:
+        lines.append(
+            f"No first-response target has been applied to ticket "
+            f"{decision.ticket_id}, because its severity is not established."
+        )
+
+    if decision.elapsed_minutes is not None:
+        lines.append(
+            f"{decision.elapsed_minutes} minutes have elapsed since the ticket was "
+            f"created, measured against the dataset snapshot."
+        )
+    if decision.severity is not None and decision.severity_source:
+        lines.append(f"Severity {decision.severity} — {decision.severity_source}.")
+
+    lines.append(f"Rule applied: {decision.controlling_rule}")
+    if decision.calculation:
+        lines.append(f"Calculation: {decision.calculation}")
+    if decision.requires_immediate_escalation:
+        lines.append(
+            "The current support policy requires P1 incidents to be escalated "
+            "immediately, independently of the response-target arithmetic."
+        )
+    lines.extend(_source_lines(decision.controlling_sources))
+    return lines
+
+
 def _source_lines(sources: list[str]) -> list[str]:
     return [f"Source: {source}" for source in sources]
 
@@ -294,6 +352,101 @@ def _dedupe(values: list[str]) -> list[str]:
         if value not in seen:
             seen.append(value)
     return seen
+
+
+def _record_lines(history: list[StepRecord]) -> list[str]:
+    """State the facts of each record `lookup_record` successfully returned.
+
+    Reads only fields already present in the tool result, in a fixed order,
+    with no inference: a missing field is reported as unrecorded rather than
+    filled in. Scope was applied when the record was fetched, so anything
+    reachable here is something this caller was permitted to read.
+    """
+    lines: list[str] = []
+    for step in history:
+        if step.tool_name != "lookup_record" or not step.result.ok:
+            continue
+        data = step.result.data
+        entity = data.get("entity")
+        record = data.get("record")
+
+        if entity in ("account_orders", "account_tickets"):
+            lines.extend(_collection_line(entity, data))
+        elif isinstance(record, dict):
+            renderer = _RECORD_RENDERERS.get(entity)
+            if renderer is not None:
+                lines.append(renderer(record))
+    return _dedupe(lines)
+
+
+def _collection_line(entity: str, data: dict) -> list[str]:
+    records = data.get("records") or []
+    if not records:
+        return []
+    account_id = data.get("account_id", "this account")
+    if entity == "account_orders":
+        listed = ", ".join(
+            f"{r.get('order_id')} ({r.get('status')})" for r in records
+        )
+        return [f"Account {account_id} has {len(records)} order(s): {listed}."]
+    listed = ", ".join(f"{r.get('ticket_id')} ({r.get('status')})" for r in records)
+    return [f"Account {account_id} has {len(records)} ticket(s): {listed}."]
+
+
+def _value(record: dict, key: str, default: str = "not recorded") -> str:
+    value = record.get(key)
+    if value is None or value == "":
+        return default
+    return str(value)
+
+
+def _account_line(record: dict) -> str:
+    return (
+        f"Account {_value(record, 'account_id')} — {_value(record, 'account_name')}, "
+        f"plan {_value(record, 'plan')}, status {_value(record, 'status')}, "
+        f"CSM {_value(record, 'csm')}, premium support: "
+        f"{_value(record, 'premium_support')}."
+    )
+
+
+def _order_line(record: dict) -> str:
+    return (
+        f"Order {_value(record, 'order_id')} (account "
+        f"{_value(record, 'account_id')}): status {_value(record, 'status')}, "
+        f"carrier {_value(record, 'carrier')}, booked {_value(record, 'booked_at')}, "
+        f"pickup window {_value(record, 'pickup_window_start')} to "
+        f"{_value(record, 'pickup_window_end')}, pickup actual "
+        f"{_value(record, 'pickup_actual_at', 'none recorded')}, shipment fee "
+        f"{_value(record, 'shipment_fee_inr')}, carrier fault "
+        f"{_value(record, 'carrier_fault', 'unknown')}, customer fault "
+        f"{_value(record, 'customer_fault', 'unknown')}."
+    )
+
+
+def _ticket_line(record: dict) -> str:
+    return (
+        f"Ticket {_value(record, 'ticket_id')} (account "
+        f"{_value(record, 'account_id')}): status {_value(record, 'status')}, "
+        f"opened {_value(record, 'created_at')}, subject "
+        f"\"{_value(record, 'subject')}\", channel {_value(record, 'channel')}, "
+        f"assigned to {_value(record, 'assigned_to')}, last customer message "
+        f"{_value(record, 'last_customer_message_at')}."
+    )
+
+
+def _metadata_line(record: dict) -> str:
+    return (
+        f"Dataset snapshot: {_value(record, 'dataset_snapshot')} — all time-based "
+        f"reasoning is evaluated against this snapshot, not today's date."
+    )
+
+
+_RECORD_RENDERERS = {
+    "account": _account_line,
+    "order": _order_line,
+    "ticket": _ticket_line,
+    "dataset_metadata": _metadata_line,
+}
 
 
 def _historical_resolution_notes(history: list[StepRecord]) -> list[str]:

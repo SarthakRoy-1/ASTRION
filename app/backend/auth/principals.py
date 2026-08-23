@@ -81,12 +81,21 @@ MOCK_PRINCIPALS: dict[str, Principal] = {
             scope_kind=ScopeKind.ALL_ACCOUNTS,
             description="Internal support staff. May prepare and confirm actions.",
         ),
+        # Carries a distinct role but, today, identical capabilities to
+        # `support.agent`: `AgentContext.may_change_state` is the only
+        # authorization distinction the system enforces, and it admits both.
+        # The description says so rather than implying a manager-only power
+        # that no code checks — see the note above `Role.SUPPORT_MANAGER`.
         Principal(
             user_id="support.manager",
             display_name="ParcelPilot support manager",
             role=Role.SUPPORT_MANAGER,
             scope_kind=ScopeKind.ALL_ACCOUNTS,
-            description="Internal support manager. May approve escalations.",
+            description=(
+                "Internal support manager. Same capabilities as a support agent "
+                "today: may prepare and confirm actions. The role is carried "
+                "through the system but grants nothing extra yet."
+            ),
         ),
         Principal(
             user_id="support.readonly",

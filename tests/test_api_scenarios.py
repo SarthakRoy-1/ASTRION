@@ -152,8 +152,28 @@ def test_scenario_2_applies_the_accounts_own_agreement(client):
     )
 
 
-def test_scenario_2_does_not_promise_an_unverified_credit(client):
-    """No pickup has been confirmed, so the SOP forbids promising the credit."""
+def test_scenario_2_decides_when_every_stated_condition_is_met(client):
+    """The agreement's three conditions — delay, carrier fault, no customer
+    fault — are all recorded for ORD-2002, so the API returns a decision
+    rather than deferring one the documents already settle."""
+    body = ask(client, SCENARIO_2)
+
+    decision = next(
+        d for d in body["policy_decisions"] if d["decision_type"] == "service_credit"
+    )
+    assert decision["requires_verification"] is False
+    assert decision["verification_reasons"] == []
+    assert decision["applies"] is True
+    assert decision["outcome"] == "eligible"
+    assert decision["amount"] == "300.00"
+
+
+def test_scenario_2_does_not_promise_a_credit_with_an_unknown_input(
+    client, unknown_carrier_fault
+):
+    """The SOP forbids promising a credit while carrier fault is unknown, and
+    that must hold all the way out through the HTTP contract."""
+    unknown_carrier_fault("ORD-2002")
     body = ask(client, SCENARIO_2)
 
     decision = next(
@@ -212,6 +232,37 @@ def test_scenario_3_answer_points_at_the_documentation_it_used(client):
     body = ask(client, SCENARIO_3)
 
     assert "04_Product_Operations_Guide_and_Known_Issues.pdf" in body["answer"]
+
+
+def test_scenario_3_a_booked_status_is_not_treated_as_a_failed_pickup(client):
+    """KI-211 exists precisely because BOOKED can mean "collected but not yet
+    confirmed". Nothing in the response may assert that the pickup failed."""
+    body = ask(client, SCENARIO_3)
+
+    assert body["policy_decisions"] == []
+    assert body["proposed_action"] is None
+    lowered = body["answer"].lower()
+    assert "pickup failed" not in lowered
+    assert "did not occur" not in lowered
+
+
+def test_scenario_3_the_webhook_issue_does_not_block_another_carriers_credit(client):
+    """The documented lag is SwiftShip's. ORD-2002 is a different carrier, well
+    past any documented window, with carrier fault recorded — so the known
+    issue must not be borrowed as a reason to withhold the agreed credit.
+
+    Regression: the engine previously deferred every unconfirmed pickup, which
+    made the governing agreement's failed-pickup credit unreachable.
+    """
+    body = ask(client, "Does ORD-2002 qualify for a failed-pickup service credit?")
+
+    decision = next(
+        d for d in body["policy_decisions"] if d["decision_type"] == "service_credit"
+    )
+    assert decision["inputs"]["carrier"] == "RoadRunner"
+    assert decision["inputs"]["documented_pickup_confirmation_lag_minutes"] is None
+    assert decision["outcome"] == "eligible"
+    assert decision["requires_verification"] is False
 
 
 def test_scenario_3_does_not_rest_on_a_historical_ticket_resolution(client):
@@ -309,6 +360,96 @@ def test_scenario_4_support_reaches_both(client):
     for order_id, account in (("ORD-1001", "ACCT-001"), ("ORD-2001", "ACCT-002")):
         body = ask(client, f"Can {order_id} be cancelled?", SUPPORT_AGENT)
         assert body["policy_decisions"][0]["account_id"] == account
+
+
+# --- Scenario 4b: SLA target and breach, over the wire ---------------------------------
+#
+# The policy engine is covered in tests/test_sla.py. What is checked here is the
+# projection: an SLA decision concerns a ticket rather than an order and carries
+# no money, so it travels through a response contract that was originally shaped
+# entirely around orders and amounts.
+
+SCENARIO_SLA = "TKT-501 is a P1. Has its first response SLA been breached?"
+
+
+def _sla_decision(body):
+    return next(d for d in body["policy_decisions"] if d["decision_type"] == "sla")
+
+
+def test_sla_decision_projects_the_ticket_it_concerns(client):
+    decision = _sla_decision(ask(client, SCENARIO_SLA))
+
+    assert decision["ticket_id"] == "TKT-501"
+    assert decision["account_id"] == "ACCT-001"
+    # An SLA decision is about a ticket; the order field must stay empty rather
+    # than borrow an unrelated id.
+    assert decision["order_id"] is None
+
+
+def test_sla_decision_carries_no_money(client):
+    """No amount, no currency, no amount label — there is nothing to pay."""
+    decision = _sla_decision(ask(client, SCENARIO_SLA))
+
+    assert decision["amount"] is None
+    assert decision["currency"] is None
+    assert decision["amount_label"] is None
+    assert decision["applies"] is None
+
+
+def test_sla_breach_projects_the_target_and_the_elapsed_time(client):
+    decision = _sla_decision(ask(client, SCENARIO_SLA))
+
+    assert decision["breached"] is True
+    assert decision["severity"] == "P1"
+    assert decision["target_text"] == "15 minutes, 24x7"
+    # Elapsed time crosses the wire as a string for the same reason money does:
+    # it is compared against a stated target, and a float would not be the
+    # number the policy engine computed.
+    assert decision["elapsed_minutes"] == "30.00"
+    assert isinstance(decision["elapsed_minutes"], str)
+
+
+def test_sla_breach_names_the_agreement_that_set_the_target(client):
+    """15 minutes comes from Northstar's agreement, not the Enterprise default."""
+    decision = _sla_decision(ask(client, SCENARIO_SLA))
+
+    assert any("Northstar" in source for source in decision["controlling_sources"])
+    assert any("outranks" in note for note in decision["overrides"])
+
+
+def test_sla_breach_recommends_escalation(client):
+    """A settled breach carries no uncertainty flag, so the escalation signal
+    has to come from the decision itself."""
+    body = ask(client, SCENARIO_SLA)
+
+    assert _sla_decision(body)["requires_immediate_escalation"] is True
+    assert body["escalation_recommended"] is True
+    assert "BREACHED" in body["answer"]
+
+
+def test_sla_without_a_severity_asserts_no_breach(client):
+    """Severity is a judgement, not a calculation. Asked without one, the API
+    must report the facts it has and decline the verdict."""
+    body = ask(client, "What is the first response SLA position on TKT-501?")
+    decision = _sla_decision(body)
+
+    assert decision["severity"] is None
+    assert decision["breached"] is None
+    assert decision["requires_verification"] is True
+    assert decision["verification_reasons"]
+    assert body["outcome"] == "uncertain"
+
+
+def test_sla_evaluation_is_account_scoped_over_the_wire(client):
+    """A customer asking about another account's ticket gets nothing."""
+    body = ask(
+        client,
+        "TKT-501 is a P1. Has its first response SLA been breached?",
+        user_id=CUSTOMER_LUMENWORKS,
+    )
+
+    assert body["policy_decisions"] == []
+    assert "TKT-501" not in body["answer"] or "not found" in body["answer"].lower()
 
 
 # --- Scenario 5: action confirmation ---------------------------------------------------
@@ -436,7 +577,10 @@ def test_scenario_6_an_unanswerable_question_produces_no_action_and_no_figure(cl
     assert body["action_status"] == "none"
 
 
-def test_scenario_6_provisional_amounts_are_labelled_provisional(client):
+def test_scenario_6_provisional_amounts_are_labelled_provisional(
+    client, unknown_carrier_fault
+):
+    unknown_carrier_fault("ORD-2002")
     body = ask(client, "Is ORD-2002 eligible for a failed pickup service credit?")
 
     assert "provisional" in body["answer"].lower()

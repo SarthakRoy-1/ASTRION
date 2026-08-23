@@ -16,26 +16,25 @@
 }
 
 .author {
-  font-size: 12px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
+  font-size: var(--text-caption);
+  font-weight: 500;
   color: var(--text-muted);
 }
 
 /* The dataset snapshot, not the wall clock. Stated on every answer because
-   every time-based verdict below was judged against it. */
+   every time-based verdict below was judged against it. What that date *is*
+   is explained once, permanently, in the status line under the composer —
+   rather than in a `title` tooltip no touch or keyboard user can reach. */
 .reference {
-  font-size: 12px;
+  font-size: var(--text-caption);
   color: var(--text-muted);
-  cursor: help;
 }
 
 .answer {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-  font-size: 15px;
+  font-size: var(--text-body);
   color: var(--text-primary);
 }
 
@@ -43,10 +42,20 @@
   overflow-wrap: anywhere;
 }
 
+/* The conclusion. It is the reason the turn exists, so it is the one thing
+   in the message set above body weight — everything below it is support. */
+.conclusion {
+  font-size: var(--text-lead);
+  font-weight: 500;
+  line-height: 1.5;
+  letter-spacing: -0.005em;
+  color: var(--text-primary);
+}
+
 .truncated {
   margin-top: var(--space-3);
   color: var(--caution);
-  font-size: 13px;
+  font-size: var(--text-small);
   font-weight: 500;
 }
 

@@ -27,6 +27,16 @@ class Role(StrEnum):
     talking to the assistant about their own account. It is additive: a
     customer is scoped to their own account ids and, like `READ_ONLY`, may not
     change state, so no existing behaviour shifts.
+
+    **`SUPPORT_MANAGER` grants nothing `SUPPORT_AGENT` does not.** The only
+    authorization distinction this enum currently drives is `may_change_state`
+    below, which admits both. The role is modelled and carried through the
+    system so that a manager-only capability has somewhere to attach, but no
+    such capability exists yet: the SOP's "any individual credit above
+    INR 1,000 requires manager approval" is computed and reported by
+    `policies/service_credit.py` rather than enforced here, because neither
+    state-changing action this system ships issues a credit. Enforcing it would
+    mean gating an action that does not exist. See docs/product.md.
     """
 
     SUPPORT_AGENT = "support_agent"

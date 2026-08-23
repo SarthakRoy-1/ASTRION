@@ -1,5 +1,7 @@
 "use client";
 
+import { useId } from "react";
+
 import {
   ACTION_STATE_LABELS,
   actionOutcomeMessage,
@@ -42,13 +44,25 @@ export function ActionCard({
   canConfirm: boolean;
   onRespond: (decision: "approve" | "reject") => void;
 }) {
+  const headingId = useId();
   const pending = progress.state === "pending_confirmation";
   const submitting = progress.submitting !== null;
 
+  // The backend writes its own plain-English statement of what the action
+  // will do, and signs a fingerprint over the parameters behind it. That is
+  // the most authoritative phrasing available, so it is what the operator
+  // approves — not a summary this component recomposed from the type and the
+  // target id.
+  const preview = proposal.preview?.trim();
+  const reason = proposal.reason?.trim();
+  // The preview usually restates the reason verbatim. Showing both puts the
+  // same sentence on the card twice.
+  const showReason = Boolean(reason) && !(preview && reason && preview.includes(reason));
+
   return (
-    <section className={styles.card} data-state={progress.state} aria-labelledby="action-heading">
+    <section className={styles.card} data-state={progress.state} aria-labelledby={headingId}>
       <header className={styles.header}>
-        <h3 id="action-heading" className={styles.heading}>
+        <h3 id={headingId} className={styles.heading}>
           {pending ? "Proposed action" : "Action"}
         </h3>
         <StatusPill tone={stateTone(progress.state)}>
@@ -61,6 +75,8 @@ export function ActionCard({
         <span className={styles.target}>{proposal.target_id}</span>
       </p>
 
+      {preview && <p className={styles.preview}>{preview}</p>}
+
       <dl className={styles.details}>
         {proposal.account_id && (
           <div className={styles.detailRow}>
@@ -68,10 +84,16 @@ export function ActionCard({
             <dd className={styles.mono}>{proposal.account_id}</dd>
           </div>
         )}
-        {proposal.reason && (
+        {showReason && (
           <div className={styles.detailRow}>
             <dt>Reason</dt>
-            <dd>{proposal.reason}</dd>
+            <dd>{reason}</dd>
+          </div>
+        )}
+        {pending && proposal.expires_at_utc && (
+          <div className={styles.detailRow}>
+            <dt>Expires</dt>
+            <dd>{formatExpiry(proposal.expires_at_utc)}</dd>
           </div>
         )}
         {proposal.evidence_chunk_ids.length > 0 && (
@@ -155,6 +177,21 @@ function stateTone(state: string) {
   if (state === "pending_confirmation") return "caution" as const;
   if (state === "rejected") return "caution" as const;
   return "fail" as const;
+}
+
+/**
+ * A prepared action does not wait indefinitely.
+ *
+ * Left unstated, an expired proposal surfaces only as a confirmation that
+ * fails for no reason the operator can see.
+ */
+function formatExpiry(iso: string): string {
+  const parsed = new Date(iso);
+  if (Number.isNaN(parsed.getTime())) return iso;
+  return parsed.toLocaleString(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short",
+  });
 }
 
 function confirmVerb(actionType: string): string {

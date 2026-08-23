@@ -36,7 +36,11 @@ from app.backend.policies.base import (
     load_evaluation_context,
     money,
 )
-from app.backend.policies.terms import extract_service_credit_terms
+from app.backend.policies.terms import (
+    extract_pickup_confirmation_lag,
+    extract_service_credit_terms,
+)
+from app.backend.services.documents import get_evidence_by_topic
 from app.backend.services.records import get_order
 
 
@@ -60,6 +64,19 @@ def evaluate_service_credit(
         allowed_account_ids=allowed_account_ids,
     )
     terms = extract_service_credit_terms(evidence)
+
+    # Known-issue text is fetched separately and never layered into `terms`:
+    # a product known issue explains an operational symptom, it does not set
+    # a commercial term. It is read here only to decide whether an absent
+    # pickup confirmation is currently explainable.
+    known_issues = get_evidence_by_topic(
+        conn,
+        Topic.PRODUCT_KNOWN_ISSUES.value,
+        account_id=order.account_id,
+        allowed_account_ids=allowed_account_ids,
+    )
+    lag = extract_pickup_confirmation_lag(known_issues, order.carrier)
+
     overrides = [note.reason for note in authority.overrides]
     sources = citations(authority.governing) or citations(evidence)
     evidence_ids = [item.chunk_id for item in authority.governing] or [
@@ -83,6 +100,10 @@ def evaluate_service_credit(
         "evaluated_against": observed_at.isoformat(),
         "reference_time_source": (
             "order.pickup_actual_at" if pickup_confirmed else context.reference_time_source
+        ),
+        "carrier": order.carrier,
+        "documented_pickup_confirmation_lag_minutes": (
+            None if lag is None else str(lag.lag_minutes)
         ),
     }
 
@@ -204,13 +225,22 @@ def evaluate_service_credit(
             "Customer fault is unknown; the SOP forbids promising a credit until it is "
             "established."
         )
-    if not pickup_confirmed:
-        verification.append(
-            "No pickup has been confirmed, so the delay is inferred from the dataset "
-            "snapshot rather than an observed pickup. Product documentation warns that "
-            "pickup confirmation can lag, so verify with the carrier before concluding "
-            "the pickup failed."
-        )
+    # An absent pickup confirmation is deliberately *not* a verification
+    # reason of its own here.
+    #
+    # By this point the delay has already cleared the governing threshold, and
+    # carrier fault is either recorded True — in which case the carrier has
+    # accepted that the collection did not happen, and no webhook lag is
+    # capable of contradicting that — or None, which the check above already
+    # defers on. A documented confirmation lag is measured in minutes while
+    # the credit thresholds are measured in hours, so it can never still be
+    # the explanation at this stage.
+    #
+    # Blocking on it anyway would defer every failed-pickup credit the
+    # governing agreement grants, which is why the lag is recorded as an audit
+    # input rather than treated as doubt. The place a lag genuinely changes an
+    # outcome is cancellation, where acting on a stale BOOKED status would
+    # cancel a parcel that was in fact collected — see policies/cancellation.py.
 
     # --- amount -------------------------------------------------------------
 

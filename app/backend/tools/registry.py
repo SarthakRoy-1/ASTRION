@@ -21,6 +21,7 @@ from app.backend.tools.document_tools import (
 from app.backend.tools.policy_tools import (
     EVALUATE_CANCELLATION_SPEC,
     EVALUATE_SERVICE_CREDIT_SPEC,
+    EVALUATE_SLA_SPEC,
 )
 from app.backend.tools.record_tools import LOOKUP_PROVENANCE_SPEC, LOOKUP_RECORD_SPEC
 
@@ -34,6 +35,7 @@ READ_ONLY_TOOL_SPECS = (
     # Tool C — deterministic policy decisions
     EVALUATE_CANCELLATION_SPEC,
     EVALUATE_SERVICE_CREDIT_SPEC,
+    EVALUATE_SLA_SPEC,
 )
 
 # Tool D — state-changing action *preparation* only. Still not execution:

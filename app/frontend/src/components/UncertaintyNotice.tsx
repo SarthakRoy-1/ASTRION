@@ -1,3 +1,5 @@
+import { useId } from "react";
+
 import styles from "./UncertaintyNotice.module.css";
 
 /**
@@ -20,11 +22,13 @@ export function UncertaintyNotice({
   reasons: string[];
   escalationRecommended: boolean;
 }) {
+  const headingId = useId();
+
   if (reasons.length === 0) return null;
 
   return (
-    <section className={styles.notice} aria-labelledby="uncertainty-heading">
-      <h3 id="uncertainty-heading" className={styles.heading}>
+    <section className={styles.notice} aria-labelledby={headingId}>
+      <h3 id={headingId} className={styles.heading}>
         Unable to determine
       </h3>
       <ul className={styles.list}>

@@ -1,7 +1,10 @@
 import {
   decisionAmountLabel,
+  decisionFacts,
+  decisionSubject,
   decisionTitle,
   decisionVerdict,
+  decisionVerdictLabel,
   formatAmount,
 } from "@/lib/presentation";
 import { StatusPill } from "./StatusPill";
@@ -28,17 +31,28 @@ export function DecisionCard({ decision }: { decision: PolicyDecisionView }) {
   const amount = formatAmount(decision.currency, decision.amount ?? null);
   const provisional = decision.requires_verification;
 
+  // On a cancellation, `applies` is the *fee* question, not the verdict — so
+  // the figure says which of the two it is. "INR 0" alone leaves a reader
+  // working out whether zero means waived or means not calculated.
+  const qualifier = provisional
+    ? "provisional"
+    : decision.decision_type === "cancellation"
+      ? decision.applies === true
+        ? "fee applies"
+        : "no fee"
+      : null;
+
   return (
     <section className={styles.card} aria-label={`${decisionTitle(decision)} decision`}>
       <header className={styles.header}>
         <h3 className={styles.title}>{decisionTitle(decision)}</h3>
-        <span className={styles.order}>{decision.order_id}</span>
+        <span className={styles.order}>{decisionSubject(decision)}</span>
       </header>
 
       <dl className={styles.verdictRow}>
         <div className={styles.field}>
-          <dt>Eligible</dt>
-          <dd>
+          <dt>{decisionVerdictLabel(decision)}</dt>
+          <dd className={styles.verdict}>
             <StatusPill tone={verdict.tone}>{verdict.label}</StatusPill>
           </dd>
         </div>
@@ -47,12 +61,40 @@ export function DecisionCard({ decision }: { decision: PolicyDecisionView }) {
           <div className={styles.field}>
             <dt>{decisionAmountLabel(decision)}</dt>
             <dd className={styles.amount}>
-              {amount}
-              {provisional && <span className={styles.provisional}>provisional</span>}
+              {qualifier ? (
+                <span className={styles.amountValue}>{amount}</span>
+              ) : (
+                amount
+              )}
+              {qualifier && (
+                <span
+                  className={
+                    provisional ? styles.provisional : styles.amountNote
+                  }
+                >
+                  {qualifier}
+                </span>
+              )}
             </dd>
           </div>
         )}
+
+        {/* The inputs the verdict rested on: SLA target and elapsed time, an
+            order's status, a measured delay and whether fault was settled. */}
+        {decisionFacts(decision).map((fact) => (
+          <div key={fact.label} className={styles.field}>
+            <dt>{fact.label}</dt>
+            <dd>{fact.value}</dd>
+          </div>
+        ))}
       </dl>
+
+      {decision.requires_immediate_escalation && (
+        <p className={styles.escalation}>
+          The current support policy requires this to be escalated immediately,
+          independently of the response-target arithmetic.
+        </p>
+      )}
 
       {provisional && decision.verification_reasons.length > 0 && (
         <div className={styles.verification}>

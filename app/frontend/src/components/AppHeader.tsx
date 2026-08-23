@@ -5,24 +5,13 @@ import type { PrincipalView } from "@/lib/types";
 
 import styles from "./AppHeader.module.css";
 
-const ROLE_LABELS: Record<string, string> = {
-  customer: "Customer",
-  support_agent: "Support agent",
-  support_manager: "Support manager",
-  read_only: "Read only",
-};
-
-function roleLabel(role: string): string {
-  return ROLE_LABELS[role] ?? role.replace(/_/g, " ");
-}
-
 /**
  * The application bar: what this is, who you are, and what you can reach.
  *
- * The active context is stated in full — role *and* the accounts it covers —
- * because account isolation is a behaviour the product needs to make visible,
- * not just enforce. A demo that switches identity without the screen changing
- * proves nothing.
+ * The active context is stated in full — who you are, what you may do, and the
+ * accounts it covers — because account isolation is a behaviour the product
+ * needs to make visible, not just enforce. A demo that switches identity
+ * without the screen changing proves nothing.
  */
 export function AppHeader({
   principals,
@@ -71,7 +60,10 @@ export function AppHeader({
 
       {principal && (
         <div className={styles.contextBar}>
-          <span className={styles.contextRole}>{roleLabel(principal.role)}</span>
+          {/* No separate role chip: every display name already names the role
+              ("ParcelPilot support agent", "Northstar Logistics (customer)"),
+              and the description below states what it may do. A chip made the
+              strip say the same thing three times in three type treatments. */}
           <span className={styles.contextName}>{principal.display_name}</span>
           <span className={styles.contextDivider} aria-hidden="true">
             ·
@@ -80,6 +72,15 @@ export function AppHeader({
             <span className={styles.scopeLabel}>Authorised accounts:</span>{" "}
             {scope.length > 0 ? scope.join(", ") : "none"}
           </span>
+
+          {/* The server's own one-line statement of what this identity may do.
+              It is the difference between discovering you cannot approve an
+              action now and discovering it after the agent prepared one. */}
+          {principal.description && (
+            <span className={styles.contextDescription}>
+              {principal.description}
+            </span>
+          )}
         </div>
       )}
     </header>

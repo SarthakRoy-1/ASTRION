@@ -26,7 +26,11 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.backend.models.actions import ActionStatus, ExecutedAction, ProposedAction
 from app.backend.models.agent import AgentResponse, ResponseOutcome, Role
 from app.backend.models.documents import Evidence
-from app.backend.models.policy import CancellationDecision, ServiceCreditDecision
+from app.backend.models.policy import (
+    CancellationDecision,
+    ServiceCreditDecision,
+    SlaDecision,
+)
 
 MAX_MESSAGE_CHARS = 4000
 #: How much of a cited chunk travels with the citation. Enough to show the
@@ -192,17 +196,29 @@ class PolicyDecisionView(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     decision_type: str
-    order_id: str
+    #: Present on decisions about an order. An SLA decision concerns a ticket
+    #: instead, so exactly one of these two is populated.
+    order_id: str | None = None
+    ticket_id: str | None = None
     account_id: str
     outcome: str
     controlling_rule: str
     controlling_sources: list[str] = []
     calculation: str | None = None
-    currency: str
+    #: Absent on decisions that produce no monetary figure.
+    currency: str | None = None
 
     amount: str | None = None
     amount_label: str | None = None
     applies: bool | None = None
+
+    #: SLA-only projections. `breached` is deliberately tri-state: null means
+    #: the question was not settled, which is not the same as "not breached".
+    severity: str | None = None
+    target_text: str | None = None
+    elapsed_minutes: str | None = None
+    breached: bool | None = None
+    requires_immediate_escalation: bool = False
 
     requires_verification: bool = False
     verification_reasons: list[str] = []
@@ -211,7 +227,41 @@ class PolicyDecisionView(BaseModel):
     inputs: dict[str, str | None] = {}
 
     @classmethod
-    def of(cls, decision: CancellationDecision | ServiceCreditDecision) -> PolicyDecisionView:
+    def of(
+        cls, decision: CancellationDecision | ServiceCreditDecision | SlaDecision
+    ) -> PolicyDecisionView:
+        common = {
+            "decision_type": decision.decision_type,
+            "account_id": decision.account_id,
+            "outcome": decision.outcome.value,
+            "controlling_rule": decision.controlling_rule,
+            "controlling_sources": list(decision.controlling_sources),
+            "calculation": decision.calculation,
+            "requires_verification": decision.requires_verification,
+            "verification_reasons": list(decision.verification_reasons),
+            "overrides": list(decision.overrides),
+            "evidence_chunk_ids": list(decision.evidence_chunk_ids),
+            "inputs": dict(decision.inputs),
+        }
+
+        if isinstance(decision, SlaDecision):
+            return cls(
+                ticket_id=decision.ticket_id,
+                severity=None if decision.severity is None else decision.severity.value,
+                target_text=decision.target_text,
+                # Elapsed time is a Decimal for the same reason money is: it
+                # is compared against a stated target, so it crosses the wire
+                # as a string rather than as a float.
+                elapsed_minutes=(
+                    None
+                    if decision.elapsed_minutes is None
+                    else str(decision.elapsed_minutes)
+                ),
+                breached=decision.breached,
+                requires_immediate_escalation=decision.requires_immediate_escalation,
+                **common,
+            )
+
         if isinstance(decision, CancellationDecision):
             amount = decision.fee_amount
             label = "cancellation_fee"
@@ -221,24 +271,14 @@ class PolicyDecisionView(BaseModel):
             label = "service_credit"
             applies = decision.eligible
         return cls(
-            decision_type=decision.decision_type,
             order_id=decision.order_id,
-            account_id=decision.account_id,
-            outcome=decision.outcome.value,
-            controlling_rule=decision.controlling_rule,
-            controlling_sources=list(decision.controlling_sources),
-            calculation=decision.calculation,
             currency=decision.currency,
             # Money crosses the wire as a string: a Decimal that becomes a
             # float in JSON stops being the number the policy engine computed.
             amount=None if amount is None else str(amount),
             amount_label=label,
             applies=applies,
-            requires_verification=decision.requires_verification,
-            verification_reasons=list(decision.verification_reasons),
-            overrides=list(decision.overrides),
-            evidence_chunk_ids=list(decision.evidence_chunk_ids),
-            inputs=dict(decision.inputs),
+            **common,
         )
 
 

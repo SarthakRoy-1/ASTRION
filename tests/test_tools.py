@@ -344,13 +344,27 @@ def test_policy_tool_returns_a_decision_not_prose(conn, registry, agent_context)
     assert decision.controlling_sources
 
 
-def test_policy_tool_reports_uncertainty_as_a_distinct_status(conn, registry, agent_context):
+def test_policy_tool_reports_uncertainty_as_a_distinct_status(
+    conn, registry, agent_context, unknown_carrier_fault
+):
+    """A deferred decision must not reach the planner as an ordinary success —
+    the orchestrator escalates on UNCERTAIN, so the distinction is load-bearing."""
+    unknown_carrier_fault("ORD-2002")
     result = registry.execute(
         conn, agent_context, "evaluate_service_credit", {"order_id": "ORD-2002"}
     )
 
     assert result.status is ToolStatus.UNCERTAIN
     assert result.message
+
+
+def test_policy_tool_reports_a_settled_decision_as_ok(conn, registry, agent_context):
+    result = registry.execute(
+        conn, agent_context, "evaluate_service_credit", {"order_id": "ORD-2002"}
+    )
+
+    assert result.status is ToolStatus.OK
+    assert result.decisions[0].eligible is True
 
 
 def test_policy_tool_enforces_scope(conn, registry, northstar_context):

@@ -6,6 +6,8 @@ being asked to misbehave: it cannot widen scope, cannot execute an action, and
 cannot answer confidently when the data does not support one.
 """
 
+from decimal import Decimal
+
 import pytest
 
 from app.backend.agent.orchestrator import AgentOrchestrator
@@ -135,9 +137,44 @@ def test_scenario_b_without_an_order_refuses_to_guess(orchestrator, agent_contex
     assert response.uncertainties
 
 
-def test_scenario_b_with_an_order_evaluates_and_flags_verification(
+def test_scenario_b_applies_the_agreement_threshold_and_fixed_amount(
     orchestrator, agent_context
 ):
+    """Every condition the LumenWorks agreement states is met on ORD-2002, so
+    the agent answers with the agreement's fixed amount rather than deferring."""
+    response = ask(
+        orchestrator, "Is ORD-2002 eligible for a failed pickup service credit?", agent_context
+    )
+
+    decision = next(d for d in response.decisions if isinstance(d, ServiceCreditDecision))
+    assert decision.eligible is True
+    assert decision.provisional is False
+    assert decision.credit_amount == Decimal("300.00")
+    assert decision.threshold_hours == Decimal("4")
+    assert response.outcome is ResponseOutcome.ANSWERED
+
+
+def _unknown_carrier_fault(monkeypatch, order_id):
+    """Make one order's carrier fault unknown, the state the SOP forbids
+    resolving by assumption. The supplied dataset records a fault value for
+    every order, so the unresolvable case has to be constructed."""
+    from app.backend.policies import service_credit as module
+
+    real_get_order = module.get_order
+
+    def patched(connection, requested_id, **kwargs):
+        order = real_get_order(connection, requested_id, **kwargs)
+        if order is None or order.order_id != order_id:
+            return order
+        return order.model_copy(update={"carrier_fault": None})
+
+    monkeypatch.setattr(module, "get_order", patched)
+
+
+def test_scenario_b_with_an_unknown_input_flags_verification(
+    orchestrator, agent_context, monkeypatch
+):
+    _unknown_carrier_fault(monkeypatch, "ORD-2002")
     response = ask(
         orchestrator, "Is ORD-2002 eligible for a failed pickup service credit?", agent_context
     )
@@ -149,7 +186,10 @@ def test_scenario_b_with_an_order_evaluates_and_flags_verification(
     assert response.escalation_recommended is True
 
 
-def test_scenario_b_answer_does_not_promise_the_credit(orchestrator, agent_context):
+def test_scenario_b_answer_does_not_promise_an_unverified_credit(
+    orchestrator, agent_context, monkeypatch
+):
+    _unknown_carrier_fault(monkeypatch, "ORD-2002")
     response = ask(
         orchestrator, "Is ORD-2002 eligible for a failed pickup service credit?", agent_context
     )
@@ -363,6 +403,69 @@ def test_unanswerable_request_does_not_fabricate(orchestrator, agent_context):
 
     assert response.decisions == []
     assert response.pending_action is None
+
+
+# --- a resolved record is an answer -----------------------------------------------
+
+
+def test_a_resolved_record_is_reported_not_discarded(orchestrator, agent_context):
+    """A lookup that succeeded must reach the answer.
+
+    Regression: the composer previously reported only decisions, failures and
+    citations, so a successful record lookup with no policy decision behind it
+    produced "I could not find enough information" about data the caller had
+    just been shown.
+    """
+    response = ask(orchestrator, "Tell me about TKT-504.", agent_context)
+
+    assert response.outcome is ResponseOutcome.ANSWERED
+    assert "TKT-504" in response.answer
+    assert "could not find enough information" not in response.answer.lower()
+
+
+def test_record_facts_come_from_the_record_not_from_prose(orchestrator, agent_context):
+    response = ask(orchestrator, "What is the status of ORD-2001?", agent_context)
+
+    # Every one of these is a stored field on the order, not an inference.
+    assert "BOOKED" in response.answer
+    assert "SwiftShip" in response.answer
+    assert "ACCT-002" in response.answer
+
+
+def test_absent_fields_are_reported_as_absent(orchestrator, agent_context):
+    """ORD-2001 has no recorded pickup. The answer must say so rather than
+    omit the field and let a reader assume one exists."""
+    response = ask(orchestrator, "What is the status of ORD-2001?", agent_context)
+
+    assert "none recorded" in response.answer
+
+
+def test_a_question_about_the_reference_clock_is_answered(orchestrator, agent_context):
+    """Time-based answers are always measured against the snapshot, but a
+    question asked directly about the clock has no record to resolve and used
+    to fall through to a document search that could not answer it."""
+    response = ask(orchestrator, "What time is it in the dataset snapshot?", agent_context)
+
+    assert response.outcome is ResponseOutcome.ANSWERED
+    assert "2026-08-16" in response.answer
+    assert "not today's date" in response.answer
+
+
+def test_nothing_found_is_still_said_when_nothing_was_found(orchestrator, agent_context):
+    """The fix must not make the honest "no data" answer unreachable."""
+    response = ask(orchestrator, "zzzqqq nonexistent topic xyzzy", agent_context)
+
+    assert "could not find enough information" in response.answer.lower()
+
+
+def test_a_record_outside_scope_is_never_reported(orchestrator, northstar_context):
+    """Record surfacing reads whatever the lookup returned, so it inherits
+    scoping rather than re-implementing it — verified, not assumed."""
+    response = ask(orchestrator, "What is the status of ORD-2001?", northstar_context)
+
+    assert "BOOKED" not in response.answer
+    assert "ACCT-002" not in response.answer
+    assert response.outcome is ResponseOutcome.UNCERTAIN
 
 
 def test_tool_failure_is_reported_not_smoothed(conn, agent_context):

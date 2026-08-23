@@ -12,7 +12,7 @@
 .heading {
   margin-bottom: var(--space-2);
   color: var(--caution);
-  font-size: 13.5px;
+  font-size: var(--text-small);
   font-weight: 600;
 }
 
@@ -20,7 +20,7 @@
   margin: 0;
   padding-left: var(--space-4);
   color: var(--text-secondary);
-  font-size: 13.5px;
+  font-size: var(--text-small);
 }
 
 .list li + li {
@@ -30,6 +30,6 @@
 .escalation {
   margin-top: var(--space-2);
   color: var(--text-secondary);
-  font-size: 13px;
+  font-size: var(--text-small);
   font-weight: 500;
 }

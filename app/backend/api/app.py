@@ -23,7 +23,10 @@ from app.backend.api.routes import router
 from app.backend.core.config import DEFAULT_ENV_FILE, Settings, load_settings
 
 API_TITLE = "ParcelPilot Support & Operations Agent API"
-API_VERSION = "0.5.0"
+#: Tracks the implementation phase, and is kept in step with the frontend's
+#: package version so a deployed pair can be identified from `/health` and the
+#: OpenAPI document alone.
+API_VERSION = "0.8.0"
 
 API_DESCRIPTION = """\
 Natural-language support and operations assistant over ParcelPilot's policy

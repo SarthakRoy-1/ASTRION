@@ -36,6 +36,12 @@ services:
       AGENT_REQUEST_TIMEOUT_SECONDS: ${AGENT_REQUEST_TIMEOUT_SECONDS:-60}
       LLM_TEMPERATURE: ${LLM_TEMPERATURE:-0}
       ENABLE_STATE_CHANGING_ACTIONS: ${ENABLE_STATE_CHANGING_ACTIONS:-true}
+      # Read by both the application (app/backend/core/config.py) and
+      # docker-entrypoint.sh's ingestion-skip check, so the two can never
+      # disagree about where the database lives. Must stay under the
+      # /app/data/processed mount below if changed — anywhere else is not on
+      # the persistent volume and will re-ingest on every container restart.
+      DATABASE_URL: ${DATABASE_URL:-sqlite:///./data/processed/parcelpilot.db}
     volumes:
       # Named volume, not a bind mount: the database is a build artifact
       # regenerated from data/source/ on first boot (docker-entrypoint.sh),

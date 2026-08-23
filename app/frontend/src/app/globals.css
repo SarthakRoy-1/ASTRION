@@ -30,6 +30,9 @@
 
   --accent: #1f4d8f;
   --accent-hover: #173d73;
+  /* Text drawn *on* the accent. Not a literal white: in dark mode the accent
+     lightens, and white on it falls to roughly 2.6:1. */
+  --on-accent: #ffffff;
   --accent-soft: #e8eef8;
   --accent-border: #b9cbe6;
 
@@ -56,6 +59,17 @@
   --space-5: 24px;
   --space-6: 32px;
   --space-7: 48px;
+
+  /* A six-step type scale. Before this the product used thirteen sizes,
+     including 16.5/14.5/13.5/12.5/11.5px half-steps that rendered unevenly
+     across platforms and gave every new element licence to invent its own
+     size. Named by role rather than by number so the intent survives. */
+  --text-caption: 12px;
+  --text-small: 13px;
+  --text-ui: 14px;
+  --text-body: 15px;
+  --text-lead: 16px;
+  --text-title: 20px;
 
   --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
     "Helvetica Neue", Arial, sans-serif;
@@ -88,6 +102,7 @@
 
     --accent: #7aa5e0;
     --accent-hover: #94b8ea;
+    --on-accent: #12161d;
     --accent-soft: #1c2736;
     --accent-border: #33496b;
 
@@ -125,7 +140,7 @@ body {
   background: var(--surface-page);
   color: var(--text-primary);
   font-family: var(--font-sans);
-  font-size: 15px;
+  font-size: var(--text-body);
   line-height: 1.55;
   -webkit-font-smoothing: antialiased;
 }

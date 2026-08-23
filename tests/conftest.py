@@ -314,6 +314,33 @@ def raw_client(api_app):
         yield test_client
 
 
+@pytest.fixture
+def unknown_carrier_fault(monkeypatch):
+    """Blank out one order's recorded carrier fault.
+
+    The supplied dataset records a fault value for every order, so the state
+    the SOP forbids resolving by assumption — "do not promise a credit when
+    carrier fault ... is unknown" — has to be constructed to be tested. Patches
+    the policy module's own record accessor, leaving the database untouched so
+    no other test observes the change.
+    """
+
+    def apply(order_id: str) -> None:
+        from app.backend.policies import service_credit as module
+
+        real_get_order = module.get_order
+
+        def patched(connection, requested_id, **kwargs):
+            order = real_get_order(connection, requested_id, **kwargs)
+            if order is None or order.order_id != order_id:
+                return order
+            return order.model_copy(update={"carrier_fault": None})
+
+        monkeypatch.setattr(module, "get_order", patched)
+
+    return apply
+
+
 SUPPORT_AGENT = "support.agent"
 SUPPORT_MANAGER = "support.manager"
 SUPPORT_READONLY = "support.readonly"

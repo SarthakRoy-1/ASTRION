@@ -8,13 +8,7 @@
   padding: var(--space-3) var(--space-4);
   border-radius: var(--radius-lg) var(--radius-lg) var(--radius-sm) var(--radius-lg);
   background: var(--accent);
-  color: #ffffff;
-  font-size: 15px;
+  color: var(--on-accent);
+  font-size: var(--text-body);
   overflow-wrap: anywhere;
-}
-
-@media (prefers-color-scheme: dark) {
-  .bubble {
-    color: var(--text-inverse);
-  }
 }

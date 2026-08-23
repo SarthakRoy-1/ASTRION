@@ -5,10 +5,8 @@
 }
 
 .label {
-  font-size: 12px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
+  font-size: var(--text-caption);
+  font-weight: 500;
   color: var(--text-muted);
 }
 
@@ -25,7 +23,7 @@
   background-size: 5px 5px, 5px 5px;
   background-repeat: no-repeat;
   color: var(--text-primary);
-  font-size: 14px;
+  font-size: var(--text-ui);
   font-weight: 500;
   cursor: pointer;
 }

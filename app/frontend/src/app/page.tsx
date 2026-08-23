@@ -4,6 +4,7 @@ import { AppHeader } from "@/components/AppHeader";
 import { Composer } from "@/components/Composer";
 import { Conversation } from "@/components/Conversation";
 import { ErrorNotice } from "@/components/ErrorNotice";
+import { SystemStatus } from "@/components/SystemStatus";
 import { useConversation } from "@/hooks/useConversation";
 
 import styles from "./page.module.css";
@@ -28,6 +29,7 @@ export default function ChatPage() {
     principals,
     principalsError,
     loadingPrincipals,
+    health,
     turns,
     sending,
     hasStarted,
@@ -76,10 +78,10 @@ export default function ChatPage() {
         <div className={styles.content}>
           <Composer disabled={!ready} sending={sending} onSend={send} />
           <p className={styles.disclaimer}>
-            Answers cite their sources. Policy figures are calculated
-            deterministically, and state-changing actions always require explicit
+            Every answer cites its sources. Nothing changes without your
             confirmation.
           </p>
+          <SystemStatus health={health} />
         </div>
       </div>
     </div>

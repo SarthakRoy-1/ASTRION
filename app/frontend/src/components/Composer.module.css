@@ -45,8 +45,8 @@
   border: 1px solid var(--accent);
   border-radius: var(--radius-md);
   background: var(--accent);
-  color: #ffffff;
-  font-size: 14px;
+  color: var(--on-accent);
+  font-size: var(--text-ui);
   font-weight: 600;
   cursor: pointer;
 }

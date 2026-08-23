@@ -31,7 +31,11 @@ from app.backend.policies.base import (
     minutes_between,
     money,
 )
-from app.backend.policies.terms import extract_cancellation_terms
+from app.backend.policies.terms import (
+    extract_cancellation_terms,
+    extract_pickup_confirmation_lag,
+)
+from app.backend.services.documents import get_evidence_by_topic
 from app.backend.services.records import get_order
 
 # Order states the SOP addresses explicitly. A status outside this set is not
@@ -174,16 +178,41 @@ def evaluate_cancellation(
     # A BOOKED order whose pickup window has already closed may simply be
     # showing a stale status — the product documentation warns that pickup
     # confirmation can lag. Cancelling a parcel that was in fact collected is
-    # the mistake this guards against.
+    # the mistake this guards against, and unlike a credit decision it is a
+    # mistake that is made *sooner* rather than later, so the documented lag
+    # window is live here.
     if (
         order.pickup_actual_at is None
         and order.pickup_window_end is not None
         and context.reference_time > order.pickup_window_end
     ):
-        verification.append(
-            "Order is still BOOKED although its pickup window has closed and no pickup has "
-            "been confirmed; verify carrier pickup status before cancelling."
+        elapsed_since_window = minutes_between(
+            order.pickup_window_end, context.reference_time
         )
+        lag = extract_pickup_confirmation_lag(
+            get_evidence_by_topic(
+                conn,
+                Topic.PRODUCT_KNOWN_ISSUES.value,
+                account_id=order.account_id,
+                allowed_account_ids=allowed_account_ids,
+            ),
+            order.carrier,
+        )
+        if lag is not None and elapsed_since_window <= Decimal(lag.lag_minutes):
+            # Squarely inside the window the documentation describes: a BOOKED
+            # status here is not evidence that collection did not happen.
+            verification.append(
+                f"Order is still BOOKED {elapsed_since_window} minutes past its pickup "
+                f"window, which is within the documented {lag.lag_minutes}-minute "
+                f"{lag.carrier} pickup-confirmation lag ({lag.source.source_file}). A "
+                f"BOOKED status in this window is not evidence that the pickup did not "
+                f"happen; confirm carrier status before cancelling."
+            )
+        else:
+            verification.append(
+                "Order is still BOOKED although its pickup window has closed and no pickup "
+                "has been confirmed; verify carrier pickup status before cancelling."
+            )
 
     if order.pickup_actual_at is not None:
         verification.append(

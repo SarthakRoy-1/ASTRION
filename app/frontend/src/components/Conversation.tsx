@@ -19,6 +19,11 @@ import styles from "./Conversation.module.css";
  * nudge is intentionally minimal — new content is scrolled to, and nothing
  * else moves, because a chat that yanks the viewport while you are reading an
  * evidence card is worse than one that does not scroll at all.
+ *
+ * What it scrolls *to* is the top of the newest turn, not the end of the
+ * transcript. A full agent turn is a conclusion, a decision, an action and a
+ * dozen evidence cards; anchoring on its end left the reader looking at the
+ * investigation summary with the answer several screens above.
  */
 export function Conversation({
   turns,
@@ -33,10 +38,10 @@ export function Conversation({
   onExample: (prompt: string) => void;
   onRespondToAction: (turnId: string, decision: "approve" | "reject") => void;
 }) {
-  const endRef = useRef<HTMLDivElement>(null);
+  const latestTurnRef = useRef<HTMLLIElement>(null);
 
   useEffect(() => {
-    endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+    latestTurnRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   }, [turns.length, sending]);
 
   if (turns.length === 0) {
@@ -59,8 +64,12 @@ export function Conversation({
     <div className={styles.transcript}>
       <h2 className="visually-hidden">Conversation</h2>
       <ol className={styles.list} aria-live="polite" aria-busy={sending}>
-        {turns.map((turn) => (
-          <li key={turn.id} className={styles.turn}>
+        {turns.map((turn, index) => (
+          <li
+            key={turn.id}
+            className={styles.turn}
+            ref={index === turns.length - 1 ? latestTurnRef : undefined}
+          >
             {turn.kind === "user" && <UserMessage text={turn.text} />}
             {turn.kind === "agent" && (
               <AgentMessage
@@ -83,7 +92,6 @@ export function Conversation({
           </li>
         )}
       </ol>
-      <div ref={endRef} />
     </div>
   );
 }

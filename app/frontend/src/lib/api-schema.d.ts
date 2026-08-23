@@ -402,6 +402,8 @@ export interface components {
             amount_label?: string | null;
             /** Applies */
             applies?: boolean | null;
+            /** Breached */
+            breached?: boolean | null;
             /** Calculation */
             calculation?: string | null;
             /** Controlling Rule */
@@ -412,9 +414,11 @@ export interface components {
              */
             controlling_sources: string[];
             /** Currency */
-            currency: string;
+            currency?: string | null;
             /** Decision Type */
             decision_type: string;
+            /** Elapsed Minutes */
+            elapsed_minutes?: string | null;
             /**
              * Evidence Chunk Ids
              * @default []
@@ -428,7 +432,7 @@ export interface components {
                 [key: string]: string | null;
             };
             /** Order Id */
-            order_id: string;
+            order_id?: string | null;
             /** Outcome */
             outcome: string;
             /**
@@ -437,10 +441,21 @@ export interface components {
              */
             overrides: string[];
             /**
+             * Requires Immediate Escalation
+             * @default false
+             */
+            requires_immediate_escalation: boolean;
+            /**
              * Requires Verification
              * @default false
              */
             requires_verification: boolean;
+            /** Severity */
+            severity?: string | null;
+            /** Target Text */
+            target_text?: string | null;
+            /** Ticket Id */
+            ticket_id?: string | null;
             /**
              * Verification Reasons
              * @default []
@@ -526,6 +541,16 @@ export interface components {
          *     talking to the assistant about their own account. It is additive: a
          *     customer is scoped to their own account ids and, like `READ_ONLY`, may not
          *     change state, so no existing behaviour shifts.
+         *
+         *     **`SUPPORT_MANAGER` grants nothing `SUPPORT_AGENT` does not.** The only
+         *     authorization distinction this enum currently drives is `may_change_state`
+         *     below, which admits both. The role is modelled and carried through the
+         *     system so that a manager-only capability has somewhere to attach, but no
+         *     such capability exists yet: the SOP's "any individual credit above
+         *     INR 1,000 requires manager approval" is computed and reported by
+         *     `policies/service_credit.py` rather than enforced here, because neither
+         *     state-changing action this system ships issues a credit. Enforcing it would
+         *     mean gating an action that does not exist. See docs/product.md.
          * @enum {string}
          */
         Role: "support_agent" | "support_manager" | "read_only" | "customer";

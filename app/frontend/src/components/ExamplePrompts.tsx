@@ -1,5 +1,7 @@
 "use client";
 
+import { useId } from "react";
+
 import styles from "./ExamplePrompts.module.css";
 
 /**
@@ -30,9 +32,11 @@ export function ExamplePrompts({
   disabled: boolean;
   onSelect: (prompt: string) => void;
 }) {
+  const headingId = useId();
+
   return (
-    <section className={styles.section} aria-labelledby="examples-heading">
-      <h3 id="examples-heading" className={styles.heading}>
+    <section className={styles.section} aria-labelledby={headingId}>
+      <h3 id={headingId} className={styles.heading}>
         Try one of these
       </h3>
       <ul className={styles.list}>

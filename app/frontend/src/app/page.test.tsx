@@ -13,6 +13,7 @@ import { describe, expect, it } from "vitest";
 
 import ChatPage from "./page";
 import { chatCalls, confirmCalls, fixtures, stubApi } from "@/test/helpers";
+import type { ChatResponse } from "@/lib/types";
 
 async function renderPage() {
   const user = userEvent.setup();
@@ -201,10 +202,86 @@ describe("response rendering", () => {
     await ask(user, "Can Northstar cancel ORD-1001?");
 
     const decision = await screen.findByRole("region", { name: /cancellation decision/i });
-    expect(within(decision).getByText("Eligible")).toBeInTheDocument();
-    expect(within(decision).getByText("No")).toBeInTheDocument();
+    // The recorded order can be cancelled, and the agreement waives the fee.
+    expect(within(decision).getByText("Outcome")).toBeInTheDocument();
+    expect(within(decision).getByText("Allowed")).toBeInTheDocument();
     expect(within(decision).getByText("INR 0")).toBeInTheDocument();
+    expect(within(decision).getByText("no fee")).toBeInTheDocument();
     expect(within(decision).getByText(/signed customer agreement waives/i)).toBeInTheDocument();
+
+    // `applies` on a cancellation carries `fee_applies`, so labelling it
+    // "Eligible" rendered this exact response — an order that CAN be
+    // cancelled, free — as "Eligible: No".
+    expect(within(decision).queryByText("Eligible")).not.toBeInTheDocument();
+  });
+
+  it("shows the order status a cancellation verdict rested on", async () => {
+    stubApi();
+    const user = await renderPage();
+    await ask(user, "Can Northstar cancel ORD-1001?");
+
+    const decision = await screen.findByRole("region", { name: /cancellation decision/i });
+    expect(within(decision).getByText("Order status")).toBeInTheDocument();
+    expect(within(decision).getByText("BOOKED")).toBeInTheDocument();
+  });
+
+  it("never renders an allowed and a refused cancellation the same way", async () => {
+    // The regression this guards: `fee_applies` is false both when a fee was
+    // waived and when the order cannot be cancelled at all, so a card driven
+    // by `applies` drew these two opposite outcomes identically.
+    const allowed = fixtures.cancellation;
+    const refused: ChatResponse = {
+      ...allowed,
+      answer: "Order ORD-1001 has already been delivered and cannot be cancelled.",
+      policy_decisions: [
+        {
+          ...allowed.policy_decisions![0]!,
+          outcome: "not_allowed",
+          applies: false,
+          amount: null,
+          inputs: { ...allowed.policy_decisions![0]!.inputs, order_status: "DELIVERED" },
+          controlling_rule: "A DELIVERED order cannot be cancelled.",
+        },
+      ],
+    };
+
+    stubApi({ chat: [{ body: allowed }, { body: refused }] });
+    const user = await renderPage();
+
+    await ask(user, "Can Northstar cancel ORD-1001?");
+    const first = await screen.findByRole("region", { name: /cancellation decision/i });
+    expect(within(first).getByText("Allowed")).toBeInTheDocument();
+
+    await ask(user, "What about a delivered order?");
+    await waitFor(() =>
+      expect(
+        screen.getAllByRole("region", { name: /cancellation decision/i }),
+      ).toHaveLength(2),
+    );
+    const second = screen.getAllByRole("region", { name: /cancellation decision/i })[1]!;
+
+    expect(within(second).getByText("Not allowed")).toBeInTheDocument();
+    expect(within(second).queryByText("Allowed")).not.toBeInTheDocument();
+    expect(within(second).getByText("DELIVERED")).toBeInTheDocument();
+    // No fee figure at all on an order that cannot be cancelled.
+    expect(within(second).queryByText(/^INR /)).not.toBeInTheDocument();
+  });
+
+  it("does not repeat the rule, calculation and citations under the answer", async () => {
+    stubApi();
+    const user = await renderPage();
+    await ask(user, "Can Northstar cancel ORD-1001?");
+
+    await screen.findByRole("region", { name: /cancellation decision/i });
+
+    // Everything the answer appended is rendered structurally by the decision
+    // card and the sources section, so the residual block renders nothing.
+    expect(screen.queryByText(/more from the agent/i)).not.toBeInTheDocument();
+
+    // And the rule itself still appears exactly once.
+    expect(
+      screen.getAllByText(/signed customer agreement waives/i),
+    ).toHaveLength(1);
   });
 
   it("shows the tool categories the agent used, without their arguments", async () => {
@@ -244,7 +321,7 @@ describe("uncertainty", () => {
   });
 
   it("does not present a provisional credit as an approved one", async () => {
-    stubApi({ chat: [{ body: fixtures.serviceCredit }] });
+    stubApi({ chat: [{ body: fixtures.serviceCreditProvisional }] });
     const user = await renderPage();
     await ask(user, "Is ORD-2002 eligible for a service credit?");
 
@@ -253,6 +330,41 @@ describe("uncertainty", () => {
     expect(within(decision).getByText("provisional")).toBeInTheDocument();
     expect(within(decision).getByText(/verify before committing/i)).toBeInTheDocument();
     expect(within(decision).queryByText("Yes")).not.toBeInTheDocument();
+  });
+
+  it("presents a breached SLA as breached, with the target and elapsed time", async () => {
+    stubApi({ chat: [{ body: fixtures.slaBreach }] });
+    const user = await renderPage();
+    await ask(user, "TKT-501 is a P1. Has its first response SLA been breached?");
+
+    const decision = await screen.findByRole("region", { name: /response sla decision/i });
+    expect(within(decision).getByText("Breached")).toBeInTheDocument();
+    expect(within(decision).getByText("15 minutes, 24x7")).toBeInTheDocument();
+    expect(within(decision).getByText("30.00 min")).toBeInTheDocument();
+    expect(within(decision).getByText("TKT-501")).toBeInTheDocument();
+    // The label this card used to render for an SLA verdict.
+    expect(within(decision).queryByText("Eligible")).not.toBeInTheDocument();
+    expect(within(decision).queryByText("not allowed")).not.toBeInTheDocument();
+  });
+
+  it("shows the policy's standing P1 escalation instruction on the decision", async () => {
+    stubApi({ chat: [{ body: fixtures.slaBreach }] });
+    const user = await renderPage();
+    await ask(user, "TKT-501 is a P1. Has its first response SLA been breached?");
+
+    const decision = await screen.findByRole("region", { name: /response sla decision/i });
+    expect(within(decision).getByText(/escalated immediately/i)).toBeInTheDocument();
+  });
+
+  it("presents a settled credit as settled, without a provisional caveat", async () => {
+    stubApi({ chat: [{ body: fixtures.serviceCredit }] });
+    const user = await renderPage();
+    await ask(user, "Is ORD-2002 eligible for a service credit?");
+
+    const decision = await screen.findByRole("region", { name: /service credit decision/i });
+    expect(within(decision).queryByText("provisional")).not.toBeInTheDocument();
+    expect(within(decision).queryByText("Uncertain")).not.toBeInTheDocument();
+    expect(within(decision).getByText("Yes")).toBeInTheDocument();
   });
 });
 
@@ -336,6 +448,21 @@ describe("action confirmation", () => {
     expect(within(card).getByText(/nothing has been changed yet/i)).toBeInTheDocument();
     expect(within(card).getByText(/escalate ticket/i)).toBeInTheDocument();
     expect(within(card).getByText("TKT-501")).toBeInTheDocument();
+  });
+
+  it("lets the card speak for the action instead of repeating it in prose", async () => {
+    await reachPendingAction();
+
+    // The answer only restated the proposal and exposed the internal action
+    // id. The card says all of it, better, and without the id.
+    expect(screen.queryByText(/prepared action \(not yet performed\)/i)).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(new RegExp(fixtures.pendingAction.proposed_action!.action_id)),
+    ).not.toBeInTheDocument();
+
+    const card = screen.getByRole("region", { name: /action/i });
+    expect(within(card).getByText(/create an escalation against ticket/i)).toBeInTheDocument();
+    expect(within(card).getByText(/nothing has been changed yet/i)).toBeInTheDocument();
   });
 
   it("offers explicit confirm and reject controls", async () => {

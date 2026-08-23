@@ -23,11 +23,12 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { ApiError, confirmAction, listPrincipals, sendChat } from "@/lib/client";
+import { ApiError, confirmAction, getHealth, listPrincipals, sendChat } from "@/lib/client";
 import type {
   ActionState,
   ChatResponse,
   ExecutedActionView,
+  HealthResponse,
   PrincipalView,
 } from "@/lib/types";
 
@@ -71,6 +72,8 @@ export interface Conversation {
   principal: PrincipalView | null;
   principalsError: ApiError | null;
   loadingPrincipals: boolean;
+  /** What this deployment is running. Null until known, and null if unknown. */
+  health: HealthResponse | null;
 
   turns: Turn[];
   sending: boolean;
@@ -91,6 +94,7 @@ export function useConversation(): Conversation {
   const [principalsError, setPrincipalsError] = useState<ApiError | null>(null);
   const [loadingPrincipals, setLoadingPrincipals] = useState(true);
 
+  const [health, setHealth] = useState<HealthResponse | null>(null);
   const [identity, setIdentity] = useState<string | null>(null);
   const [turns, setTurns] = useState<Turn[]>([]);
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -121,6 +125,26 @@ export function useConversation(): Conversation {
       })
       .finally(() => {
         if (!cancelled) setLoadingPrincipals(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Configuration, not conversation: which provider is answering, how much of
+  // the source pack is indexed, and which snapshot the dates are judged
+  // against. A failure here is deliberately silent — it tells the user nothing
+  // they can act on, and the chat reports its own faults perfectly well.
+  useEffect(() => {
+    let cancelled = false;
+
+    getHealth()
+      .then((loaded) => {
+        if (!cancelled) setHealth(loaded);
+      })
+      .catch(() => {
+        /* Status is a nicety. Never surface it as a failure. */
       });
 
     return () => {
@@ -249,6 +273,7 @@ export function useConversation(): Conversation {
     principal,
     principalsError,
     loadingPrincipals,
+    health,
     turns,
     sending,
     sessionId,

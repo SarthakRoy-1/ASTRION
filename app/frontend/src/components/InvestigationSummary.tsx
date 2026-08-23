@@ -1,3 +1,5 @@
+import { useId } from "react";
+
 import {
   summariseInvestigation,
   toolLabel,
@@ -27,14 +29,16 @@ import styles from "./InvestigationSummary.module.css";
  * indicator would fill in — same rows, updated as they complete.
  */
 export function InvestigationSummary({ tools }: { tools: ToolUse[] }) {
+  const headingId = useId();
+
   if (tools.length === 0) return null;
 
   const steps = summariseInvestigation(tools);
   const failures = tools.filter((tool) => toolStatusTone(tool.status) !== "ok");
 
   return (
-    <section className={styles.section} aria-labelledby="investigation-heading">
-      <h3 id="investigation-heading" className={styles.heading}>
+    <section className={styles.section} aria-labelledby={headingId}>
+      <h3 id={headingId} className={styles.heading}>
         Investigation
         <span className={styles.count}>
           {tools.length} {tools.length === 1 ? "step" : "steps"}

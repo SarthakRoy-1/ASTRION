@@ -611,6 +611,17 @@
             ],
             "title": "Applies"
           },
+          "breached": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Breached"
+          },
           "calculation": {
             "anyOf": [
               {
@@ -635,12 +646,30 @@
             "type": "array"
           },
           "currency": {
-            "title": "Currency",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currency"
           },
           "decision_type": {
             "title": "Decision Type",
             "type": "string"
+          },
+          "elapsed_minutes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Elapsed Minutes"
           },
           "evidence_chunk_ids": {
             "default": [],
@@ -666,8 +695,15 @@
             "type": "object"
           },
           "order_id": {
-            "title": "Order Id",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Order Id"
           },
           "outcome": {
             "title": "Outcome",
@@ -681,10 +717,48 @@
             "title": "Overrides",
             "type": "array"
           },
+          "requires_immediate_escalation": {
+            "default": false,
+            "title": "Requires Immediate Escalation",
+            "type": "boolean"
+          },
           "requires_verification": {
             "default": false,
             "title": "Requires Verification",
             "type": "boolean"
+          },
+          "severity": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Severity"
+          },
+          "target_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Text"
+          },
+          "ticket_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ticket Id"
           },
           "verification_reasons": {
             "default": [],
@@ -697,11 +771,9 @@
         },
         "required": [
           "decision_type",
-          "order_id",
           "account_id",
           "outcome",
-          "controlling_rule",
-          "currency"
+          "controlling_rule"
         ],
         "title": "PolicyDecisionView",
         "type": "object"
@@ -862,7 +934,7 @@
         "type": "string"
       },
       "Role": {
-        "description": "Who is asking, in the terms the authorization layer cares about.\n\nPhase 4 shipped the three internal roles. Phase 5 adds `CUSTOMER` for the\nexternal context the API must be able to demonstrate \u2014 an account holder\ntalking to the assistant about their own account. It is additive: a\ncustomer is scoped to their own account ids and, like `READ_ONLY`, may not\nchange state, so no existing behaviour shifts.",
+        "description": "Who is asking, in the terms the authorization layer cares about.\n\nPhase 4 shipped the three internal roles. Phase 5 adds `CUSTOMER` for the\nexternal context the API must be able to demonstrate \u2014 an account holder\ntalking to the assistant about their own account. It is additive: a\ncustomer is scoped to their own account ids and, like `READ_ONLY`, may not\nchange state, so no existing behaviour shifts.\n\n**`SUPPORT_MANAGER` grants nothing `SUPPORT_AGENT` does not.** The only\nauthorization distinction this enum currently drives is `may_change_state`\nbelow, which admits both. The role is modelled and carried through the\nsystem so that a manager-only capability has somewhere to attach, but no\nsuch capability exists yet: the SOP's \"any individual credit above\nINR 1,000 requires manager approval\" is computed and reported by\n`policies/service_credit.py` rather than enforced here, because neither\nstate-changing action this system ships issues a credit. Enforcing it would\nmean gating an action that does not exist. See docs/product.md.",
         "enum": [
           "support_agent",
           "support_manager",
@@ -1044,7 +1116,7 @@
   "info": {
     "description": "Natural-language support and operations assistant over ParcelPilot's policy\npack and operational records.\n\nThe agent reasons; deterministic code decides. Account scoping, source\nprecedence, cancellation and service-credit arithmetic, and every state change\nare enforced below the model layer and cannot be influenced by the contents of\na request.\n\nState-changing actions are prepared by `POST /api/chat` and executed only by\n`POST /api/actions/{action_id}/confirm`. Nothing in a chat message can perform\none.\n",
     "title": "ParcelPilot Support & Operations Agent API",
-    "version": "0.5.0"
+    "version": "0.8.0"
   },
   "openapi": "3.1.0",
   "paths": {

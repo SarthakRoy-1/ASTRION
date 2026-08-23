@@ -37,19 +37,38 @@
 }
 
 .heading {
-  font-size: 14px;
+  font-size: var(--text-ui);
 }
 
 .summary {
   margin-bottom: var(--space-3);
-  font-size: 15px;
+  font-size: var(--text-body);
   font-weight: 500;
 }
 
 .target {
   font-family: var(--font-mono);
-  font-size: 14px;
+  font-size: var(--text-ui);
   color: var(--accent);
+}
+
+/* What will actually happen, in the backend's own words. This is the sentence
+   the operator is approving, so it reads at body weight rather than as
+   metadata. */
+.preview {
+  overflow-wrap: anywhere;
+  margin-bottom: var(--space-3);
+  padding: var(--space-3);
+  border-left: 3px solid var(--border-default);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  background: var(--surface-sunken);
+  color: var(--text-primary);
+  font-size: var(--text-ui);
+  line-height: 1.55;
+}
+
+.card[data-state="pending_confirmation"] .preview {
+  border-left-color: var(--caution);
 }
 
 .details {
@@ -62,17 +81,15 @@
 .detailRow {
   display: flex;
   gap: var(--space-3);
-  font-size: 13.5px;
+  font-size: var(--text-small);
 }
 
 .detailRow dt {
   flex: none;
-  width: 72px;
+  width: 78px;
   color: var(--text-muted);
-  font-size: 12px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  font-size: var(--text-caption);
+  font-weight: 500;
   padding-top: 2px;
 }
 
@@ -84,7 +101,7 @@
 
 .mono {
   font-family: var(--font-mono);
-  font-size: 12.5px;
+  font-size: var(--text-small);
 }
 
 .notice {
@@ -93,7 +110,7 @@
   border-radius: var(--radius-sm);
   background: var(--caution-soft);
   color: var(--caution);
-  font-size: 13px;
+  font-size: var(--text-small);
   font-weight: 500;
 }
 
@@ -111,8 +128,8 @@
   border: 1px solid var(--accent);
   border-radius: var(--radius-md);
   background: var(--accent);
-  color: #ffffff;
-  font-size: 14px;
+  color: var(--on-accent);
+  font-size: var(--text-ui);
   font-weight: 600;
   cursor: pointer;
 }
@@ -127,7 +144,7 @@
   border: 1px solid var(--border-default);
   border-radius: var(--radius-md);
   background: transparent;
-  font-size: 14px;
+  font-size: var(--text-ui);
   font-weight: 500;
   cursor: pointer;
 }
@@ -145,11 +162,10 @@
 
 .blocked {
   padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--border-subtle);
   border-radius: var(--radius-sm);
   background: var(--surface-sunken);
   color: var(--text-secondary);
-  font-size: 13px;
+  font-size: var(--text-small);
 }
 
 .outcome {
@@ -157,7 +173,7 @@
   flex-wrap: wrap;
   align-items: baseline;
   gap: var(--space-2);
-  font-size: 14px;
+  font-size: var(--text-ui);
   font-weight: 500;
 }
 
@@ -172,7 +188,7 @@
 
 .receipt {
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--text-caption);
   font-weight: 400;
   color: var(--text-muted);
 }
@@ -183,11 +199,11 @@
   gap: var(--space-2);
   margin-top: var(--space-3);
   padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--fail-border);
-  border-radius: var(--radius-sm);
+  border-left: 3px solid var(--fail);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
   background: var(--fail-soft);
   color: var(--text-secondary);
-  font-size: 13px;
+  font-size: var(--text-small);
 }
 
 .errorLabel {

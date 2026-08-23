@@ -296,6 +296,14 @@ def _should_escalate(history: list[StepRecord], uncertainties: list[str]) -> boo
     Triggers on a policy decision that demands verification, an unresolved
     cross-source conflict, or a tool error — each of which the supplied
     documents treat as a reason to involve a human rather than proceed.
+
+    A *settled* decision can also demand escalation. The current support
+    policy directs that P1 incidents be escalated immediately and that a
+    breached response target be stated and escalated rather than reported
+    quietly — neither of which is an uncertainty, so neither would be caught
+    by the checks above. Both are read from fields the policy engine set, so
+    this stays a projection of a deterministic decision rather than a second
+    opinion about it.
     """
     for record in history:
         if record.result.status in (ToolStatus.UNCERTAIN, ToolStatus.ERROR):
@@ -303,4 +311,9 @@ def _should_escalate(history: list[StepRecord], uncertainties: list[str]) -> boo
         conflicts = record.result.data.get("conflicts")
         if isinstance(conflicts, list) and conflicts:
             return True
+        for decision in record.result.decisions:
+            if getattr(decision, "requires_immediate_escalation", False):
+                return True
+            if getattr(decision, "breached", None) is True:
+                return True
     return bool(uncertainties)

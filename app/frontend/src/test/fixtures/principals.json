@@ -19,7 +19,7 @@
         "ACCT-003",
         "ACCT-004"
       ],
-      "description": "Internal support manager. May approve escalations.",
+      "description": "Internal support manager. Same capabilities as a support agent today: may prepare and confirm actions. The role is carried through the system but grants nothing extra yet.",
       "display_name": "ParcelPilot support manager",
       "role": "support_manager",
       "user_id": "support.manager"

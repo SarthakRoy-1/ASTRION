@@ -1035,6 +1035,60 @@ conversation memory across turns (a `session_id` is issued and binds actions,
 but no prior-turn context is replayed to the model); a production identity
 provider; streaming responses; proactive issue detection; actual hosting. See §13.
 
+### 10.12 What authority the model's prose carries
+
+In `LLM_PROVIDER=deterministic`, the answer text is assembled by
+`agent/composer.py` from fields of typed tool results, so the prose cannot
+disagree with the decision — it is built out of it.
+
+In `LLM_PROVIDER=real` that is not true. `AgentOrchestrator.handle` prefers the
+provider's own `final_answer` when one is present
+(`orchestrator.py`, `_provider_answer`), so in real mode the `answer` string is
+written by the model. This section states plainly what that does and does not
+put at risk.
+
+**The structured decision is authoritative, and it is what the UI renders.**
+A response carries `policy_decisions[]` alongside `answer`. Those decisions come
+from `app/backend/policies/` and are untouched by the provider: the model can
+choose to call `evaluate_service_credit`, but it cannot alter what that call
+returns, and it cannot produce a decision object of its own. The frontend's
+`DecisionCard` renders **from the decision**, never by parsing prose — the
+amount, the currency, the rule, the arithmetic, the breach state and the
+citations on screen are all the deterministic values. Switching provider
+changes which tools get called, not what any of them are permitted to do, and
+not what the card shows.
+
+**The prompt instructs exact reporting.** `agent/prompts.py` tells the model
+never to compute a fee, credit, eligibility verdict, SLA target or breach
+itself, never to restate one from memory, and to report exactly what the policy
+tool returned including its stated rule and arithmetic. It also states that a
+tool reporting `requires_verification` *is* the answer.
+
+**The residual risk, stated rather than hidden.** A prompt is an instruction,
+not an enforcement mechanism. In real mode a model could in principle write
+prose containing a figure that does not match the decision returned beside it —
+a transcription slip, or a confident paraphrase. Nothing in the current build
+detects that. What bounds the damage:
+
+- the decision card beside the prose shows the correct figure, so the two are
+  visibly side by side rather than the prose standing alone;
+- every citation attached to the response is the one the retrieval layer
+  returned, so the sources cannot be fabricated even if the summary drifts;
+- authorization, scoping, precedence and the confirmation gate are entirely
+  unaffected — none of them reads the answer string, so a wrong sentence cannot
+  become a wrong *action*;
+- the deterministic mode, which has no such gap, is the default and is what the
+  entire test suite runs on.
+
+The natural hardening is to assert that every monetary figure appearing in a
+model-authored answer also appears in `policy_decisions[]`, and to fall back to
+the composer's deterministic prose when it does not. That is deliberately **not
+built** — it is a real check with real false-positive design work behind it
+(percentages, dates and record ids all look like figures), and shipping a
+half-tuned validator that silently rewrote answers would be worse than the
+documented gap it replaced. It is listed as future work in
+[product.md](product.md#future-work).
+
 ## 11. The chat interface (Phase 6)
 
 Phase 5 made the agent reachable over HTTP. Phase 6 makes it usable, and does
@@ -1227,7 +1281,8 @@ authority with expandable cards; policy decisions with rule, arithmetic and
 citations; post-hoc investigation summary; distinct uncertainty treatment; the
 confirmation card with duplicate-submit prevention and all terminal action
 states; session binding across a conversation; structured error rendering;
-52 UI tests over recorded API responses.
+a UI test suite over recorded API responses (57 at the close of Phase 6; see
+the README for the current count).
 
 **Deferred:** streaming tool activity; conversation memory; a proactive-issue
 dashboard; production authentication; actual hosting. See §13.
@@ -1295,6 +1350,75 @@ portable baseline any of those can build from; choosing one is left to
 whoever hosts this. SQLite plus a single volume implies single-writer
 semantics — correct for a demo, revisit before multiple backend instances.
 
+## 12A. First-response SLA evaluation (Phase 7)
+
+`app/backend/policies/sla.py` is the third deterministic calculator, built on
+exactly the machinery §9 describes: it gathers `support_response` evidence
+scoped to one account, layers it weakest-authority-first, and measures elapsed
+time against the dataset snapshot rather than the wall clock.
+
+**Target selection.** Two clause shapes are recovered by
+`extract_response_targets`. The current policy states targets as a per-plan
+table, which PDF extraction flattens into a header block followed by one
+label-then-values run per plan; the parser locates the plan's own row and reads
+the three values that follow, and yields nothing if that shape does not hold. A
+customer agreement instead states targets inline (`P1: 15 minutes, 24x7`).
+Because agreements layer last, an agreement overrides the severities it
+actually names and leaves the rest at the plan default — the same field-by-field
+overlay the cancellation and credit terms use, with no rule naming a customer.
+
+**Severity is not computed.** The tool takes an optional `severity` and will
+not derive one. This was not the first design: an earlier draft scored ticket
+text against the policy's severity definitions and took the best match. On the
+supplied corpus it rated a billing question P1 on a single shared word and then
+reported a breach against a 15-minute target. Word overlap is not evidence of
+business impact, and a breach verdict is exactly the kind of claim that must not
+rest on a guess, so the classifier was deleted rather than tuned. Called without
+a severity the tool reports the elapsed time and every target it read, and
+asserts nothing further. The deterministic planner passes through a severity the
+*request* states — reading a label the caller supplied, not judging one — and the
+model-backed provider is instructed to classify against the definitions and pass
+its answer explicitly.
+
+**Business time is not converted.** The corpus states targets such as
+"4 business hours" and defines no business calendar anywhere. Converting one
+into a deadline would invent the calendar and the verdict together, so those
+targets are reported with `target_minutes = None` and the breach question left
+open.
+
+**Escalation.** `requires_immediate_escalation` is set for P1 whenever the
+governing documents carry the standing instruction to escalate P1 immediately,
+independently of the arithmetic — a P1 inside its target still escalates. The
+orchestrator's `_should_escalate` also now recommends escalation on a settled
+breach, because the current policy directs that a breached target be stated and
+escalated rather than reported quietly, and a settled decision carries no
+uncertainty flag that would otherwise catch it.
+
+### 12B. Scoping a known issue to what it documents
+
+KI-211 documents a bounded, carrier-specific lag between collection and pickup
+confirmation. The service-credit engine originally treated *any* unconfirmed
+pickup as grounds for verification, citing that issue. Two problems: the
+carrier and window it names were ignored, and by the time a credit threshold
+(hours) is crossed, a confirmation lag (minutes) can no longer be the
+explanation. The effect was that every failed-pickup credit a signed agreement
+granted came back deferred.
+
+`extract_pickup_confirmation_lag` now matches the *order's own recorded
+carrier* against the known-issue text — so no carrier is named in code — and
+returns the bound that text states. The lag is recorded on every credit
+decision as an audit input, showing the engine considered the issue and found
+it inapplicable, but it no longer defers a decision: at that point carrier
+fault is either recorded (the carrier has accepted the collection did not
+happen) or unknown (already deferred on its own terms).
+
+Where the lag *does* change an outcome is cancellation, and that is where it is
+now applied: cancelling on a stale BOOKED status would cancel a parcel that was
+in fact collected, and that mistake is made inside the documented window rather
+than hours later. A cancellation inside the window cites the issue by name; one
+well past it gets the generic caution instead, because the known issue no
+longer explains the missing confirmation.
+
 ## 13. Deferred decisions
 
 Resolved in Phase 2: SQLite schema, timestamp handling, provenance design.
@@ -1306,6 +1430,9 @@ Resolved in Phase 5: API boundary, mock auth context, provider selection,
 response contract, confirmation endpoint, error envelope.
 Resolved in Phase 6: frontend boundary, generated API contract, recorded UI
 fixtures, evidence and tool-activity presentation, session handling in the UI.
+Resolved in Phase 7: deterministic first-response SLA targets and breach
+detection (§12A), carrier-scoped known-issue application (§12B), and the
+authority the model's prose does and does not carry (§10.12).
 
 Still open, to resolve when the relevant phase starts:
 
@@ -1326,11 +1453,11 @@ Still open, to resolve when the relevant phase starts:
   snapshot* is a natural extension of the Phase 4 evaluation context and was
   left out deliberately: every supplied agreement is in term, so implementing
   it now would add an untested branch.
-- **SLA response targets are not yet computed.** The severity and
-  first-response tables are ingested, retrievable, and authority-ranked, but
-  no calculator turns them into a deadline or a breach verdict. The
-  cancellation and service-credit engines are the two the assessment names
-  explicitly; SLA follows the same pattern when needed.
+- ~~**SLA response targets are not yet computed.**~~ **Resolved in Phase 7**
+  by `policies/sla.py` and the `evaluate_sla` tool, following the same pattern
+  as the other two calculators — see §12A. Two bounded refusals remain by
+  design: severity is never inferred, and a target stated in business hours
+  yields no breach verdict because the corpus defines no business calendar.
 - **Topic classification is keyword-based** over section headings. It maps
   the supplied corpus exactly, but a new document with an unfamiliar heading
   falls back to `general` and would not participate in topic-scoped
@@ -1351,6 +1478,18 @@ Still open, to resolve when the relevant phase starts:
 - **Monthly service-credit caps are surfaced, not enforced.** A decision
   reports the cap and advises checking credits already issued; aggregating
   spend across a month needs issuance history the dataset does not contain.
+- **The manager-approval threshold is computed, not enforced, and
+  `SUPPORT_MANAGER` therefore grants nothing `SUPPORT_AGENT` does not.** The
+  SOP's "any individual credit above INR 1,000 requires manager approval" is
+  evaluated by `policies/service_credit.py` and reported on the decision, but
+  no gate consumes it: `AgentContext.may_change_state` is the only role check
+  the system enforces, and it admits both internal staff roles. This is a
+  consequence of the action set, not an oversight — neither `create_escalation`
+  nor `add_ticket_note` issues a credit, so there is nothing for the threshold
+  to gate. The role is modelled so the capability has somewhere to attach; the
+  moment a credit-issuing action exists, that is where the gate belongs. Adding
+  the check now would mean enforcing a rule against an operation that cannot
+  occur, and testing it would require inventing that operation.
 - **Conversation memory is not implemented.** `POST /api/chat` issues and
   echoes a `session_id`, and prepared actions are bound to it, but no prior
   turn is replayed to the model: each request is investigated from scratch.

@@ -1,0 +1,203 @@
+{
+  "account_scope": [
+    "ACCT-001",
+    "ACCT-002",
+    "ACCT-003",
+    "ACCT-004"
+  ],
+  "action_status": "none",
+  "answer": "Ticket TKT-501 has BREACHED its P1 first-response target of 15 minutes, 24x7.\n30.00 minutes have elapsed since the ticket was created, measured against the dataset snapshot.\nSeverity P1 \u2014 supplied by caller.\nRule applied: The P1 first-response target for this account is 15 minutes, 24x7, and no first response is recorded against this ticket.\nCalculation: 30.00 minutes elapsed since the ticket was created vs a 15-minute P1 target -> breached\nThe current support policy requires P1 incidents to be escalated immediately, independently of the response-target arithmetic.\nSource: 05_Northstar_Logistics_Enterprise_Agreement.pdf p.1 \u00a71. Support terms\nPrecedence: 05_Northstar_Logistics_Enterprise_Agreement.pdf p.1 \u00a71. Support terms (tier 1 CUSTOMER_AGREEMENT) outranks 01_Support_Policy_v3_CURRENT.pdf p.1 \u00a72. Severity definitions (tier 2 CURRENT_SUPPORT_POLICY) on topic 'support_response'\nPrecedence: 05_Northstar_Logistics_Enterprise_Agreement.pdf p.1 \u00a71. Support terms (tier 1 CUSTOMER_AGREEMENT) outranks 01_Support_Policy_v3_CURRENT.pdf p.1 \u00a73. Default first-response targets (tier 2 CURRENT_SUPPORT_POLICY) on topic 'support_response'\nPrecedence: 05_Northstar_Logistics_Enterprise_Agreement.pdf p.1 \u00a71. Support terms (tier 1 CUSTOMER_AGREEMENT) outranks 01_Support_Policy_v3_CURRENT.pdf p.1 \u00a74. Escalation (tier 2 CURRENT_SUPPORT_POLICY) on topic 'support_response'",
+  "escalation_recommended": true,
+  "outcome": "answered",
+  "policy_decisions": [
+    {
+      "account_id": "ACCT-001",
+      "amount": null,
+      "amount_label": null,
+      "applies": null,
+      "breached": true,
+      "calculation": "30.00 minutes elapsed since the ticket was created vs a 15-minute P1 target -> breached",
+      "controlling_rule": "The P1 first-response target for this account is 15 minutes, 24x7, and no first response is recorded against this ticket.",
+      "controlling_sources": [
+        "05_Northstar_Logistics_Enterprise_Agreement.pdf p.1 \u00a71. Support terms"
+      ],
+      "currency": null,
+      "decision_type": "sla",
+      "elapsed_minutes": "30.00",
+      "evidence_chunk_ids": [
+        "05_northstar_logistics_enterprise_agreement#p1#c01"
+      ],
+      "inputs": {
+        "created_at": "2026-08-16T10:30:00+05:30",
+        "elapsed_minutes": "30.00",
+        "evaluated_against": "2026-08-16T11:00:00+05:30",
+        "first_response_at": null,
+        "plan": "Enterprise",
+        "reference_time_source": "dataset snapshot 2026-08-16 11:00 Asia/Kolkata (from ParcelPilot_Assessment_Data.xlsx)",
+        "severity": "P1",
+        "severity_source": "supplied by caller",
+        "target_text": "15 minutes, 24x7",
+        "ticket_status": "open"
+      },
+      "order_id": null,
+      "outcome": "not_allowed",
+      "overrides": [
+        "05_Northstar_Logistics_Enterprise_Agreement.pdf p.1 \u00a71. Support terms (tier 1 CUSTOMER_AGREEMENT) outranks 01_Support_Policy_v3_CURRENT.pdf p.1 \u00a72. Severity definitions (tier 2 CURRENT_SUPPORT_POLICY) on topic 'support_response'",
+        "05_Northstar_Logistics_Enterprise_Agreement.pdf p.1 \u00a71. Support terms (tier 1 CUSTOMER_AGREEMENT) outranks 01_Support_Policy_v3_CURRENT.pdf p.1 \u00a73. Default first-response targets (tier 2 CURRENT_SUPPORT_POLICY) on topic 'support_response'",
+        "05_Northstar_Logistics_Enterprise_Agreement.pdf p.1 \u00a71. Support terms (tier 1 CUSTOMER_AGREEMENT) outranks 01_Support_Policy_v3_CURRENT.pdf p.1 \u00a74. Escalation (tier 2 CURRENT_SUPPORT_POLICY) on topic 'support_response'"
+      ],
+      "requires_immediate_escalation": true,
+      "requires_verification": false,
+      "severity": "P1",
+      "target_text": "15 minutes, 24x7",
+      "ticket_id": "TKT-501",
+      "verification_reasons": []
+    }
+  ],
+  "proposed_action": null,
+  "reference_time": "2026-08-16T11:00:00+05:30",
+  "request_id": "REQ-fixture0001",
+  "responded_at_utc": "2026-08-16T05:30:00+00:00",
+  "role": "support_agent",
+  "session_id": "SES-fixture0001",
+  "sources": [
+    {
+      "account_id": "ACCT-001",
+      "authority_tier": 1,
+      "chunk_id": "05_northstar_logistics_enterprise_agreement#p1#c01",
+      "citation": "05_Northstar_Logistics_Enterprise_Agreement.pdf p.1 \u00a71. Support terms",
+      "document_id": "05_northstar_logistics_enterprise_agreement",
+      "document_title": "ParcelPilot - Northstar Logistics Enterprise Agreement",
+      "excerpt": "1. Support terms\nFor Northstar Logistics, the following first-response targets replace ParcelPilot's standard support-policy targets:\n\u25cf P1: 15 minutes, 24x7\n\u25cf P2: 1 hour\n\u25cf P3: 8 business hours",
+      "is_authoritative": true,
+      "is_deprecated": false,
+      "page": 1,
+      "section": "1. Support terms",
+      "source_file": "05_Northstar_Logistics_Enterprise_Agreement.pdf",
+      "topic": "support_response"
+    },
+    {
+      "account_id": null,
+      "authority_tier": 2,
+      "chunk_id": "01_support_policy_v3_current#p1#c01",
+      "citation": "01_Support_Policy_v3_CURRENT.pdf p.1 \u00a71. Scope and source precedence",
+      "document_id": "01_support_policy_v3_current",
+      "document_title": "ParcelPilot Support Policy v3",
+      "excerpt": "1. Scope and source precedence\nThis policy defines default support severity and response targets. A signed customer agreement may override these\ndefaults. When sources conflict, use the signed customer agreement first, then the current support policy, then\ncurrent product documentation. Historical tickets and internal notes are context only and may contain incorrect past\nguidance.",
+      "is_authoritative": true,
+      "is_deprecated": false,
+      "page": 1,
+      "section": "1. Scope and source precedence",
+      "source_file": "01_Support_Policy_v3_CURRENT.pdf",
+      "topic": "general"
+    },
+    {
+      "account_id": null,
+      "authority_tier": 3,
+      "chunk_id": "04_product_operations_guide_and_known_issues#p1#c01",
+      "citation": "04_Product_Operations_Guide_and_Known_Issues.pdf p.1 \u00a71. Plan capabilities",
+      "document_id": "04_product_operations_guide_and_known_issues",
+      "document_title": "ParcelPilot Product Operations Guide",
+      "excerpt": "1. Plan capabilities\n\u25cf Bulk Upload: Available on Growth and Enterprise. Supported file size is up to 5,000 rows per CSV.\n\u25cf Standard: Bulk Upload is not included.\n\u25cf Shipment status: BOOKED means the shipment is created but ParcelPilot has not yet received a pickup\nconfirmation. PICKED_UP means carrier pickup has been confirmed.",
+      "is_authoritative": true,
+      "is_deprecated": false,
+      "page": 1,
+      "section": "1. Plan capabilities",
+      "source_file": "04_Product_Operations_Guide_and_Known_Issues.pdf",
+      "topic": "product_known_issues"
+    },
+    {
+      "account_id": null,
+      "authority_tier": 2,
+      "chunk_id": "01_support_policy_v3_current#p1#c02",
+      "citation": "01_Support_Policy_v3_CURRENT.pdf p.1 \u00a72. Severity definitions",
+      "document_id": "01_support_policy_v3_current",
+      "document_title": "ParcelPilot Support Policy v3",
+      "excerpt": "2. Severity definitions\n\u25cf P1 - Critical: Complete production outage preventing all shipment creation for a customer, confirmed security\nincident or suspected credential exposure, or another event causing immediate material business risk with no\nworkaround.\n\u25cf P2 - High: Major feature unavailable or materially degraded for a customer, but core operations remain\npossible or a workaround exists.\n\u25cf P3 \u2026",
+      "is_authoritative": true,
+      "is_deprecated": false,
+      "page": 1,
+      "section": "2. Severity definitions",
+      "source_file": "01_Support_Policy_v3_CURRENT.pdf",
+      "topic": "support_response"
+    },
+    {
+      "account_id": null,
+      "authority_tier": 2,
+      "chunk_id": "01_support_policy_v3_current#p1#c03",
+      "citation": "01_Support_Policy_v3_CURRENT.pdf p.1 \u00a73. Default first-response targets",
+      "document_id": "01_support_policy_v3_current",
+      "document_title": "ParcelPilot Support Policy v3",
+      "excerpt": "3. Default first-response targets\nPlan\nP1\nP2\nP3\nEnterprise\n30 minutes, 24x7\n2 hours\n1 business day\nGrowth\n2 business hours\n4 business hours\n2 business days\nStandard\n4 business hours\n1 business day\n2 business days",
+      "is_authoritative": true,
+      "is_deprecated": false,
+      "page": 1,
+      "section": "3. Default first-response targets",
+      "source_file": "01_Support_Policy_v3_CURRENT.pdf",
+      "topic": "support_response"
+    },
+    {
+      "account_id": null,
+      "authority_tier": 2,
+      "chunk_id": "01_support_policy_v3_current#p1#c04",
+      "citation": "01_Support_Policy_v3_CURRENT.pdf p.1 \u00a74. Escalation",
+      "document_id": "01_support_policy_v3_current",
+      "document_title": "ParcelPilot Support Policy v3",
+      "excerpt": "4. Escalation\nP1 incidents should be escalated immediately. If a response target is already breached, the agent should clearly\nstate the breach and recommend escalation rather than hiding uncertainty.",
+      "is_authoritative": true,
+      "is_deprecated": false,
+      "page": 1,
+      "section": "4. Escalation",
+      "source_file": "01_Support_Policy_v3_CURRENT.pdf",
+      "topic": "support_response"
+    },
+    {
+      "account_id": null,
+      "authority_tier": 4,
+      "chunk_id": "02_support_policy_v2_deprecated#p1#c01",
+      "citation": "02_Support_Policy_v2_DEPRECATED.pdf p.1 \u00a7Severity and response targets",
+      "document_id": "02_support_policy_v2_deprecated",
+      "document_title": "ParcelPilot Support Policy v2",
+      "excerpt": "Severity and response targets\nP1 covers complete production outages and severe security incidents. P2 covers major feature degradation. P3\ncovers minor issues and questions.\nPlan\nP1\nP2\nP3\nEnterprise\n1 hour\n4 hours\n2 business days\nGrowth\n4 business hours\n1 business day\n3 business days\nStandard\n8 business hours\n2 business days\n3 business days\nNote: This file is intentionally retained for historical \u2026",
+      "is_authoritative": false,
+      "is_deprecated": true,
+      "page": 1,
+      "section": "Severity and response targets",
+      "source_file": "02_Support_Policy_v2_DEPRECATED.pdf",
+      "topic": "support_response"
+    }
+  ],
+  "step_budget_exhausted": false,
+  "tools_used": [
+    {
+      "message": null,
+      "status": "ok",
+      "step": 1,
+      "summary": "ticket lookup",
+      "tool_name": "lookup_record"
+    },
+    {
+      "message": null,
+      "status": "ok",
+      "step": 2,
+      "summary": "account_orders lookup",
+      "tool_name": "lookup_record"
+    },
+    {
+      "message": null,
+      "status": "ok",
+      "step": 3,
+      "summary": "sla=not_allowed",
+      "tool_name": "evaluate_sla"
+    },
+    {
+      "message": null,
+      "status": "ok",
+      "step": 4,
+      "summary": "7 evidence item(s)",
+      "tool_name": "search_documents"
+    }
+  ],
+  "uncertainties": [],
+  "user_id": "support.agent"
+}
