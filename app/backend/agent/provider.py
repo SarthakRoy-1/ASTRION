@@ -39,9 +39,24 @@ class Intent(StrEnum):
     INVESTIGATION = "investigation"
 
 
+# Support staff do not all use the same words for the same request, and an
+# intent this planner fails to recognise degrades the answer to "here are the
+# governing documents" instead of a computed decision. Each phrase below is an
+# ordinary synonym for the operation, never a phrase lifted from an example
+# question. Widening these is safe because an intent only ever fires against an
+# order this request already resolved (see the evaluation step below), so the
+# worst case is evaluating a policy for an order the user themselves named.
 _INTENT_KEYWORDS: tuple[tuple[Intent, tuple[str, ...]], ...] = (
-    (Intent.CANCELLATION, ("cancel", "cancellation")),
-    (Intent.SERVICE_CREDIT, ("service credit", "credit", "refund", "compensat")),
+    (
+        Intent.CANCELLATION,
+        ("cancel", "cancellation", "call off", "called off", "calling off",
+         "back out", "withdraw", "scrap"),
+    ),
+    (
+        Intent.SERVICE_CREDIT,
+        ("service credit", "credit", "refund", "compensat", "money back",
+         "reimburse", "goodwill", "make good"),
+    ),
     (
         Intent.SLA,
         (

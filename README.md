@@ -1,6 +1,6 @@
 # ParcelPilot Support & Operations AI Agent
 
-> **Status: Phase 8 — deployment configuration verified, not yet hosted.**
+> **Status: Phase 8 — deployed and live.**
 > Source pack verified (Phase 1); SQLite structured-data layer (Phase 2);
 > document ingestion and authority-ranked retrieval (Phase 3); agent
 > orchestration, deterministic policy decisions, and confirmation-gated
@@ -17,7 +17,24 @@
 > boundary, which is also what both test suites run on. **Authentication is
 > still a mock in every mode, including the deployment config below** — see
 > [Before deploying this publicly](#before-deploying-this-publicly-authentication-is-still-a-mock).
-> Nothing is hosted yet.
+
+## Live deployment
+
+| | URL |
+| --- | --- |
+| **App (Vercel)** | <https://parcelpilot-taupe.vercel.app/> |
+| **API (Render)** | <https://parcelpilot-api-7ro7.onrender.com> |
+
+Open the app, pick a context in the header, and ask something — no setup and no
+API key needed. The hosted API runs `LLM_PROVIDER=deterministic`, so answers are
+reproducible and cost nothing to serve. Account scope is enforced in the data
+layer and every state change still requires explicit confirmation, exactly as
+locally. The Render free tier sleeps when idle, so the first request after a
+quiet period can take a few seconds.
+
+Authentication remains a mock in the hosted deployment too — the identity picker
+in the header *is* the auth model. See
+[Before deploying this publicly](#before-deploying-this-publicly-authentication-is-still-a-mock).
 
 ## Purpose
 
@@ -509,9 +526,10 @@ afterward on a running container changes nothing.
 ### What is not included
 
 No CI workflow and no platform-specific config (Vercel/Render/Railway/Fly)
-exist in this repository — Docker Compose is the portable baseline any of
-those can build from, but choosing and configuring one is a deliberate step
-left to whoever hosts this, not assumed here. SQLite plus a single volume
+exist *in this repository*. The [live deployment](#live-deployment) is
+configured in the Vercel and Render dashboards rather than by committed files,
+so nothing here is coupled to a particular host; Docker Compose remains the
+portable baseline any of them can build from. SQLite plus a single volume
 implies single-writer semantics, which is correct for a demo and would need
 reconsideration before scaling to multiple backend instances.
 

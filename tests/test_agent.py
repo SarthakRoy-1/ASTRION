@@ -59,6 +59,32 @@ def test_intent_detection(message, expected):
     assert expected in detect_intents(message)
 
 
+@pytest.mark.parametrize(
+    ("message", "expected"),
+    [
+        # Support staff phrase the same request differently. An intent the
+        # planner misses degrades the answer to "here are the governing
+        # documents" instead of a computed decision, so ordinary synonyms of
+        # each operation have to route the same way the canonical word does.
+        ("customer wants to call off shipment ORD-1001", Intent.CANCELLATION),
+        ("they called off the booking", Intent.CANCELLATION),
+        ("can they back out of ORD-1001", Intent.CANCELLATION),
+        ("the customer wants to withdraw the order", Intent.CANCELLATION),
+        ("does the customer get money back", Intent.SERVICE_CREDIT),
+        ("should we reimburse them for the missed pickup", Intent.SERVICE_CREDIT),
+        ("is a goodwill payment warranted", Intent.SERVICE_CREDIT),
+    ],
+)
+def test_intent_detection_accepts_ordinary_synonyms(message, expected):
+    assert expected in detect_intents(message)
+
+
+def test_synonyms_do_not_collapse_distinct_intents():
+    """A credit phrasing must not also read as a cancellation, or vice versa."""
+    assert Intent.CANCELLATION not in detect_intents("does the customer get money back")
+    assert Intent.SERVICE_CREDIT not in detect_intents("customer wants to call off ORD-1001")
+
+
 def test_unrecognised_request_falls_back_to_investigation():
     assert detect_intents("what does the policy say") == {Intent.INVESTIGATION}
 
