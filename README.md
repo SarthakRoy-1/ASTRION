@@ -47,6 +47,15 @@ escalates when it cannot answer safely.
 It is explicitly **not** a "chat with your PDFs" wrapper. See
 [Architecture principle](#architecture-principle) below.
 
+**Documentation map.** This README is the entry point: what ParcelPilot is,
+how to run it, and how to read it. The full technical design — every module
+boundary, the retrieval and authority model, the agent loop, the deployment
+shape — lives in [docs/architecture.md](docs/architecture.md). The full
+product scope — who it's for, what it deliberately refuses to decide, the
+roles, and the prioritised future-work list this README's
+[roadmap](#think-beyond-the-immediate-requirements) is drawn from — lives in
+[docs/product.md](docs/product.md).
+
 ## Product Screenshots
 
 Captured from the [live deployment](#live-deployment), not from mockups.
@@ -816,3 +825,287 @@ passes over the same seam.
   (Phase 2 was also asked to avoid `pandas` explicitly), so it was dropped
   from `requirements.txt` rather than debugged. Revisit if a future phase
   has a concrete reason to need it.
+
+## Think Beyond the Immediate Requirements
+
+Everything below is **not implemented**. It is drawn directly from the
+deferred decisions already recorded in
+[docs/architecture.md §13](docs/architecture.md#13-deferred-decisions) and
+[docs/product.md — Future work](docs/product.md#future-work), ordered by what
+actually blocks the next thing from being safe or useful to build, not by
+novelty. Each item names what existing ParcelPilot foundation it builds on,
+because none of this is a rewrite — the module boundaries Phase 4–5 drew were
+chosen so that this list could be additive.
+
+### 1. Real authentication and production authorization
+
+**What:** Replace `auth/principals.py`'s fixed identity directory with a real
+identity provider — OAuth/OIDC, or signed API tokens issued out-of-band —
+behind `resolve_principal` (`app/backend/api/dependencies.py`). `AUTH_SECRET_KEY`
+and `AUTH_TOKEN_TTL_MINUTES` are already reserved in `.env.example` for exactly
+this and are unused today.
+
+**Why it's first:** The [live deployment](#live-deployment) is real, but
+anyone who can reach it can call the API as `support.manager` — or any of the
+other four identities — just by naming it in a header; no credential is
+checked. That is documented, not hidden (see
+[Before deploying this publicly](#before-deploying-this-publicly-authentication-is-still-a-mock)),
+and it is the one gap that gates every other item on this list: none of them
+are safe to point at real customer data while identity is still a
+self-asserted string.
+
+**What it solves:** Turns "the API only enforces scope for whoever it's told
+you are" into "the API establishes who you are." Nothing else changes in
+meaning — the scoping was already real.
+
+**What already enables it:** This is the reason `AgentContext` exists as a
+seam at all. Authorization — account scoping, source precedence, the
+confirmation gate — is enforced entirely below the model, in SQL and in
+`policies/`, and none of it reads how identity was established. Replacing
+`auth/principals.py` with a real provider touches one module; retrieval,
+policy evaluation and the action state machine need no change, which is the
+point Phase 5's design was built around.
+
+### 2. Durable conversation history and re-authorized memory
+
+**What:** Persist prior turns per conversation and replay relevant history
+into the tool-calling loop, so a follow-up question doesn't require the
+support agent to restate context the system already has.
+
+**Why it's second:** Today `POST /api/chat` issues and echoes a `session_id`
+that binds *prepared actions* — that's session/action correlation, not model
+memory. No prior turn is replayed; each request is investigated from scratch.
+The frontend's own conversation list is a client-side transcript of past
+responses, not evidence the backend remembers anything. Building this before
+authentication is real would mean deciding how to re-authorize a stored turn
+once identity is trustworthy — better to settle identity first, then decide
+what a stored turn is allowed to carry forward.
+
+**What it solves:** A support agent working a multi-message ticket
+conversation currently has to re-supply context ("about ORD-1001 again...")
+on every turn. Real memory removes that friction and lets follow-ups like
+"and what if the pickup had already happened?" resolve against the actual
+prior exchange instead of a fresh, context-free investigation.
+
+**The hard part, stated plainly:** replaying history into a tool-calling loop
+means a message from an earlier turn gets re-interpreted under whatever scope
+is active *now*. If a conversation could ever cross an identity or account
+boundary — a support agent later reopening a customer's thread, or a
+session outliving a permission change — replaying it naively would leak
+scope from one authorization context into another. The design has to bind
+each stored turn to the scope it was authorized *under*, and re-check that
+scope (not just replay the text) whenever the turn is loaded back in. That
+retention-and-re-authorization story is exactly what Phase 5 didn't have a
+reason to settle with mock auth in place — which is why this sits behind
+item 1, not ahead of it.
+
+**What already enables it:** The `session_id` correlation and the per-context
+conversation storage the frontend already exercises (see
+[Conversation Management](#conversation-management) above) are the shape this
+extends — the boundary to add is authorization on *read*, not a new storage
+model.
+
+### 3. Proactive issue detection
+
+**What:** A designed detector that surfaces a documented known issue against
+a ticket's symptoms *before* an agent asks, flags other orders on the same
+account likely affected by the same root cause, and surfaces SLA risk ahead
+of breach — built as explainable, source-cited findings, not a generic
+"anything interesting" feed.
+
+**Why it's third:** It's genuinely additive — it needs no change to
+retrieval, the record layer, or the policy engine, only a new pass over data
+those layers already expose. It comes after memory rather than before it
+because a detector that can say "this is the third ticket like this on this
+account this week" is far more useful with durable history to look across
+than with only the current request's investigation.
+
+**What it solves:** Right now the system is entirely reactive — it answers
+what's asked and does the defensive surfacing [product.md](docs/product.md)
+already ships (monthly cap warnings, stale-pickup flags, P1 escalation
+prompts), but there's no background scan and nothing volunteers an
+observation the agent didn't ask about. A cluster of tickets citing the same
+known issue, or a shipment failure pattern on one account, currently has to
+be noticed by a human reading multiple tickets. A support agent under time
+pressure is exactly the person least likely to spot a cross-ticket pattern
+unprompted.
+
+**The design constraint that matters:** every surfaced finding must trace to
+a specific clause, record or known-issue document the same way the existing
+defensive surfaces do — see
+[docs/product.md — Defensive and proactive behaviour that ships](docs/product.md#defensive-and-proactive-behaviour-that-ships)
+for the standard this has to meet. A general-purpose "surface anything
+unusual" feature is explicitly the failure mode to avoid; it becomes noise an
+agent learns to ignore, which is worse than not building it.
+
+**What already enables it:** `search_documents`' known-issue matching, the
+account-scoped `lookup_record` layer, and the tier/authority model in
+`retrieval/authority.py` are the exact primitives a detector would run
+against on a schedule instead of on request — no new data path, just a new
+caller.
+
+### 4. A credit-issuing action, with the manager-approval threshold enforced
+
+**What:** A new state-changing action — `issue_service_credit` or similar —
+added through the same `prepare_*` → confirm pipeline as
+`prepare_escalation` and `prepare_ticket_note`, gated so that a credit above
+the SOP's INR 1,000 threshold requires the confirming identity to hold the
+`support_manager` role.
+
+**Why it's fourth:** It's the item that makes the manager role's *existing*
+distinction from `support_agent` actually mean something, but it's a genuine
+net-new capability (money moves), so it belongs after the trust foundation
+(auth) and the usability foundation (memory), not ahead of them.
+
+**What it solves:** Today `evaluate_service_credit` computes the
+manager-approval flag and the policy engine *reports* it on every decision
+that crosses INR 1,000, but nothing enforces it —
+`AgentContext.may_change_state` is the only role check the system currently
+makes, and it admits both internal staff roles identically. That's not an
+oversight; it's because neither action that exists today issues a credit, so
+there's nothing for the threshold to gate yet. See
+[docs/product.md — Roles and what each may do](docs/product.md#roles-and-what-each-may-do).
+
+**What already enables it:** The confirmation architecture this action would
+plug into is already built and already generalizes — two action types exist
+today specifically to prove the mechanism isn't type-specific. Adding a
+third means: a `prepare_issue_service_credit` tool that returns a preview and
+a token exactly like the other two, and one new branch in the confirm
+endpoint's role check for amounts over the threshold. The action state
+machine, expiry, re-validation-at-confirm-time and single-use execution all
+carry over unchanged.
+
+### 5. Auditability alongside authentication and authorization
+
+**What:** As real authentication (item 1) lands, extend it with scoped
+permissions per identity beyond today's flat "may/may not change state," and
+a durable audit trail of who confirmed which action, when, and under what
+preview — not just the `GET /api/actions/{id}` snapshot of one action's own
+lifecycle that exists today.
+
+**Why it's here:** This is explicitly the *evolution* of item 1, not a
+separate initiative — authentication answers "who is this," authorization
+answers "what may they do," and auditability answers "what did they actually
+do." Building it as one undifferentiated "auth work" item would blur a
+distinction the codebase already keeps clean: identity resolution, scope
+enforcement, and action history are three different concerns living in three
+different modules (`auth/`, the policy/scoping layer, and `services/actions.py`)
+today, and they should stay that way as each one grows.
+
+**What it solves:** `support_manager` and `support_agent` are identical in
+capability today (see item 4) — real scoped permissions is what makes a
+manager-only capability, once one exists, actually mean something at the
+authorization layer rather than only in the SOP's text. A durable,
+queryable audit trail turns "an action executed" into "an action executed,
+attributably" — the difference that matters the moment a real credit or a
+real escalation has a real customer on the other end of it.
+
+**What already enables it:** Every action already carries a fingerprint,
+an expiry, and a confirming-caller re-validation step
+(see [Prepare and confirm an action](#prepare-and-confirm-an-action)) —
+the state machine already produces the events an audit trail would record;
+today they're just not persisted anywhere beyond the single action's own row.
+
+### 6. Streaming agent investigation
+
+**What:** Expose the orchestrator's actual tool-by-tool progress over SSE or
+a websocket, so the UI's `InvestigationSummary` component fills in rows as
+each tool call resolves, instead of rendering a completed investigation in
+one shot after `POST /api/chat` returns.
+
+**Why it's here rather than earlier:** It's a transport change, not a
+re-architecture, and it's pure UX — nothing about correctness, safety or
+scope depends on it. It sits behind the trust and usability items because a
+demo that streams a self-asserted identity's investigation isn't more
+trustworthy than one that doesn't; the ordering reflects that this is
+polish once the substance is solid, not a substitute for it.
+
+**What it solves:** The current UI is honest about this rather than faking
+it — the tool-activity panel already renders every step the orchestrator
+actually took, it's just rendered after the fact because the API answers in
+one response. A multi-step investigation (document search → record lookup →
+policy evaluation) can take a few real seconds; showing it live is a better
+experience for exactly the reason a spinner is worse than a progress bar.
+
+**What already enables it:** `InvestigationSummary` is already shaped to
+receive incremental rows — the component doesn't need to change, only the
+transport feeding it. The orchestration loop already emits a discrete event
+per tool call internally (`tools_used[]` in today's response is built from
+exactly those events, just collected instead of streamed); the work is
+adding a streaming response path over the same loop, not changing what the
+loop does.
+
+### 7. Real-mode prose validation, and evaluation more broadly
+
+**What:** In `LLM_PROVIDER=real`, assert that every monetary figure appearing
+in the model-authored `answer` string also appears in the structured
+`policy_decisions[]` returned beside it, and fall back to the deterministic
+composer's prose when it does not. Alongside that: regression suites over
+known policy-conflict cases, retrieval quality evaluation, authorization
+tests that stay adversarial as new tools are added, and production
+monitoring once this runs somewhere real.
+
+**Why it's last:** It's the narrowest-scope, lowest-likelihood risk on this
+list, and it only exists in `LLM_PROVIDER=real` — the deterministic planner,
+which is the default and what the whole test suite runs on, has no such gap
+by construction (`agent/composer.py` assembles prose from typed tool-result
+fields, so it cannot disagree with the decision it describes). See
+[docs/architecture.md §10.12](docs/architecture.md#1012-what-authority-the-models-prose-carries)
+for the full statement of this residual risk and why a half-tuned validator
+would be worse than the documented gap it replaced.
+
+**What it solves:** In real mode, the model writes the answer's prose, and a
+prompt is an instruction, not an enforcement mechanism — in principle a
+transcription slip or an over-confident paraphrase could put a figure in the
+prose that doesn't match the decision beside it. Today nothing detects that
+specific case, though authorization, scoping, precedence and the
+confirmation gate are all completely unaffected by it, since none of them
+read the answer string. Validation closes the one gap that's specific to
+prose, and a real evaluation suite is what turns "we believe this still
+holds" into something measured every time a tool, a document, or a policy
+rule changes.
+
+**What already enables it:** The seam this hardens already exists —
+`policy_decisions[]` is already the authoritative, UI-rendered source of
+truth, and the composer that would provide the deterministic fallback
+already exists and already runs by default. Validation is a check inserted
+at one point in `AgentOrchestrator.handle`, not new infrastructure.
+
+### Technical trade-offs guiding this roadmap
+
+None of the above changes the split this system was built around, and the
+roadmap is ordered partly to protect it:
+
+- **Deterministic business rules stay outside the model, always.** A
+  credit-issuing action (item 4) is a new tool wrapping a new function in
+  `policies/`, not a new prompt asking the model to compute an amount.
+- **Authorization stays below the model.** Real auth (item 1) replaces how
+  identity is *established*; it does not move the scope check into a prompt
+  or a system message. The check that matters was never expressible as an
+  instruction, and it still won't be.
+- **Confirmation stays a structural execution boundary**, not a UI
+  convention. A fourth action type gets the same two-call
+  prepare-then-confirm shape as the first two, with the same
+  expire/re-validate/single-use guarantees — never a shortcut that lets a
+  new action execute on the strength of the model's own confidence.
+- **No infrastructure gets added ahead of a reason to need it.** SQLite plus
+  a single volume is correct for this dataset's size and implies
+  single-writer semantics — that's a real limit worth naming, but it's a
+  reason to reconsider *if and when* multiple backend instances are needed,
+  not a reason to reach for a managed database now. The same discipline
+  applies to every item above: streaming (item 6) is worth building the day
+  a UI actually needs live progress, not before.
+- **Streaming replaces the mechanism, not the honesty.** The alternative to
+  building item 6 is simulating progress on top of a single-response API —
+  rejected deliberately, because a progress indicator that doesn't reflect
+  real tool execution is a worse UI decision than a plain "waiting" state.
+- **Memory ships with a retention and re-authorization model, or it doesn't
+  ship.** Item 2 is ordered behind item 1 specifically because replaying a
+  transcript into a tool-calling loop without deciding what scope a stored
+  turn carries would quietly reintroduce the exact class of cross-account
+  leak Phase 7's adversarial pass tested for and found nothing on.
+- **Proactive detection expands only as far as it stays explainable.** Item 3
+  is scoped to findings that cite a specific document or record, the same
+  bar the existing defensive surfaces meet — not because a broader "anything
+  interesting" feature is harder to build, but because it would be actively
+  worse than the reactive system it would replace.
