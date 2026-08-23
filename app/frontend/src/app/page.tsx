@@ -2,6 +2,7 @@
 
 import { AppHeader } from "@/components/AppHeader";
 import { Composer } from "@/components/Composer";
+import { ConnectionNotice } from "@/components/ConnectionNotice";
 import { Conversation } from "@/components/Conversation";
 import { ErrorNotice } from "@/components/ErrorNotice";
 import { SystemStatus } from "@/components/SystemStatus";
@@ -29,6 +30,7 @@ export default function ChatPage() {
     principals,
     principalsError,
     loadingPrincipals,
+    connection,
     health,
     turns,
     sending,
@@ -62,9 +64,13 @@ export default function ChatPage() {
 
       <main className={styles.main}>
         <div className={styles.content}>
-          {principalsError && (
+          {principalsError ? (
             <div className={styles.startupError}>
               <ErrorNotice error={principalsError} />
+            </div>
+          ) : (
+            <div className={styles.startupNotice}>
+              <ConnectionNotice state={connection} />
             </div>
           )}
 

@@ -33,7 +33,16 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { ApiError, confirmAction, getHealth, listPrincipals, sendChat } from "@/lib/client";
+import {
+  ApiError,
+  COLD_START_POLICY,
+  confirmAction,
+  getHealth,
+  isBackendReachable,
+  listPrincipals,
+  sendChat,
+  wakeBackend,
+} from "@/lib/client";
 import type {
   ActionState,
   ChatResponse,
@@ -47,6 +56,39 @@ const IDENTITY_STORAGE_KEY = "parcelpilot.identity";
 
 /** How much of the opening question becomes the conversation's label. */
 const TITLE_MAX_LENGTH = 48;
+
+/**
+ * How long the opening request may run before the UI admits to waiting.
+ *
+ * Short enough that a cold start never looks like a frozen page, long enough
+ * that a warm backend — which answers in a few tens of milliseconds — never
+ * flashes a status the reader has no time to read.
+ */
+const SLOW_START_MS = 1_200;
+
+/**
+ * How far the UI has got in reaching the backend.
+ *
+ * The distinction that earns its keep is `waking` versus `unavailable`. The
+ * deployment sleeps when idle and takes tens of seconds to return, so the
+ * first request after a quiet period fails in exactly the way a dead server
+ * does. Announcing "cannot reach the API" at that moment is simply wrong, and
+ * it is wrong in the way that makes a working system look broken.
+ *
+ * - `starting`  — the first attempt is in flight and it is too early to say
+ *                 anything; the normal case, and it shows nothing.
+ * - `connecting`— that attempt is taking longer than a warm backend would.
+ * - `waking`    — an attempt failed and the client is retrying while the
+ *                 instance spins up.
+ * - `ready`     — the backend has answered.
+ * - `unavailable`— the bounded wake-up strategy ran out. Now it is a fault.
+ */
+export type ConnectionState =
+  | "starting"
+  | "connecting"
+  | "waking"
+  | "ready"
+  | "unavailable";
 
 export interface ActionProgress {
   /** The action's state as last reported by the backend. */
@@ -127,6 +169,8 @@ export interface Conversation {
   principal: PrincipalView | null;
   principalsError: ApiError | null;
   loadingPrincipals: boolean;
+  /** How far the UI has got in reaching the backend. */
+  connection: ConnectionState;
   /** What this deployment is running. Null until known, and null if unknown. */
   health: HealthResponse | null;
 
@@ -153,6 +197,7 @@ export function useConversation(): Conversation {
   const [principals, setPrincipals] = useState<PrincipalView[]>([]);
   const [principalsError, setPrincipalsError] = useState<ApiError | null>(null);
   const [loadingPrincipals, setLoadingPrincipals] = useState(true);
+  const [connection, setConnection] = useState<ConnectionState>("starting");
 
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [identity, setIdentity] = useState<string | null>(null);
@@ -164,12 +209,38 @@ export function useConversation(): Conversation {
   const identityRef = useRef<string | null>(null);
   identityRef.current = identity;
 
+  // True once a wake-up has been attempted and failed. Without it, every
+  // message typed at a backend that really is down would restart the whole
+  // ninety-second wait instead of failing at once.
+  const wakeExhausted = useRef(false);
+
+  // A cold start is invisible for its first second or so, because the request
+  // is simply outstanding. Say nothing for that long — then say something,
+  // rather than leaving a blank page that reads as a hang.
+  useEffect(() => {
+    if (connection !== "starting") return;
+    const timer = setTimeout(() => {
+      setConnection((current) => (current === "starting" ? "connecting" : current));
+    }, SLOW_START_MS);
+    return () => clearTimeout(timer);
+  }, [connection]);
+
+  // The identity directory is a read-only GET, so it is safe to ask for again
+  // — and it is what gates the whole UI, which makes it the right request to
+  // carry the cold start. Failing it on the first attempt would report a
+  // sleeping instance as an unreachable one.
   useEffect(() => {
     let cancelled = false;
 
-    listPrincipals()
+    listPrincipals({
+      coldStart: COLD_START_POLICY,
+      onRetry: () => {
+        if (!cancelled) setConnection("waking");
+      },
+    })
       .then((loaded) => {
         if (cancelled) return;
+        setConnection("ready");
         setPrincipals(loaded);
 
         const remembered = readRememberedIdentity();
@@ -180,6 +251,10 @@ export function useConversation(): Conversation {
       })
       .catch((error: unknown) => {
         if (cancelled) return;
+        // The bounded strategy is spent. Only now is this a fault worth
+        // reporting, and it is reported with the backend's own error.
+        setConnection("unavailable");
+        wakeExhausted.current = true;
         setPrincipalsError(asApiError(error));
       })
       .finally(() => {
@@ -198,7 +273,7 @@ export function useConversation(): Conversation {
   useEffect(() => {
     let cancelled = false;
 
-    getHealth()
+    getHealth({ coldStart: COLD_START_POLICY })
       .then((loaded) => {
         if (!cancelled) setHealth(loaded);
       })
@@ -304,11 +379,28 @@ export function useConversation(): Conversation {
       setSending(true);
 
       try {
+        // The instance may have gone back to sleep since the page loaded. Wake
+        // it with the read-only probe *first*, then send the message once.
+        // The alternative — send, fail, resend — risks a second persisted turn
+        // and a second prepared action for one question the user asked once.
+        if (!isBackendReachable() && !wakeExhausted.current) {
+          setConnection("waking");
+          const awake = await wakeBackend({
+            onRetry: () => setConnection("waking"),
+          });
+          wakeExhausted.current = !awake;
+          setConnection(awake ? "ready" : "unavailable");
+        }
+
         const response = await sendChat({
           message: text,
           identity: activeIdentity,
           sessionId: threadSession,
         });
+        // The backend answered, so whatever the last wake attempt concluded is
+        // out of date: the next message may probe again.
+        wakeExhausted.current = false;
+        setConnection("ready");
         // The backend issues the session on the first request and expects it
         // back on every later one; it is what binds a prepared action to this
         // conversation.
@@ -326,11 +418,16 @@ export function useConversation(): Conversation {
           ],
         }));
       } catch (error: unknown) {
+        const apiError = asApiError(error);
+        // Not retried, deliberately: this message may already have been
+        // recorded and may already have prepared an action. The failure is
+        // shown as a turn, and re-asking is the user's decision to make.
+        if (apiError.code === "network_error") setConnection("unavailable");
         updateThread(setByIdentity, activeIdentity, threadId, (current) => ({
           ...current,
           turns: [
             ...current.turns,
-            { kind: "error", id: nextTurnId("error"), error: asApiError(error) },
+            { kind: "error", id: nextTurnId("error"), error: apiError },
           ],
         }));
       } finally {
@@ -420,6 +517,7 @@ export function useConversation(): Conversation {
     principal,
     principalsError,
     loadingPrincipals,
+    connection,
     health,
     turns,
     sending,

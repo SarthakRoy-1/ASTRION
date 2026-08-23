@@ -899,3 +899,101 @@ describe("conversation history", () => {
     void user;
   });
 });
+
+/**
+ * Surviving the deployment's cold start.
+ *
+ * The hosted backend spins down when idle, so the first request after a quiet
+ * period fails in exactly the way a dead server does. The behaviour under test
+ * is the difference between those two: waiting out a spin-up, and reporting a
+ * fault. Getting it wrong in the first direction makes a working system look
+ * broken; getting it wrong in the second makes a broken one look busy.
+ *
+ * The retry *limits* are pinned in `client.test.ts`, where the delays can be
+ * turned down. What is checked here is what the user sees.
+ */
+describe("cold start", () => {
+  it(
+    "waits out a sleeping backend instead of calling it unreachable",
+    async () => {
+      const stub = stubApi({ sleeping: 2 });
+      render(<ChatPage />);
+
+      // The first thing on screen is a wait, not a failure.
+      await screen.findByText(/waking the parcelpilot api/i, undefined, {
+        timeout: 4000,
+      });
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+
+      // And the instance coming up needs no reload and no second thought.
+      await screen.findByRole("combobox", { name: /context/i }, { timeout: 6000 });
+      await waitFor(() =>
+        expect(screen.queryByText(/waking the parcelpilot api/i)).not.toBeInTheDocument(),
+      );
+      expect(screen.queryByText(/cannot reach the parcelpilot api/i)).not.toBeInTheDocument();
+      expect(stub.refused).toBe(2);
+    },
+    15_000,
+  );
+
+  it("shows nothing at all when the backend is already awake", async () => {
+    stubApi();
+    await renderPage();
+
+    // Scenario A: a warm backend must cost the user no delay and no status
+    // text they have to read past.
+    expect(screen.queryByText(/waking the parcelpilot api/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/connecting to the parcelpilot api/i)).not.toBeInTheDocument();
+  });
+
+  it("reports a backend that is answering badly rather than waiting on it", async () => {
+    // A 500 is the application replying. Waiting cannot fix it, so the bounded
+    // strategy does not even start and the failure is surfaced at once.
+    stubApi({
+      principals: {
+        status: 500,
+        body: { error: { code: "internal_error", message: "Something failed." } },
+      },
+    });
+    render(<ChatPage />);
+
+    const alert = await screen.findByRole("alert");
+    expect(within(alert).getByText(/something went wrong/i)).toBeInTheDocument();
+    expect(screen.queryByText(/waking the parcelpilot api/i)).not.toBeInTheDocument();
+  });
+
+  it("sends one chat message, and only one, when the request fails", async () => {
+    const stub = stubApi({ chat: [{ networkError: true }] });
+    const user = await renderPage();
+    await ask(user, "Anything");
+
+    await screen.findByRole("alert");
+    // A resend could persist a second turn and prepare a second action for a
+    // question asked once. The user re-asks, or nobody does.
+    expect(chatCalls(stub)).toHaveLength(1);
+    // And the transcript shows the question once, not once per attempt.
+    expect(
+      within(screen.getByRole("main")).getAllByText("Anything"),
+    ).toHaveLength(1);
+  });
+
+  it("never repeats a confirmation whose response was lost", async () => {
+    const stub = stubApi({
+      chat: [{ body: fixtures.pendingAction }],
+      confirm: [{ networkError: true }],
+    });
+    const user = await renderPage();
+    await ask(user, "Investigate TKT-501 and escalate it.");
+    await screen.findByRole("region", { name: /action/i });
+
+    await user.click(screen.getByRole("button", { name: /confirm escalation/i }));
+
+    // This one may already have executed. The client does not get to guess.
+    await waitFor(() => expect(confirmCalls(stub)).toHaveLength(1));
+    expect(screen.queryByText("Executed")).not.toBeInTheDocument();
+    // The gate is unchanged: still explicit, still the user's to close.
+    expect(
+      await screen.findByRole("button", { name: /confirm escalation/i }),
+    ).toBeInTheDocument();
+  });
+});

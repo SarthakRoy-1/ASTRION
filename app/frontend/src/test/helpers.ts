@@ -65,6 +65,8 @@ export interface Reply {
 export interface ApiStub {
   /** Every request the UI made, in order. */
   calls: { url: string; method: string; body: unknown; identity: string | null }[];
+  /** Requests refused because the backend was modelled as still asleep. */
+  refused: number;
   /** Queue the next reply for POST /api/chat. */
   onChat: (reply: Reply) => void;
   /** Queue the next reply for a confirmation POST. */
@@ -79,15 +81,24 @@ export interface ApiStub {
  * assertions. An exhausted queue repeats its last entry, which keeps a test
  * that sends one more message than it scripted from failing for an unrelated
  * reason.
+ *
+ * `sleeping` models the deployment's own failure mode rather than a synthetic
+ * one: a spun-down instance refuses the first requests outright, whatever they
+ * ask for, and serves normally once it is up. Counting the refusals lets a
+ * test assert that the UI waited rather than gave up — and that it did not
+ * send a state-changing request twice while waiting.
  */
 export function stubApi(
   options: {
     principals?: Reply;
     chat?: Reply[];
     confirm?: Reply[];
+    sleeping?: number;
   } = {},
 ): ApiStub {
   const calls: ApiStub["calls"] = [];
+  let asleep = options.sleeping ?? 0;
+  let refused = 0;
   const chatQueue: Reply[] = [...(options.chat ?? [{ body: fixtures.cancellation }])];
   const confirmQueue: Reply[] = [
     ...(options.confirm ?? [{ body: fixtures.actionExecuted }]),
@@ -112,6 +123,12 @@ export function stubApi(
         identity: headers["X-ParcelPilot-User"] ?? null,
       });
 
+      if (asleep > 0) {
+        asleep -= 1;
+        refused += 1;
+        return respond({ networkError: true });
+      }
+
       if (url.includes("/api/principals")) return respond(principalsReply);
       if (url.includes("/health")) return respond({ body: fixtures.health });
       if (url.includes("/confirm")) return respond(take(confirmQueue));
@@ -121,11 +138,15 @@ export function stubApi(
     }),
   );
 
-  return {
+  const stub: ApiStub = {
     calls,
+    get refused() {
+      return refused;
+    },
     onChat: (reply) => chatQueue.push(reply),
     onConfirm: (reply) => confirmQueue.push(reply),
   };
+  return stub;
 }
 
 function respond(reply: Reply): Promise<Response> {

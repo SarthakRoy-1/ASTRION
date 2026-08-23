@@ -18,8 +18,16 @@
   padding: 0 var(--space-5);
 }
 
-.startupError {
+.startupError,
+.startupNotice {
   padding-top: var(--space-5);
+}
+
+/* The connection notice renders nothing once the backend has answered, which
+   is the ordinary case. Without this its wrapper would still hold the page
+   open by its own padding. */
+.startupNotice:empty {
+  display: none;
 }
 
 .composerBar {

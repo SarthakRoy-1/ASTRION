@@ -9,7 +9,16 @@
 
 import { describe, expect, it, vi } from "vitest";
 
-import { ApiError, confirmAction, listPrincipals, sendChat } from "./client";
+import {
+  ApiError,
+  confirmAction,
+  getHealth,
+  isBackendReachable,
+  listPrincipals,
+  sendChat,
+  wakeBackend,
+} from "./client";
+import type { ColdStartPolicy } from "./client";
 import { fixtures } from "@/test/helpers";
 
 function stubResponse(status: number, body: unknown) {
@@ -146,5 +155,169 @@ describe("confirmAction", () => {
     });
 
     expect(String(vi.mocked(fetch).mock.calls[0]![0])).toContain("ACT%2F..%2Fevil");
+  });
+});
+
+/**
+ * Surviving a cold start.
+ *
+ * The deployed backend spins down when idle, and the request that wakes it can
+ * take the better part of a minute. Two properties are being pinned here, and
+ * they pull in opposite directions: a read-only request must be patient enough
+ * to outlast the spin-up, and *nothing* may be patient enough to turn a dead
+ * backend into an endless wait or a repeated write.
+ *
+ * The real policy waits up to about ninety seconds, which is not a thing to
+ * spend in a test suite. These use the same code path with the delays turned
+ * down, so what is verified is the shape of the strategy — when it retries,
+ * when it refuses to, and where it stops — rather than the specific numbers.
+ */
+
+/** The production policy, with the waiting taken out. */
+const FAST: ColdStartPolicy = {
+  attemptTimeoutMs: 50,
+  retryDelaysMs: [1, 2, 4],
+  budgetMs: 10_000,
+};
+
+function stubSequence(replies: Array<{ status: number; body?: unknown } | "offline">) {
+  let index = 0;
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => {
+      const reply = replies[Math.min(index, replies.length - 1)]!;
+      index += 1;
+      if (reply === "offline") throw new TypeError("Failed to fetch");
+      return {
+        ok: reply.status >= 200 && reply.status < 300,
+        status: reply.status,
+        statusText: "",
+        json: async () => reply.body ?? null,
+      } as Response;
+    }),
+  );
+}
+
+describe("cold starts", () => {
+  it("keeps trying a read-only request while the instance wakes", async () => {
+    stubSequence(["offline", "offline", { status: 200, body: fixtures.principals }]);
+
+    await expect(listPrincipals({ coldStart: FAST })).resolves.toHaveLength(
+      fixtures.principals.principals!.length,
+    );
+    expect(vi.mocked(fetch)).toHaveBeenCalledTimes(3);
+  });
+
+  it("retries a gateway status but not an application error", async () => {
+    // While the instance spins up it is the host router that answers, not the
+    // application. A 500 means something *did* handle the request.
+    stubSequence([{ status: 503 }, { status: 200, body: fixtures.principals }]);
+    await expect(listPrincipals({ coldStart: FAST })).resolves.toBeDefined();
+    expect(vi.mocked(fetch)).toHaveBeenCalledTimes(2);
+
+    stubSequence([{ status: 500 }, { status: 200, body: fixtures.principals }]);
+    await expect(listPrincipals({ coldStart: FAST })).rejects.toBeInstanceOf(ApiError);
+    expect(vi.mocked(fetch)).toHaveBeenCalledTimes(1);
+  });
+
+  it("gives up after a bounded number of attempts", async () => {
+    stubSequence(["offline"]);
+
+    await expect(listPrincipals({ coldStart: FAST })).rejects.toMatchObject({
+      code: "network_error",
+    });
+    // One attempt, then one per configured delay. Never more, whatever happens.
+    expect(vi.mocked(fetch)).toHaveBeenCalledTimes(FAST.retryDelaysMs.length + 1);
+  });
+
+  it("stops retrying once the wall-clock budget is spent", async () => {
+    stubSequence(["offline"]);
+    const policy: ColdStartPolicy = {
+      ...FAST,
+      retryDelaysMs: [40, 40, 40, 40, 40],
+      budgetMs: 60,
+    };
+
+    await expect(listPrincipals({ coldStart: policy })).rejects.toBeInstanceOf(ApiError);
+    // The delays alone would allow six attempts; the budget cuts it to two.
+    expect(vi.mocked(fetch)).toHaveBeenCalledTimes(2);
+  });
+
+  it("abandons an attempt that is never answered", async () => {
+    // A held-open connection is the other face of a cold start, and it must not
+    // be allowed to hang the page indefinitely.
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        (_url: RequestInfo | URL, init?: RequestInit) =>
+          new Promise((_resolve, reject) => {
+            init?.signal?.addEventListener("abort", () =>
+              reject(new DOMException("Aborted", "AbortError")),
+            );
+          }),
+      ),
+    );
+
+    await expect(
+      listPrincipals({ coldStart: { ...FAST, retryDelaysMs: [] } }),
+    ).rejects.toMatchObject({ code: "network_error" });
+    expect(vi.mocked(fetch)).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports whether the backend answered, without throwing", async () => {
+    stubSequence(["offline"]);
+    await expect(wakeBackend({ coldStart: { ...FAST, retryDelaysMs: [1] } })).resolves.toBe(
+      false,
+    );
+    expect(isBackendReachable()).toBe(false);
+
+    stubSequence([{ status: 200, body: fixtures.health }]);
+    await expect(wakeBackend({ coldStart: FAST })).resolves.toBe(true);
+    expect(isBackendReachable()).toBe(true);
+  });
+
+  it("counts a backend that answers with an error as awake", async () => {
+    // Waiting cannot fix a broken deployment, and treating it as a cold start
+    // would spend another ninety seconds discovering that.
+    stubSequence([{ status: 500 }]);
+
+    await expect(wakeBackend({ coldStart: FAST })).resolves.toBe(true);
+    expect(vi.mocked(fetch)).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not retry a single request by default", async () => {
+    stubSequence(["offline"]);
+
+    await expect(getHealth()).rejects.toBeInstanceOf(ApiError);
+    expect(vi.mocked(fetch)).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("requests that are never repeated", () => {
+  it("sends a chat message exactly once even when the transport fails", async () => {
+    stubSequence(["offline"]);
+
+    await expect(
+      sendChat({ message: "hi", identity: "support.agent", sessionId: null }),
+    ).rejects.toMatchObject({ code: "network_error" });
+    // A second attempt could persist a second turn and prepare a second action.
+    expect(vi.mocked(fetch)).toHaveBeenCalledTimes(1);
+  });
+
+  it("sends a confirmation exactly once even when the transport fails", async () => {
+    stubSequence(["offline"]);
+
+    await expect(
+      confirmAction({
+        actionId: "ACT-abc",
+        decision: "approve",
+        identity: "support.manager",
+        sessionId: "SES-1",
+        fingerprint: "fp-1",
+      }),
+    ).rejects.toMatchObject({ code: "network_error" });
+    // The one request that changes the world. A lost response may still have
+    // executed, so repeating it is never the client's call.
+    expect(vi.mocked(fetch)).toHaveBeenCalledTimes(1);
   });
 });
