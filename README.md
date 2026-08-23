@@ -54,7 +54,10 @@ shape — lives in [docs/architecture.md](docs/architecture.md). The full
 product scope — who it's for, what it deliberately refuses to decide, the
 roles, and the prioritised future-work list this README's
 [roadmap](#think-beyond-the-immediate-requirements) is drawn from — lives in
-[docs/product.md](docs/product.md).
+[docs/product.md](docs/product.md). The expanded, standalone version of that
+roadmap — what would be built next, why, in what order, and what stays
+explicitly unimplemented until then — lives in
+[Future Plan](docs/FuturePlan.md).
 
 ## Product Screenshots
 
