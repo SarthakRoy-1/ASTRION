@@ -7,7 +7,7 @@
  * assume. No test reaches the network, and none needs an API key.
  */
 
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 
@@ -99,9 +99,10 @@ describe("chat page", () => {
 
     await ask(user, "Can Northstar cancel ORD-1001?");
 
-    expect(await screen.findByText("Can Northstar cancel ORD-1001?")).toBeInTheDocument();
+    const transcript = within(screen.getByRole("main"));
+    expect(await transcript.findByText("Can Northstar cancel ORD-1001?")).toBeInTheDocument();
     expect(
-      await screen.findByText(/can be cancelled with no cancellation fee/i),
+      await transcript.findByText(/can be cancelled with no cancellation fee/i),
     ).toBeInTheDocument();
   });
 
@@ -625,7 +626,11 @@ describe("session handling", () => {
     await screen.findByText(/can be cancelled with no cancellation fee/i);
 
     await user.click(screen.getByRole("button", { name: /new conversation/i }));
-    expect(screen.queryByText("First question")).not.toBeInTheDocument();
+    // Cleared from the transcript. It is still reachable from history, which
+    // lives in the header — see the conversation-history tests below.
+    expect(
+      within(screen.getByRole("main")).queryByText("First question"),
+    ).not.toBeInTheDocument();
 
     await ask(user, "Fresh question");
     await waitFor(() => expect(chatCalls(stub)).toHaveLength(2));
@@ -653,5 +658,244 @@ describe("session handling", () => {
     await waitFor(() => expect(chatCalls(stub)).toHaveLength(2));
     expect(chatCalls(stub)[1]!.body).toMatchObject({ user_id: "customer.northstar" });
     expect(chatCalls(stub)[1]!.body).not.toHaveProperty("session_id");
+  });
+});
+
+describe("conversation history", () => {
+  /** Open the history disclosure and return a scoped query set. */
+  async function openHistory(user: ReturnType<typeof userEvent.setup>) {
+    const summary = screen.getByText(/^Conversations$/);
+    await user.click(summary);
+    // Scope to the disclosure itself: several cards render their own <header>,
+    // which jsdom also reports as role="banner".
+    const panel = summary.closest("details");
+    if (!panel) throw new Error("conversation history panel not found");
+    return within(panel as HTMLElement);
+  }
+
+  function transcript() {
+    return within(screen.getByRole("main"));
+  }
+
+  async function switchTo(
+    user: ReturnType<typeof userEvent.setup>,
+    userId: string,
+  ) {
+    await user.selectOptions(
+      screen.getByRole("combobox", { name: /context/i }),
+      userId,
+    );
+  }
+
+  it("starts a new conversation empty while keeping the previous one", async () => {
+    stubApi({ chat: [{ body: fixtures.cancellation }] });
+    const user = await renderPage();
+
+    await ask(user, "First question");
+    await transcript().findByText(/can be cancelled with no cancellation fee/i);
+
+    await user.click(screen.getByRole("button", { name: /new conversation/i }));
+
+    // The new conversation is empty...
+    expect(transcript().queryByText("First question")).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: /ask about an order/i }),
+    ).toBeInTheDocument();
+
+    // ...and the previous one was preserved, not discarded.
+    const history = await openHistory(user);
+    expect(history.getByRole("button", { name: /First question/ })).toBeInTheDocument();
+  });
+
+  it("preserves a conversation when the context switches away and back", async () => {
+    stubApi({
+      chat: [{ body: fixtures.cancellation }, { body: fixtures.knownIssue }],
+    });
+    const user = await renderPage();
+
+    // Northstar-scoped internal context asks two questions.
+    await ask(user, "Northstar question one");
+    await transcript().findByText(/can be cancelled with no cancellation fee/i);
+
+    await switchTo(user, "customer.lumenworks");
+    expect(transcript().queryByText("Northstar question one")).not.toBeInTheDocument();
+
+    await ask(user, "LumenWorks question one");
+    await waitFor(() =>
+      expect(transcript().getByText("LumenWorks question one")).toBeInTheDocument(),
+    );
+
+    // Back to the first context: its transcript returns intact.
+    await switchTo(user, "support.agent");
+    await waitFor(() =>
+      expect(transcript().getByText("Northstar question one")).toBeInTheDocument(),
+    );
+    expect(
+      transcript().getByText(/can be cancelled with no cancellation fee/i),
+    ).toBeInTheDocument();
+    expect(transcript().queryByText("LumenWorks question one")).not.toBeInTheDocument();
+  });
+
+  it("never shows one context's history while another context is active", async () => {
+    stubApi({
+      chat: [{ body: fixtures.cancellation }, { body: fixtures.knownIssue }],
+    });
+    const user = await renderPage();
+
+    await ask(user, "Northstar private question");
+    await transcript().findByText(/can be cancelled with no cancellation fee/i);
+
+    // LumenWorks must see neither the transcript nor the history entry.
+    await switchTo(user, "customer.lumenworks");
+    expect(screen.queryByText("Northstar private question")).not.toBeInTheDocument();
+
+    await ask(user, "LumenWorks private question");
+    await waitFor(() =>
+      expect(transcript().getByText("LumenWorks private question")).toBeInTheDocument(),
+    );
+
+    const lumenHistory = await openHistory(user);
+    expect(
+      lumenHistory.queryByRole("button", { name: /Northstar private question/ }),
+    ).not.toBeInTheDocument();
+    expect(
+      lumenHistory.getByRole("button", { name: /LumenWorks private question/ }),
+    ).toBeInTheDocument();
+
+    // ...and the reverse direction holds too.
+    await switchTo(user, "support.agent");
+    expect(screen.queryByText("LumenWorks private question")).not.toBeInTheDocument();
+    const northstarHistory = await openHistory(user);
+    expect(
+      northstarHistory.queryByRole("button", { name: /LumenWorks private question/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("restores an earlier conversation's messages when it is selected", async () => {
+    stubApi({
+      chat: [{ body: fixtures.cancellation }, { body: fixtures.knownIssue }],
+    });
+    const user = await renderPage();
+
+    await ask(user, "The older question");
+    await transcript().findByText(/can be cancelled with no cancellation fee/i);
+
+    await user.click(screen.getByRole("button", { name: /new conversation/i }));
+    await ask(user, "The newer question");
+    await waitFor(() =>
+      expect(transcript().getByText("The newer question")).toBeInTheDocument(),
+    );
+    expect(transcript().queryByText("The older question")).not.toBeInTheDocument();
+
+    const history = await openHistory(user);
+    await user.click(history.getByRole("button", { name: /The older question/ }));
+
+    // The earlier transcript comes back, agent turn and all.
+    await waitFor(() =>
+      expect(transcript().getByText("The older question")).toBeInTheDocument(),
+    );
+    expect(
+      transcript().getByText(/can be cancelled with no cancellation fee/i),
+    ).toBeInTheDocument();
+    expect(transcript().queryByText("The newer question")).not.toBeInTheDocument();
+  });
+
+  it("marks which conversation is the current one", async () => {
+    stubApi({
+      chat: [{ body: fixtures.cancellation }, { body: fixtures.knownIssue }],
+    });
+    const user = await renderPage();
+
+    await ask(user, "Older thread");
+    await transcript().findByText(/can be cancelled with no cancellation fee/i);
+    await user.click(screen.getByRole("button", { name: /new conversation/i }));
+    await ask(user, "Newer thread");
+    await waitFor(() =>
+      expect(transcript().getByText("Newer thread")).toBeInTheDocument(),
+    );
+
+    const history = await openHistory(user);
+    const current = history.getByRole("button", { name: /Newer thread/ });
+    const older = history.getByRole("button", { name: /Older thread/ });
+
+    expect(current).toHaveAttribute("aria-current", "true");
+    expect(older).not.toHaveAttribute("aria-current");
+  });
+
+  it("gives each context its own independent session", async () => {
+    const stub = stubApi({
+      chat: [{ body: fixtures.cancellation }, { body: fixtures.knownIssue }],
+    });
+    const user = await renderPage();
+
+    await ask(user, "First");
+    await waitFor(() => expect(chatCalls(stub)).toHaveLength(1));
+
+    // A second context starts its own session rather than inheriting one.
+    await switchTo(user, "customer.lumenworks");
+    await ask(user, "Second");
+    await waitFor(() => expect(chatCalls(stub)).toHaveLength(2));
+
+    expect(chatCalls(stub)[1]!.body).toMatchObject({ user_id: "customer.lumenworks" });
+    expect(chatCalls(stub)[1]!.body).not.toHaveProperty("session_id");
+  });
+
+  it("resumes the original session when a context is returned to", async () => {
+    const stub = stubApi({
+      chat: [
+        { body: fixtures.cancellation },
+        { body: fixtures.knownIssue },
+        { body: fixtures.knownIssue },
+      ],
+    });
+    const user = await renderPage();
+
+    await ask(user, "First");
+    await waitFor(() => expect(chatCalls(stub)).toHaveLength(1));
+
+    await switchTo(user, "customer.lumenworks");
+    await ask(user, "Second");
+    await waitFor(() => expect(chatCalls(stub)).toHaveLength(2));
+
+    // Returning resumes that context's own session, not the other one's.
+    await switchTo(user, "support.agent");
+    await ask(user, "Third");
+    await waitFor(() => expect(chatCalls(stub)).toHaveLength(3));
+
+    expect(chatCalls(stub)[2]!.body).toMatchObject({
+      user_id: "support.agent",
+      session_id: fixtures.cancellation.session_id,
+    });
+  });
+
+  it("offers no history until there is something to go back to", async () => {
+    stubApi({ chat: [{ body: fixtures.cancellation }] });
+    const user = await renderPage();
+
+    // A single untouched conversation is the starting state, not history.
+    expect(screen.queryByText(/^Conversations$/)).not.toBeInTheDocument();
+
+    await ask(user, "Something");
+    await transcript().findByText(/can be cancelled with no cancellation fee/i);
+    expect(screen.getByText(/^Conversations$/)).toBeInTheDocument();
+  });
+
+  it("keeps history in memory only, so a remount starts clean", async () => {
+    stubApi({ chat: [{ body: fixtures.cancellation }] });
+    const user = await renderPage();
+
+    await ask(user, "Before reload");
+    await transcript().findByText(/can be cancelled with no cancellation fee/i);
+
+    // A remount stands in for a browser reload: this feature is deliberately
+    // client-side only, with no backend persistence behind it.
+    cleanup();
+    stubApi({ chat: [{ body: fixtures.cancellation }] });
+    render(<ChatPage />);
+    await screen.findByRole("combobox", { name: /context/i });
+
+    expect(screen.queryByText("Before reload")).not.toBeInTheDocument();
+    expect(screen.queryByText(/^Conversations$/)).not.toBeInTheDocument();
+    void user;
   });
 });

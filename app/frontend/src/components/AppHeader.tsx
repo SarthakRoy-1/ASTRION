@@ -1,6 +1,8 @@
 "use client";
 
 import { ContextSelector } from "./ContextSelector";
+import { ConversationHistory } from "./ConversationHistory";
+import type { ConversationSummary } from "@/hooks/useConversation";
 import type { PrincipalView } from "@/lib/types";
 
 import styles from "./AppHeader.module.css";
@@ -19,7 +21,9 @@ export function AppHeader({
   identity,
   busy,
   canReset,
+  conversations,
   onSelectIdentity,
+  onSelectConversation,
   onReset,
 }: {
   principals: PrincipalView[];
@@ -27,7 +31,10 @@ export function AppHeader({
   identity: string | null;
   busy: boolean;
   canReset: boolean;
+  /** Already scoped to the active identity by the state machine. */
+  conversations: ConversationSummary[];
   onSelectIdentity: (userId: string) => void;
+  onSelectConversation: (conversationId: string) => void;
   onReset: () => void;
 }) {
   const scope = principal?.account_scope ?? [];
@@ -46,6 +53,12 @@ export function AppHeader({
             identity={identity}
             disabled={busy}
             onSelect={onSelectIdentity}
+          />
+          <ConversationHistory
+            conversations={conversations}
+            contextName={principal?.display_name ?? null}
+            disabled={busy}
+            onSelect={onSelectConversation}
           />
           <button
             type="button"

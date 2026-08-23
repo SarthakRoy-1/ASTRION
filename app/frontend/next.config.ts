@@ -8,7 +8,7 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   typedRoutes: true,
-  // Next.js otherwise writes its own AGENTS.md/CLAUDE.md into this directory.
+  // Next.js otherwise writes its own agent instruction files into this directory.
   // The repository documents itself in README.md and docs/architecture.md.
   agentRules: false,
 };

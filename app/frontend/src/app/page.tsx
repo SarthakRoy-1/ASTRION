@@ -33,7 +33,9 @@ export default function ChatPage() {
     turns,
     sending,
     hasStarted,
+    conversations,
     selectIdentity,
+    selectConversation,
     send,
     respondToAction,
     reset,
@@ -52,7 +54,9 @@ export default function ChatPage() {
         identity={identity}
         busy={sending}
         canReset={hasStarted}
+        conversations={conversations}
         onSelectIdentity={selectIdentity}
+        onSelectConversation={selectConversation}
         onReset={reset}
       />
 
