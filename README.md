@@ -47,6 +47,69 @@ escalates when it cannot answer safely.
 It is explicitly **not** a "chat with your PDFs" wrapper. See
 [Architecture principle](#architecture-principle) below.
 
+## Product Screenshots
+
+Captured from the [live deployment](#live-deployment), not from mockups.
+
+### Core Experience
+
+| | |
+| --- | --- |
+| ![Main interface](docs/screenshots/01-main-interface.png) | ![Customer context](docs/screenshots/02-customer-context.png) |
+| **The whole product is one screen.** Header states who you are and which accounts you may reach; the composer sits below the transcript. No dashboard, no navigation. | **Switching context changes what you can see.** A customer contact is scoped to a single account, and the strip says so in full rather than implying it. |
+
+### Contract-Aware Reasoning
+
+![Northstar cancellation](docs/screenshots/03-northstar-cancellation.png)
+
+**A signed agreement outranks the standard SOP.** ORD-1001 would normally attract the SOP's cancellation fee. Northstar's enterprise agreement waives it, so the verdict reads *Allowed · INR 0 · no fee*, and the card names the winning source, the losing source and the topic the precedence applied to.
+
+![LumenWorks service credit](docs/screenshots/04-lumenworks-service-credit.png)
+
+**The same mechanism, a different customer, a different number.** LumenWorks' agreement replaces the SOP's *INR 500 past 2 hours* default with *INR 300 past 4 hours*. The measured delay and the fault inputs the verdict rested on are shown beside it.
+
+| | |
+| --- | --- |
+| ![SLA investigation](docs/screenshots/05-sla-investigation.png) | ![SwiftShip known issue](docs/screenshots/06-swiftship-known-issue.png) |
+| **A breached first-response target.** The agreement's 15-minute P1 target overrides the plan default, and elapsed time is measured against the dataset snapshot rather than today's date. | **A documented known issue instead of a guess.** A `BOOKED` order after collection matches KI-211's pickup-webhook delay, so the agent cites the issue rather than asserting the carrier failed. |
+
+### Security and Actions
+
+![Access control refusal](docs/screenshots/07-access-control-refusal.png)
+
+**Authorisation is enforced in the data layer, not the prompt.** A LumenWorks contact asking about a Northstar order is refused by the lookup tool itself — the record is reported as outside the caller's scope, and no cross-account detail reaches the answer.
+
+| | |
+| --- | --- |
+| ![Escalation prepared](docs/screenshots/08-escalation-prepared.png) | ![Escalation executed](docs/screenshots/09-escalation-executed.png) |
+| **Nothing runs until a human says so.** The agent prepares the escalation, states in words that nothing has changed yet, and shows exactly what will happen along with when the proposal expires. | **Executed only after explicit confirmation**, with the resulting escalation id returned as a receipt. A replayed confirmation is refused. |
+
+### Conversation Management
+
+Each account context keeps its own conversations. Switching context never destroys them, and a customer can never reach another customer's history.
+
+![Conversation history list](docs/screenshots/10-conversation-history-list.png)
+
+**Browsing previous conversations.** The *Conversations* panel lists every thread belonging to the context currently selected, labelled by its opening question and marked with which one is current. *New conversation* starts a fresh thread without discarding the old ones.
+
+![Restore a previous conversation](docs/screenshots/11-restore-previous-conversation.png)
+
+**Restoring one.** Selecting an earlier conversation brings its full transcript back — questions, decision cards and evidence — and marks it as current.
+
+![Continue a restored conversation](docs/screenshots/12-continue-restored-conversation.png)
+
+**Continuing it.** A restored conversation is live, not an archive: the follow-up lands in the same thread, beneath the original exchange, and the thread count is unchanged.
+
+![Context-specific history](docs/screenshots/13-context-specific-history.png)
+
+**Separate history per customer.** The LumenWorks context sees only conversations held as LumenWorks. Threads are stored per identity rather than in one shared list the interface filters, so there is no code path on which one customer's transcript reaches another.
+
+### Agent Transparency
+
+![Tool visibility](docs/screenshots/14-tool-visibility.png)
+
+**What the agent actually did.** Every answer reports the capabilities it used — structured lookup, policy calculation, document retrieval — with its real step count. Sources are split into what governed the answer and what was outranked or superseded, so deprecated material stays visible without ever being mistaken for current policy.
+
 ## Assessment context
 
 Built for the ParcelPilot AI Engineer assessment. The system must support:
