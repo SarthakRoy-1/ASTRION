@@ -205,6 +205,16 @@ async function request<T>(
     response = await fetch(`${apiBaseUrl()}${path}`, {
       ...rest,
       headers: requestHeaders,
+      // The session is an HttpOnly cookie, so it only travels if the request
+      // asks for it. `include` rather than `same-origin` because the API is
+      // served from its own origin; the backend's CORS allow-list and its
+      // Origin check are what keep that from being a hole, and a wildcard
+      // origin is refused at startup precisely so this stays safe.
+      //
+      // Note what is deliberately absent: any token read from JavaScript. The
+      // cookie is HttpOnly, so this code cannot see it, and neither can an
+      // injected script.
+      credentials: "include",
     });
   } catch (cause) {
     // A dead backend is not a server error; saying "500" here would send the

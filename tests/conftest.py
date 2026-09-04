@@ -280,9 +280,20 @@ def api_settings(full_db):
     unaffected by whatever is in the developer's real environment or `.env` —
     and so no test can accidentally depend on an API key being present.
     """
-    from app.backend.core.config import Settings
+    from app.backend.core.config import AuthMode, Settings
 
-    return Settings(database_path=full_db, cors_allow_origins=())
+    # `auth_mode` is stated explicitly rather than inherited. These tests
+    # exercise the agent, the policy engine and the action state machine under
+    # a named demo persona, which is what `DEMO_HEADER` exists for — and saying
+    # so here keeps the *default* (`AuthMode.SESSION`) genuinely secure instead
+    # of being loosened to suit the suite. The session-authenticated path and
+    # the tenant-isolation attacks against it are covered separately, in
+    # tests/test_security_auth.py and tests/test_security_adversarial.py.
+    return Settings(
+        database_path=full_db,
+        cors_allow_origins=(),
+        auth_mode=AuthMode.DEMO_HEADER,
+    )
 
 
 @pytest.fixture

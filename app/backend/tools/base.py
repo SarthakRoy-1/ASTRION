@@ -109,7 +109,13 @@ class ToolRegistry:
                 ),
             )
 
-        if spec.mutating and not context.may_change_state:
+        # `mutating` means the tool *prepares* an action, never that it
+        # executes one — execution is not in any registry. So the gate here is
+        # the proposal permission, not the execution permission: a SUPPORT
+        # member may draft an escalation that only an OPERATIONS member can
+        # confirm. For a context built without an organisation the two
+        # predicates are identical, so no Phase 4 caller changes behaviour.
+        if spec.mutating and not context.may_propose_action:
             return ToolResult(
                 status=ToolStatus.FORBIDDEN,
                 message=f"role {context.role.value!r} may not prepare state-changing actions",

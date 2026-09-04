@@ -40,6 +40,13 @@ from pathlib import Path
 
 import pymupdf
 
+from app.backend.ingestion.safety import (
+    MAX_FILE_BYTES,
+    MAX_PDF_PAGES,
+    UnsafeFileError,
+    check_expansion,
+    detect_type,
+)
 from app.backend.models.documents import Document, DocumentChunk
 from app.backend.retrieval.authority import (
     UnknownAuthorityError,
@@ -236,12 +243,60 @@ def extract_page_texts(pdf_path: Path) -> list[str]:
 
 
 def _open(pdf_path: Path) -> pymupdf.Document:
+    """Open a PDF, having first decided from its bytes that it is one.
+
+    Every check here happens *before* `pymupdf.open` is called. The parser is a
+    large native surface, and "hand it the file and catch the exception" is not
+    a control against a malformed or hostile document — by the time an
+    exception is available, the parser has already read the input.
+    """
     if not pdf_path.is_file():
         raise DocumentIngestionError(f"source document not found: {pdf_path}")
+
+    size = pdf_path.stat().st_size
+    if size == 0:
+        raise DocumentIngestionError(f"{pdf_path.name}: the file is empty")
+    if size > MAX_FILE_BYTES:
+        raise DocumentIngestionError(
+            f"{pdf_path.name}: {size:,} bytes exceeds the "
+            f"{MAX_FILE_BYTES:,}-byte ingestion limit"
+        )
+
+    # Content decides the type. A `.pdf` whose bytes say otherwise is rejected
+    # here rather than discovered by the parser.
+    with pdf_path.open("rb") as handle:
+        head = handle.read(8192)
     try:
-        return pymupdf.open(pdf_path)
+        detected = detect_type(head, filename=pdf_path.name)
+    except UnsafeFileError as exc:
+        raise DocumentIngestionError(f"{pdf_path.name}: {exc}") from exc
+    if detected != "pdf":
+        raise DocumentIngestionError(
+            f"{pdf_path.name}: contents are {detected!r}, not a PDF"
+        )
+
+    try:
+        document = pymupdf.open(pdf_path)
     except Exception as exc:  # pymupdf raises its own exception types
         raise DocumentIngestionError(f"{pdf_path.name}: could not be opened as a PDF ({exc})") from exc
+
+    # An encrypted document cannot be read, and a page count beyond the limit
+    # makes extraction arbitrarily expensive. Both are refused with the handle
+    # closed, so a rejection never leaks one.
+    try:
+        if getattr(document, "needs_pass", False):
+            raise DocumentIngestionError(
+                f"{pdf_path.name}: the document is password-protected"
+            )
+        if document.page_count > MAX_PDF_PAGES:
+            raise DocumentIngestionError(
+                f"{pdf_path.name}: {document.page_count} pages exceeds the "
+                f"{MAX_PDF_PAGES}-page ingestion limit"
+            )
+    except DocumentIngestionError:
+        document.close()
+        raise
+    return document
 
 
 def extract_document(pdf_path: Path, *, source_sha256: str | None = None) -> ExtractedDocument:
@@ -261,6 +316,20 @@ def extract_document(pdf_path: Path, *, source_sha256: str | None = None) -> Ext
     source_file = pdf_path.name
     if not any(pages_lines):
         raise DocumentIngestionError(f"{source_file}: no extractable text found")
+
+    # The decompression-bomb check, which can only be made once the text is
+    # out: a few kilobytes of PDF that expand into hundreds of megabytes of
+    # text is the signature, and the absolute ceiling inside `check_expansion`
+    # catches the large-file variant the ratio alone would miss.
+    extracted_chars = sum(len(line.text) for page in pages_lines for line in page)
+    try:
+        check_expansion(
+            source_bytes=pdf_path.stat().st_size,
+            extracted_chars=extracted_chars,
+            label=source_file,
+        )
+    except UnsafeFileError as exc:
+        raise DocumentIngestionError(str(exc)) from exc
 
     title, metadata = _extract_preamble_metadata(pages_lines[0])
     if not title:

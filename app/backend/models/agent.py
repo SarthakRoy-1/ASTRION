@@ -68,8 +68,54 @@ class AgentContext(BaseModel):
     #: `None` keeps every Phase 4 caller working unchanged.
     session_id: str | None = None
 
+    #: The organisation this context acts within, when the caller authenticated
+    #: into one. Set from the *session*, never from the request body: it is the
+    #: tenant boundary, and `allowed_account_ids` above is derived from it by
+    #: `auth/repository.py::accounts_for_org`.
+    org_id: str | None = None
+
+    #: The permissions the caller's membership grants, as
+    #: `app/backend/auth/permissions.py` defines them. `None` means the context
+    #: was built without an organisation — a script, or a Phase 4 caller — in
+    #: which case the legacy `Role` mapping below decides.
+    permissions: frozenset[str] | None = None
+
+    def has_permission(self, permission: str) -> bool:
+        """Whether this caller holds one named permission.
+
+        When a permission set is present it is authoritative and the role is
+        ignored entirely. Consulting both would mean two answers to one
+        question, and the looser one would eventually win somewhere.
+        """
+        if self.permissions is None:
+            return False
+        return permission in self.permissions
+
     @property
     def may_change_state(self) -> bool:
+        """Whether this caller may prepare and confirm state-changing actions.
+
+        Reads the permission set when the caller authenticated into an
+        organisation, and falls back to the original role mapping only for a
+        context built without one. The fallback is what keeps every Phase 4
+        caller — and the deterministic test suite — working unchanged; it is
+        not a second authorization path for authenticated users, because the
+        branch above returns first whenever `permissions` is set.
+        """
+        if self.permissions is not None:
+            return "execute_action" in self.permissions
+        return self.role in (Role.SUPPORT_AGENT, Role.SUPPORT_MANAGER)
+
+    @property
+    def may_propose_action(self) -> bool:
+        """Whether this caller may *prepare* an action for someone to confirm.
+
+        Separate from `may_change_state` on purpose: a SUPPORT member drafts
+        and an OPERATIONS member executes. Collapsing the two would hand every
+        support user the confirmation right the whole gate exists to withhold.
+        """
+        if self.permissions is not None:
+            return "propose_action" in self.permissions
         return self.role in (Role.SUPPORT_AGENT, Role.SUPPORT_MANAGER)
 
     def scope(self) -> set[str] | None:

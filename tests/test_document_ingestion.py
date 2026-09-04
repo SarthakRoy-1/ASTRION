@@ -198,7 +198,10 @@ def test_corrupt_pdf_fails_clearly(tmp_path):
         shutil.copy(pdf, source / pdf.name)
     (source / LUMENWORKS_PDF).write_bytes(b"not a pdf")
 
-    with pytest.raises(DocumentIngestionError, match="could not be opened"):
+    # Rejected on its magic bytes before pymupdf is invoked, so the message is
+    # the type mismatch rather than a parser failure. Either way the ingestion
+    # refuses rather than storing a partially-read document.
+    with pytest.raises(DocumentIngestionError, match="contents are|could not be opened"):
         ingest_documents.ingest(source_dir=source, db_path=_fresh_db(tmp_path))
 
 

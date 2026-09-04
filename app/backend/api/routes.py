@@ -23,6 +23,11 @@ import uuid
 
 from fastapi import APIRouter, Request
 
+from app.backend.api.authentication import (
+    audit_denial,
+    authenticate,
+    demo_identities_available,
+)
 from app.backend.api.dependencies import (
     DbDep,
     UserHeaderDep,
@@ -30,9 +35,8 @@ from app.backend.api.dependencies import (
     new_session_id,
     now_utc,
     require_dataset,
-    resolve_context,
-    resolve_principal,
 )
+from app.backend.api.ratelimit import client_address
 from app.backend.api.schemas import (
     ActionConfirmationRequest,
     ActionConfirmationResponse,
@@ -48,10 +52,18 @@ from app.backend.api.schemas import (
     PrincipalView,
     ProposedActionView,
 )
+from app.backend.auth import repository as auth_repo
+from app.backend.auth.permissions import Permission
 from app.backend.core.config import Settings
 from app.backend.core.errors import AuthorizationError, NotFoundError
 from app.backend.models.agent import AgentRequest
 from app.backend.services.actions import get_action_audit
+from app.backend.services.audit import (
+    AuditEvent,
+    AuditOutcome,
+    hash_identifier,
+    record_event,
+)
 from app.backend.services.records import get_dataset_metadata
 
 router = APIRouter()
@@ -103,6 +115,7 @@ def health(request: Request) -> HealthResponse:
         model=summary["model"],
         max_tool_steps=summary["max_tool_steps"],
         state_changing_actions_enabled=summary["state_changing_actions_enabled"],
+        auth_mode=summary["auth_mode"],
         database_ready=database_ready,
         documents_indexed=documents,
         dataset_snapshot=snapshot,
@@ -129,14 +142,39 @@ def chat(
     """
     request_id = payload.request_id or f"REQ-{uuid.uuid4().hex[:12]}"
     request.state.request_id = request_id
+    # Read by the demo-mode identity path only; ignored entirely under session
+    # authentication, where identity comes from the cookie.
+    request.state.body_user_id = payload.user_id
 
     settings = _settings(request)
     require_dataset(conn)
 
-    principal = resolve_principal(payload.user_id, header_user)
+    caller = authenticate(request, conn, settings)
+    if not caller.is_demo:
+        caller.require(Permission.RUN_AGENT)
+
     session_id = payload.session_id or new_session_id()
-    context = resolve_context(
-        conn, principal, session_id=session_id, account_scope=payload.account_scope
+    # A conversation id is a client-supplied string. Binding it to its owner
+    # here is what makes the action/session binding downstream meaningful: a
+    # caller who guessed someone else's conversation id would otherwise satisfy
+    # that check and be able to confirm their prepared action.
+    if not caller.is_demo and not auth_repo.claim_conversation(
+        conn,
+        conversation_id=session_id,
+        user_id=caller.user_id,
+        org_id=caller.org_id,
+    ):
+        audit_denial(
+            conn,
+            caller,
+            request_id=request_id,
+            client_ip=client_address(request),
+            detail="conversation_owned_by_another_user",
+        )
+        raise NotFoundError("That conversation was not found.")
+
+    context = caller.agent_context(
+        session_id=session_id, account_scope=payload.account_scope
     )
 
     orchestrator = build_orchestrator(conn, settings)
@@ -144,11 +182,46 @@ def chat(
         AgentRequest(message=payload.message, context=context, request_id=request_id)
     )
 
+    record_event(
+        conn,
+        AuditEvent.AGENT_INVOKED,
+        actor_user_id=caller.user_id,
+        actor_role=caller.org_role,
+        org_id=caller.org_id,
+        request_id=request_id,
+        ip_hash=hash_identifier(client_address(request)),
+        details={
+            # The message itself is deliberately not logged: it is customer
+            # content, and an audit trail is metadata about access, not a
+            # transcript of everything anyone typed.
+            "outcome": response.outcome.value,
+            "tools_used": response.tools_used,
+            "prepared_action": (
+                response.pending_action.action_id if response.pending_action else None
+            ),
+        },
+    )
+    if response.pending_action is not None:
+        record_event(
+            conn,
+            AuditEvent.ACTION_PROPOSED,
+            actor_user_id=caller.user_id,
+            actor_role=caller.org_role,
+            org_id=caller.org_id,
+            target_type=response.pending_action.target_type,
+            target_id=response.pending_action.target_id,
+            request_id=request_id,
+            details={
+                "action_id": response.pending_action.action_id,
+                "action_type": response.pending_action.action_type.value,
+            },
+        )
+
     return ChatResponse.of(
         response,
         session_id=session_id,
-        user_id=principal.user_id,
-        role=principal.role,
+        user_id=caller.user_id,
+        role=caller.role,
         account_scope=sorted(context.allowed_account_ids or []),
         responded_at_utc=now_utc(),
     )
@@ -181,6 +254,7 @@ def confirm_action(
     """
     request_id = payload.request_id or f"REQ-{uuid.uuid4().hex[:12]}"
     request.state.request_id = request_id
+    request.state.body_user_id = payload.user_id
 
     settings = _settings(request)
     if not settings.enable_state_changing_actions:
@@ -191,16 +265,85 @@ def confirm_action(
         )
     require_dataset(conn)
 
-    principal = resolve_principal(payload.user_id, header_user)
-    context = resolve_context(conn, principal, session_id=payload.session_id)
+    caller = authenticate(request, conn, settings)
+    approve = payload.decision is ConfirmationDecision.APPROVE
+
+    # The permission is checked here, before the state machine is consulted, so
+    # a caller without it cannot even learn whether the action exists. Approval
+    # and rejection are gated alike: rejecting someone else's proposal is also
+    # a state change, and one an attacker would happily make.
+    if not caller.is_demo:
+        try:
+            caller.require(Permission.EXECUTE_ACTION)
+        except AuthorizationError:
+            audit_denial(
+                conn,
+                caller,
+                permission=Permission.EXECUTE_ACTION,
+                request_id=request_id,
+                client_ip=client_address(request),
+                detail=f"confirm {action_id}",
+            )
+            raise
+
+    # A conversation the caller does not own cannot be used to satisfy the
+    # action's session binding.
+    if not caller.is_demo and payload.session_id:
+        owner = auth_repo.conversation_owner(conn, payload.session_id)
+        if owner is not None and owner[0] != caller.user_id:
+            audit_denial(
+                conn,
+                caller,
+                request_id=request_id,
+                client_ip=client_address(request),
+                detail="confirmation_from_foreign_conversation",
+            )
+            raise NotFoundError(f"action {action_id!r} was not found within your scope")
+
+    context = caller.agent_context(session_id=payload.session_id)
 
     orchestrator = build_orchestrator(conn, settings)
-    approve = payload.decision is ConfirmationDecision.APPROVE
-    executed = orchestrator.confirm_action(
-        action_id,
-        context,
-        approve=approve,
-        expected_fingerprint=payload.expected_fingerprint,
+    try:
+        executed = orchestrator.confirm_action(
+            action_id,
+            context,
+            approve=approve,
+            expected_fingerprint=payload.expected_fingerprint,
+        )
+    except Exception as exc:
+        # Every refusal is recorded, whatever its cause: an expired action, a
+        # fingerprint that no longer matches, a replayed confirmation. These are
+        # exactly the events that distinguish an attack from a slow user.
+        record_event(
+            conn,
+            AuditEvent.ACTION_CONFIRMATION_REFUSED,
+            outcome=AuditOutcome.DENIED,
+            actor_user_id=caller.user_id,
+            actor_role=caller.org_role,
+            org_id=caller.org_id,
+            target_type="action",
+            target_id=action_id,
+            request_id=request_id,
+            ip_hash=hash_identifier(client_address(request)),
+            details={"reason": type(exc).__name__},
+        )
+        raise
+
+    record_event(
+        conn,
+        AuditEvent.ACTION_EXECUTED if approve else AuditEvent.ACTION_REJECTED,
+        actor_user_id=caller.user_id,
+        actor_role=caller.org_role,
+        org_id=caller.org_id,
+        target_type=executed.target_type,
+        target_id=executed.target_id,
+        request_id=request_id,
+        ip_hash=hash_identifier(client_address(request)),
+        details={
+            "action_id": action_id,
+            "action_type": executed.action_type.value,
+            "status": executed.status.value,
+        },
     )
 
     return ActionConfirmationResponse(
@@ -226,8 +369,9 @@ def pending_actions(
 ) -> PendingActionsResponse:
     """Proposals awaiting confirmation, within the caller's account scope."""
     settings = _settings(request)
-    principal = resolve_principal(user_id, header_user)
-    context = resolve_context(conn, principal, session_id=None)
+    request.state.body_user_id = user_id
+    caller = authenticate(request, conn, settings)
+    context = caller.agent_context(session_id=None)
 
     orchestrator = build_orchestrator(conn, settings)
     actions = orchestrator.pending_actions(context)
@@ -241,6 +385,7 @@ def pending_actions(
     "/api/actions/{action_id}", response_model=ActionDetailResponse, tags=["actions"]
 )
 def action_detail(
+    request: Request,
     action_id: str,
     conn: sqlite3.Connection = DbDep,
     header_user: str | None = UserHeaderDep,
@@ -252,8 +397,9 @@ def action_detail(
     reported as absent, not as forbidden, for the same reason the record
     layer does.
     """
-    principal = resolve_principal(user_id, header_user)
-    context = resolve_context(conn, principal, session_id=None)
+    request.state.body_user_id = user_id
+    caller = authenticate(request, conn, _settings(request))
+    context = caller.agent_context(session_id=None)
 
     audit = get_action_audit(conn, action_id, allowed_account_ids=context.scope())
     if audit is None:
@@ -268,7 +414,7 @@ def action_detail(
 
 
 @router.get("/api/principals", response_model=PrincipalsResponse, tags=["system"])
-def principals(conn: sqlite3.Connection = DbDep) -> PrincipalsResponse:
+def principals(request: Request, conn: sqlite3.Connection = DbDep) -> PrincipalsResponse:
     """The mock identities this deployment accepts, and the scope each holds.
 
     Exists so the demo is self-describing. It lists no credentials, because
@@ -277,6 +423,13 @@ def principals(conn: sqlite3.Connection = DbDep) -> PrincipalsResponse:
     anything below it.
     """
     from app.backend.auth.principals import MOCK_PRINCIPALS
+
+    # Under session authentication the mock directory is not an identity
+    # source, and publishing it would advertise personas that grant nothing.
+    # An empty list is the honest answer, and it keeps the frontend's context
+    # selector from offering a sign-in that does not exist.
+    if not demo_identities_available(_settings(request)):
+        return PrincipalsResponse(principals=[])
 
     # Declaration order, not alphabetical: the directory is a demo aid, and a
     # client that offers the first entry as its default should land on the

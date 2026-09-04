@@ -11,7 +11,7 @@ Everything here runs on the deterministic provider: no API key, no network.
 
 import pytest
 
-from app.backend.core.config import ProviderMode, Settings
+from app.backend.core.config import AuthMode, ProviderMode, Settings
 from app.backend.core.errors import ProviderConfigurationError
 from conftest import (
     CUSTOMER_LUMENWORKS,
@@ -78,7 +78,9 @@ def test_health_is_degraded_without_a_database(tmp_path):
 
     from app.backend.api.app import create_app
 
-    settings = Settings(database_path=tmp_path / "missing.db")
+    settings = Settings(
+        database_path=tmp_path / "missing.db", auth_mode=AuthMode.DEMO_HEADER
+    )
     with TestClient(create_app(settings)) as client:
         body = client.get("/health").json()
 
@@ -730,7 +732,9 @@ def test_missing_data_produces_a_clear_structured_error(tmp_path):
 
     from app.backend.api.app import create_app
 
-    settings = Settings(database_path=tmp_path / "missing.db")
+    settings = Settings(
+        database_path=tmp_path / "missing.db", auth_mode=AuthMode.DEMO_HEADER
+    )
     with TestClient(create_app(settings)) as client:
         response = post_chat(client, "Can ORD-1001 be cancelled?")
 

@@ -515,6 +515,10 @@ class HealthResponse(BaseModel):
     model: str | None = None
     max_tool_steps: int
     state_changing_actions_enabled: bool
+    #: How this deployment establishes identity. Exposed so a misconfigured
+    #: deployment running without real authentication is visible from outside
+    #: rather than only in its own configuration.
+    auth_mode: str = "session"
 
     database_ready: bool
     documents_indexed: int

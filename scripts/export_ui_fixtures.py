@@ -154,13 +154,18 @@ def record(db_path: Path | None = None) -> dict[str, dict]:
     from fastapi.testclient import TestClient
 
     from app.backend.api.app import create_app
-    from app.backend.core.config import Settings
+    from app.backend.core.config import AuthMode, Settings
 
     workspace = Path(tempfile.mkdtemp(prefix="parcelpilot-fixtures-"))
     try:
+        # The recorded fixtures describe the demo personas the UI ships with,
+        # so this exporter runs the app in demo identity mode deliberately.
+        # Under session authentication these calls would all be 401s, which is
+        # correct behaviour and useless as a UI fixture.
         settings = Settings(
             database_path=db_path or _build_database(workspace),
             cors_allow_origins=(),
+            auth_mode=AuthMode.DEMO_HEADER,
         )
         recorded: dict[str, dict] = {}
 

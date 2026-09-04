@@ -137,7 +137,14 @@ def register_error_handlers(app: FastAPI) -> None:
         # Logged with the traceback; reported without it. A client learning the
         # shape of an internal failure learns nothing it can act on and
         # something an attacker can.
-        logger.exception("unhandled error on %s %s", request.method, request.url.path)
+        # `scope["path"]`, not `request.url.path`: the latter is rebuilt from
+        # the Host header and can be made to name a different path than the one
+        # that ran (PYSEC-2026-161), which would misdirect whoever reads this.
+        logger.exception(
+            "unhandled error on %s %s",
+            request.method,
+            request.scope.get("path", "") or request.url.path,
+        )
         return error_response(
             500,
             "internal_error",

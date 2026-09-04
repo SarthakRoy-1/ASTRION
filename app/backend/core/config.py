@@ -36,6 +36,27 @@ class ProviderMode(StrEnum):
     REAL = "real"
 
 
+class AuthMode(StrEnum):
+    """How a caller's identity is established.
+
+    `SESSION` is the only mode fit to be reachable by anyone but the developer
+    who started the process: a caller presents a session cookie issued by
+    `POST /api/auth/login`, and the server resolves the user, organisation and
+    role from its own database.
+
+    `DEMO_HEADER` is the original assessment behaviour, kept because the demo
+    and the agent test-suite depend on being able to act as a named persona
+    without a login. It trusts `X-ParcelPilot-User` completely, so it is
+    **authentication in name only** — anyone who can reach the port can claim
+    any identity. `Settings.validate_auth` refuses to start in this mode when
+    `APP_ENV` names a production environment, and `/health` reports the mode so
+    a misconfigured deployment is visible rather than merely wrong.
+    """
+
+    SESSION = "session"
+    DEMO_HEADER = "demo_header"
+
+
 def _env(name: str, default: str | None = None) -> str | None:
     value = os.environ.get(name)
     if value is None:
@@ -105,6 +126,42 @@ class Settings(BaseModel):
     cors_allow_origins: tuple[str, ...] = ("http://localhost:3000",)
     enable_state_changing_actions: bool = True
 
+    # --- authentication ------------------------------------------------------
+    #: Secure by default. A deployment must opt *down* to the demo header, and
+    #: cannot opt down at all when APP_ENV names production.
+    auth_mode: AuthMode = AuthMode.SESSION
+    session_cookie_name: str = "parcelpilot_session"
+    #: `Secure` on the session cookie. True by default so the cookie is never
+    #: sent over plaintext by accident; local http development sets it False
+    #: explicitly, which is a decision someone has to make rather than inherit.
+    session_cookie_secure: bool = True
+    session_cookie_samesite: str = "lax"
+    #: Require a verified email address before a password may issue a session.
+    require_verified_email: bool = True
+
+    # --- abuse prevention ----------------------------------------------------
+    #: Largest body the server will read at all, enforced before parsing. The
+    #: 4000-character cap on `message` is a *schema* limit and only applies
+    #: after a body has already been buffered.
+    max_request_bytes: int = 256 * 1024
+    rate_limit_enabled: bool = True
+    #: Requests per minute per client for ordinary endpoints.
+    rate_limit_per_minute: int = 120
+    #: Far tighter, because each one costs a chain of model calls.
+    agent_rate_limit_per_minute: int = 15
+    #: Tighter still: these are the endpoints an attacker guesses against.
+    auth_rate_limit_per_minute: int = 10
+    #: Per-organisation ceiling on agent runs, so one tenant cannot exhaust the
+    #: model budget shared with every other tenant.
+    org_agent_rate_limit_per_minute: int = 60
+
+    # --- browser security ----------------------------------------------------
+    security_headers_enabled: bool = True
+    #: Emitted only when the deployment is actually served over TLS; sending
+    #: HSTS from a plaintext origin pins a scheme the site cannot honour.
+    hsts_enabled: bool = False
+    hsts_max_age_seconds: int = 63_072_000
+
     @property
     def has_provider_credentials(self) -> bool:
         return bool(self.openai_api_key)
@@ -132,6 +189,62 @@ class Settings(BaseModel):
                 "LLM_PROVIDER=real requires OPENAI_MODEL to name a chat model."
             )
 
+    @property
+    def is_production(self) -> bool:
+        """Whether this deployment claims to be serving real users.
+
+        Matched loosely on purpose: `prod`, `production` and `live` all mean
+        the same thing to an operator, and a control that only recognises one
+        spelling of production is a control that silently does not apply.
+        """
+        return self.app_env.strip().lower() in {"prod", "production", "live"}
+
+    def validate_auth(self) -> None:
+        """Refuse a configuration that would serve real users without a login.
+
+        Called at startup alongside `validate_provider`. The demo header is a
+        development affordance; reaching production with it enabled would mean
+        every authorization control in the system rests on a request header
+        anyone can set.
+        """
+        if self.auth_mode is AuthMode.DEMO_HEADER and self.is_production:
+            raise ConfigurationError(
+                "AUTH_MODE=demo_header trusts the X-ParcelPilot-User header "
+                "without any credential and must never run in production. "
+                f"APP_ENV is {self.app_env!r}. Set AUTH_MODE=session."
+            )
+        if self.is_production and not self.session_cookie_secure:
+            raise ConfigurationError(
+                "SESSION_COOKIE_SECURE=false would send the session cookie over "
+                "plaintext HTTP. It must stay true in production."
+            )
+
+    def validate_cors(self) -> None:
+        """Reject an origin list that cannot be honoured safely.
+
+        A wildcard origin is incompatible with cookie authentication: the
+        browser refuses the combination, so a deployment configured this way
+        would appear to work in a curl session and fail for every real user —
+        or, worse, invite someone to "fix" it by loosening the cookie instead.
+        """
+        if "*" in self.cors_allow_origins:
+            raise ConfigurationError(
+                "CORS_ALLOW_ORIGINS=* cannot be combined with cookie "
+                "authentication. List the exact origins the browser app is "
+                "served from."
+            )
+        for origin in self.cors_allow_origins:
+            if not origin.startswith(("http://", "https://")):
+                raise ConfigurationError(
+                    f"CORS origin {origin!r} must include a scheme, "
+                    f"e.g. https://app.example.com"
+                )
+            if self.is_production and origin.startswith("http://"):
+                raise ConfigurationError(
+                    f"CORS origin {origin!r} is plaintext HTTP and is not "
+                    f"permitted in production."
+                )
+
     def public_summary(self) -> dict:
         """Configuration safe to expose on `/health`. No secrets, no paths."""
         return {
@@ -140,6 +253,9 @@ class Settings(BaseModel):
             "model": self.openai_model if self.uses_real_provider else None,
             "max_tool_steps": self.agent_max_tool_steps,
             "state_changing_actions_enabled": self.enable_state_changing_actions,
+            # Reported so an operator can see from the outside that a
+            # deployment is running without real authentication.
+            "auth_mode": self.auth_mode.value,
         }
 
 
@@ -161,6 +277,15 @@ def load_settings(*, env_file: Path | str | None = None) -> Settings:
             f"LLM_PROVIDER must be one of: {options}; got {raw_mode!r}"
         ) from exc
 
+    raw_auth = (_env("AUTH_MODE", AuthMode.SESSION.value) or "").lower()
+    try:
+        auth_mode = AuthMode(raw_auth)
+    except ValueError as exc:
+        options = ", ".join(m.value for m in AuthMode)
+        raise ConfigurationError(
+            f"AUTH_MODE must be one of: {options}; got {raw_auth!r}"
+        ) from exc
+
     origins = _env("CORS_ALLOW_ORIGINS", "http://localhost:3000") or ""
     api_key = _env("OPENAI_API_KEY")
     # The shipped template carries a placeholder so the file is runnable; a
@@ -180,6 +305,21 @@ def load_settings(*, env_file: Path | str | None = None) -> Settings:
         database_path=_database_path(_env("DATABASE_URL")),
         cors_allow_origins=tuple(o.strip() for o in origins.split(",") if o.strip()),
         enable_state_changing_actions=_env_bool("ENABLE_STATE_CHANGING_ACTIONS", True),
+        auth_mode=auth_mode,
+        session_cookie_name=_env("SESSION_COOKIE_NAME", "parcelpilot_session")
+        or "parcelpilot_session",
+        session_cookie_secure=_env_bool("SESSION_COOKIE_SECURE", True),
+        session_cookie_samesite=(_env("SESSION_COOKIE_SAMESITE", "lax") or "lax").lower(),
+        require_verified_email=_env_bool("REQUIRE_VERIFIED_EMAIL", True),
+        max_request_bytes=_env_int("MAX_REQUEST_BYTES", 256 * 1024),
+        rate_limit_enabled=_env_bool("RATE_LIMIT_ENABLED", True),
+        rate_limit_per_minute=_env_int("RATE_LIMIT_PER_MINUTE", 120),
+        agent_rate_limit_per_minute=_env_int("AGENT_RATE_LIMIT_PER_MINUTE", 15),
+        auth_rate_limit_per_minute=_env_int("AUTH_RATE_LIMIT_PER_MINUTE", 10),
+        org_agent_rate_limit_per_minute=_env_int("ORG_AGENT_RATE_LIMIT_PER_MINUTE", 60),
+        security_headers_enabled=_env_bool("SECURITY_HEADERS_ENABLED", True),
+        hsts_enabled=_env_bool("HSTS_ENABLED", False),
+        hsts_max_age_seconds=_env_int("HSTS_MAX_AGE_SECONDS", 63_072_000),
     )
 
 

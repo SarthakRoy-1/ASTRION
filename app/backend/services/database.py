@@ -296,8 +296,18 @@ def initialize_schema(conn: sqlite3.Connection) -> None:
     Also brings an already-created database up to the current column set — see
     `ADDED_COLUMNS`. Both halves are safe to run repeatedly and safe to run on
     a database built by an earlier phase.
+
+    The identity/tenancy/audit tables are created here too, from
+    `app/backend/auth/schema.py`. They are declared in that module rather than
+    this one because they have the opposite lifecycle to everything above: the
+    dataset tables are rebuilt from the workbook on every ingest run, and the
+    security tables hold the only copy of their data and must survive one.
     """
+    from app.backend.auth.schema import SECURITY_SCHEMA_STATEMENTS
+
     with conn:
         for statement in SCHEMA_STATEMENTS:
+            conn.execute(statement)
+        for statement in SECURITY_SCHEMA_STATEMENTS:
             conn.execute(statement)
         _apply_added_columns(conn)

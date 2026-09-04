@@ -311,10 +311,17 @@ def test_missing_file_raises():
 
 
 def test_non_pdf_bytes_raise(tmp_path):
+    """A file whose contents are not a PDF is refused.
+
+    The refusal now happens *before* pymupdf is called: the type is decided
+    from the magic bytes, so a mislabelled file is rejected without the parser
+    ever seeing it. The assertion therefore matches on the mismatch rather
+    than on the parser's own "could not be opened" wording.
+    """
     path = tmp_path / "broken.pdf"
     path.write_bytes(b"this is not a PDF at all")
 
-    with pytest.raises(DocumentIngestionError, match="could not be opened"):
+    with pytest.raises(DocumentIngestionError, match="contents are"):
         extract_document(path)
 
 

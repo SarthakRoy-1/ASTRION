@@ -1,5 +1,6 @@
 {
   "app_env": "development",
+  "auth_mode": "demo_header",
   "checked_at_utc": "2026-08-16T05:30:00+00:00",
   "database_ready": true,
   "dataset_snapshot": "2026-08-16 11:00 Asia/Kolkata",
