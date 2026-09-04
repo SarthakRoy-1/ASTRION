@@ -1,0 +1,84 @@
+/* Trust and authority signals. Uses the existing tone tokens rather than
+ * introducing a second palette — Phase 2 is behaviour, not a redesign. */
+
+.wrap {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+/* A customer agreement governing is *information*, not a warning: it is the
+ * correct outcome, and colouring it like a problem would train readers to
+ * dismiss it. */
+.override {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-small);
+  line-height: 1.5;
+  color: var(--text-secondary);
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-border);
+  border-radius: var(--radius-sm);
+}
+
+.overrideBadge {
+  font-size: var(--text-caption);
+  font-weight: 500;
+  color: var(--on-accent);
+  background: var(--accent);
+  border-radius: var(--radius-sm);
+  padding: 0 var(--space-2);
+  white-space: nowrap;
+}
+
+.caution, .escalate {
+  padding: var(--space-3);
+  border-radius: var(--radius-sm);
+  border: 1px solid;
+}
+
+.caution {
+  background: var(--caution-soft);
+  border-color: var(--caution-border);
+}
+
+.escalate {
+  background: var(--fail-soft);
+  border-color: var(--fail-border);
+}
+
+.title {
+  margin: 0 0 var(--space-1);
+  font-size: var(--text-ui);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.lede {
+  margin: 0;
+  font-size: var(--text-small);
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+.reasons {
+  margin: var(--space-2) 0 0;
+  padding-left: var(--space-4);
+  font-size: var(--text-small);
+  line-height: 1.55;
+  color: var(--text-secondary);
+}
+
+.reasons li { margin-bottom: var(--space-1); }
+
+.escalationReason {
+  margin: var(--space-2) 0 0;
+  font-size: var(--text-small);
+  font-weight: 500;
+  color: var(--text-primary);
+}

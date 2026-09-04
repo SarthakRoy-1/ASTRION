@@ -304,6 +304,9 @@
             "title": "Tools Used",
             "type": "array"
           },
+          "trust": {
+            "$ref": "#/components/schemas/TrustView"
+          },
           "uncertainties": {
             "default": [],
             "items": {
@@ -322,6 +325,7 @@
           "session_id",
           "outcome",
           "answer",
+          "trust",
           "user_id",
           "role",
           "account_scope",
@@ -1343,6 +1347,79 @@
           "user_id"
         ],
         "title": "TransferOwnershipRequest",
+        "type": "object"
+      },
+      "TrustView": {
+        "description": "How far this answer can be relied on, and what governed it.\n\nA second axis alongside `outcome`. `outcome` says what shape the response\nhas; this says whether it can be acted on. They come apart routinely \u2014 a\nwell-formed answer resting on two contradictory sources is `answered` and\nis not trustworthy.\n\nEvery field is derived in code from tool results (`agent/trust.py`).\nNothing here is asserted by a model, and there is deliberately no numeric\nscore: a number invites a threshold, and a threshold invites shipping\n\"0.82 is probably fine\". Each status implies a different action by the\nreader \u2014 proceed, check the premise, reconcile the sources, get more data,\ninvolve a person.",
+        "properties": {
+          "conflicts": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Conflicts",
+            "type": "array"
+          },
+          "customer_agreement_applied": {
+            "default": false,
+            "title": "Customer Agreement Applied",
+            "type": "boolean"
+          },
+          "escalation_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Escalation Reason"
+          },
+          "governing_authority_tier": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Governing Authority Tier"
+          },
+          "intents": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Intents",
+            "type": "array"
+          },
+          "overrides": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Overrides",
+            "type": "array"
+          },
+          "reasons": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Reasons",
+            "type": "array"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "TrustView",
         "type": "object"
       },
       "UpdateWorkspaceRequest": {

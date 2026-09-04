@@ -381,6 +381,59 @@ class ExecutedActionView(BaseModel):
 # --- responses ---------------------------------------------------------------------
 
 
+class TrustView(BaseModel):
+    """How far this answer can be relied on, and what governed it.
+
+    A second axis alongside `outcome`. `outcome` says what shape the response
+    has; this says whether it can be acted on. They come apart routinely — a
+    well-formed answer resting on two contradictory sources is `answered` and
+    is not trustworthy.
+
+    Every field is derived in code from tool results (`agent/trust.py`).
+    Nothing here is asserted by a model, and there is deliberately no numeric
+    score: a number invites a threshold, and a threshold invites shipping
+    "0.82 is probably fine". Each status implies a different action by the
+    reader — proceed, check the premise, reconcile the sources, get more data,
+    involve a person.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    #: confident | conditional | conflict | insufficient_data | escalate
+    status: str
+    #: Why, in the order the reasons were found. Safe to display.
+    reasons: list[str] = []
+    #: Strongest authority tier that actually governed (1 = customer
+    #: agreement), or null when nothing governed.
+    governing_authority_tier: int | None = None
+    #: True when a signed customer agreement decided this rather than the
+    #: default policy. Surfaced structurally so a client never has to parse
+    #: prose to discover it.
+    customer_agreement_applied: bool = False
+    #: What outranked what, from the authority layer.
+    overrides: list[str] = []
+    #: Sources of equal authority precedence could not separate.
+    conflicts: list[str] = []
+    #: Present only when `status == "escalate"`.
+    escalation_reason: str | None = None
+    #: Routing labels the planner matched. Not chain-of-thought — these are
+    #: the intents that selected the tools, not the model's reasoning.
+    intents: list[str] = []
+
+    @classmethod
+    def of(cls, response: AgentResponse) -> TrustView:
+        return cls(
+            status=response.trust_status,
+            reasons=list(response.trust_reasons),
+            governing_authority_tier=response.governing_authority_tier,
+            customer_agreement_applied=response.customer_agreement_applied,
+            overrides=list(response.authority_overrides),
+            conflicts=list(response.authority_conflicts),
+            escalation_reason=response.escalation_reason,
+            intents=list(response.intents),
+        )
+
+
 class ChatResponse(BaseModel):
     """The full result of one natural-language request."""
 
@@ -398,6 +451,9 @@ class ChatResponse(BaseModel):
     uncertainties: list[str] = []
     escalation_recommended: bool = False
     step_budget_exhausted: bool = False
+
+    #: How far this answer can be relied on. See `TrustView`.
+    trust: TrustView
 
     action_status: ActionState = ActionState.NONE
     proposed_action: ProposedActionView | None = None
@@ -449,6 +505,7 @@ class ChatResponse(BaseModel):
             uncertainties=list(response.uncertainties),
             escalation_recommended=response.escalation_recommended,
             step_budget_exhausted=response.step_budget_exhausted,
+            trust=TrustView.of(response),
             action_status=ActionState.of(proposed.status if proposed else None),
             proposed_action=None if proposed is None else ProposedActionView.of(proposed),
             user_id=user_id,

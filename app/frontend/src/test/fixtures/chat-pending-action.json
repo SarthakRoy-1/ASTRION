@@ -114,6 +114,18 @@
       "tool_name": "prepare_escalation"
     }
   ],
+  "trust": {
+    "conflicts": [],
+    "customer_agreement_applied": false,
+    "escalation_reason": null,
+    "governing_authority_tier": 2,
+    "intents": [
+      "escalation"
+    ],
+    "overrides": [],
+    "reasons": [],
+    "status": "confident"
+  },
   "uncertainties": [],
   "user_id": "support.agent"
 }

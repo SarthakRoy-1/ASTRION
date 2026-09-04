@@ -1610,3 +1610,140 @@ memberships, invitations, conversations, actions, and an audit trail whose
 retention requirement is in tension with erasure — is a design decision rather
 than a `DELETE`, and inventing one to fill a gap in a matrix would be the wrong
 order to do it in.
+
+---
+
+## 13. Phase 2 — trust-aware reasoning
+
+Phase 2 did not add a new agent. The orchestration loop, the four-tier
+authority model, the deterministic policy engine and the confirmation gate were
+already in place and are unchanged. What Phase 2 added is the part that was
+missing: a **second axis** on every answer saying how far it can be relied on,
+derived in code and carried all the way to the UI.
+
+### Two axes, not one
+
+`ResponseOutcome` says what *shape* a response has — answered, uncertain,
+needs confirmation, refused, errored. That is a statement about the
+interaction. It is not a statement about whether the answer can be acted on,
+and the two come apart constantly: an answer can be perfectly well-formed and
+rest on two sources that contradict each other.
+
+`TrustStatus` (`agent/trust.py`) is the second axis:
+
+| Status | Means | What the reader should do |
+| --- | --- | --- |
+| `confident` | A governing source settled it | Proceed |
+| `conditional` | Settled, if a stated premise holds | Check the premise |
+| `conflict` | Equal-authority sources disagree | Reconcile them |
+| `insufficient_data` | A needed input was missing | Get the input |
+| `escalate` | A person must decide | Hand over |
+
+**Worst-wins.** An answer that is confident about one thing and missing data
+for another is `insufficient_data` overall, because a reader acting on the
+confident half would be acting on an incomplete answer.
+
+**No score, deliberately.** A number invites a threshold, a threshold invites
+tuning, and tuning invites shipping "0.82 is probably fine". Each of the five
+states implies a different *action*, which is what a support agent needs to
+know.
+
+**Conflict escalates.** When the authority layer reports that precedence
+*cannot* settle a tie, no further computation helps — only a person. So
+`conflict` is promoted to `escalate` with the conflict as its reason.
+
+### Where the status comes from
+
+Every input is a tool result. Nothing is asserted by a model, and nothing is
+inferred from prose:
+
+```text
+policy decision REQUIRES_VERIFICATION      -> conditional (+ its reasons)
+policy decision requires_escalation        -> escalate
+SLA decision breached                      -> escalate
+authority layer emitted a ConflictNote     -> conflict -> escalate
+tool NOT_FOUND / FORBIDDEN                 -> insufficient_data
+tool ERROR                                 -> escalate
+tool UNCERTAIN                             -> conditional
+policy question with no order resolved     -> insufficient_data
+step budget exhausted                      -> insufficient_data
+```
+
+`NOT_FOUND` and `FORBIDDEN` are treated identically here, exactly as the record
+layer treats them: the answer is missing an input either way, and separating
+them at this level would leak the difference the tool layer works to hide.
+
+### Authority, lifted to the response
+
+The authority model already computed which source governed, what it outranked,
+and what it could not separate — but that lived inside a tool's `data` payload
+and the composed prose. A client could not tell *structurally* that a customer
+agreement had overridden the standard policy.
+
+`TrustView` now carries it on the wire: the governing tier, whether a customer
+agreement applied, the override notes, the conflicts, and the intents that
+selected the tools. The frontend's `TrustNotice` renders the two facts a reader
+is most likely to get wrong — "an agreement governed here, not the default
+policy" and "this is not settled" — and renders **nothing** when the answer is
+confident and nothing overrode the default, because a badge on every answer
+stops being read.
+
+### Actions under unsettled evidence
+
+An action prepared while the evidence is unsettled is still *offered*.
+Escalating because you cannot determine something is exactly the right move,
+and refusing to propose one would remove the safe option.
+
+What must not happen is a human confirming it without knowing. The confirmation
+gate is only as good as what the reviewer is shown, so the caveat travels with
+the answer text rather than sitting in a status field a UI might not render:
+
+```text
+This action is being proposed while the following remain unresolved.
+Confirm it only if that is what you intend:
+- order 'ORD-9999' was not found within the caller's scope
+```
+
+`TrustAssessment.is_actionable` is the predicate; a test asserts across every
+evaluation case that an unactionable proposal always carries the caveat.
+
+### Observability
+
+`AuditEvent.AGENT_INVOKED` now records the intents matched, the trust status,
+the governing tier, whether an agreement applied, conflict and override counts,
+the escalation reason, the retrieved chunk **ids**, and the duration.
+
+What it still does not record: the message, the answer, document text, or any
+model reasoning. These are labels *about* an investigation, never its content —
+the Phase 0 redaction rules are unchanged and chunk ids identify a source for a
+reviewer without copying the source into the log.
+
+### Evaluation
+
+`tests/test_agent_evaluation.py` is a declarative harness: each case states a
+question, the tenant scope, and what must be true about *how* it was answered.
+Categories: source authority, contract override, structured data, multi-step,
+uncertainty, security, tool behaviour — with a coverage test asserting none can
+be quietly dropped.
+
+**No case asserts a memorised answer.** None checks that a fee is 4200 or a
+credit is 500. Every expectation is provenance and process — "a cancellation
+decision was computed", "tier 1 governed and an agreement applied", "the
+deprecated policy never governed". A test that pins the number passes when the
+agent hard-codes it; a test that pins the provenance only passes when the agent
+actually consulted the right source under the right precedence.
+
+Suite-wide properties are asserted over *every* case rather than one at a time:
+no case ever executes an action, deprecated material never governs, a conflict
+is never silently resolved, a non-confident status always carries reasons, and
+identical inputs give identical results.
+
+### What Phase 2 did not change
+
+The agent was already multi-step and already deliberate. `DeterministicPlanner`
+plans in five phases, advancing on what earlier steps returned — resolve
+identifiers, derive the account *from resolved records rather than request
+text*, run the policy tool the intent calls for, retrieve scoped documentation,
+prepare an action only when explicitly asked. The tool boundary, the reserved
+argument names, the SQL-level tenant scoping and the confirmation state machine
+are all as Phases 0–1 left them.

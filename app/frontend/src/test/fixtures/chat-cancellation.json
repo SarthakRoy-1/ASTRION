@@ -200,6 +200,22 @@
       "tool_name": "search_documents"
     }
   ],
+  "trust": {
+    "conflicts": [],
+    "customer_agreement_applied": true,
+    "escalation_reason": null,
+    "governing_authority_tier": 1,
+    "intents": [
+      "cancellation"
+    ],
+    "overrides": [
+      "05_Northstar_Logistics_Enterprise_Agreement.pdf p.1 \u00a72. Shipment cancellation (tier 1 CUSTOMER_AGREEMENT) outranks 03_Cancellation_and_Service_Credit_SOP_v4.pdf p.1 \u00a71. Order cancellation (tier 3 CURRENT_OPERATIONAL_DOC) on topic 'cancellation'",
+      "05_Northstar_Logistics_Enterprise_Agreement.pdf p.1 (tier 1 CUSTOMER_AGREEMENT) outranks 03_Cancellation_and_Service_Credit_SOP_v4.pdf p.1 (tier 3 CURRENT_OPERATIONAL_DOC) on topic 'general'",
+      "05_Northstar_Logistics_Enterprise_Agreement.pdf p.1 \u00a74. Account contact (tier 1 CUSTOMER_AGREEMENT) outranks 03_Cancellation_and_Service_Credit_SOP_v4.pdf p.1 (tier 3 CURRENT_OPERATIONAL_DOC) on topic 'general'"
+    ],
+    "reasons": [],
+    "status": "confident"
+  },
   "uncertainties": [],
   "user_id": "support.agent"
 }

@@ -5,6 +5,7 @@ import { AnswerNotes } from "./AnswerNotes";
 import { DecisionCard } from "./DecisionCard";
 import { EvidenceSection } from "./EvidenceSection";
 import { InvestigationSummary } from "./InvestigationSummary";
+import { TrustNotice } from "./TrustNotice";
 import { UncertaintyNotice } from "./UncertaintyNotice";
 import {
   decisionSubject,
@@ -87,6 +88,11 @@ export function AgentMessage({
           ))}
         </div>
       )}
+
+      {/* Reliability and authority come before the uncertainty list: whether a
+          customer agreement governed, or whether the answer is settled at all,
+          changes how the rest of the turn should be read. */}
+      <TrustNotice trust={response.trust} />
 
       {uncertain && (
         <UncertaintyNotice

@@ -207,6 +207,23 @@
       "tool_name": "search_documents"
     }
   ],
+  "trust": {
+    "conflicts": [],
+    "customer_agreement_applied": true,
+    "escalation_reason": null,
+    "governing_authority_tier": 1,
+    "intents": [
+      "service_credit"
+    ],
+    "overrides": [
+      "06_LumenWorks_Service_Agreement.pdf p.1 \u00a73. Failed-pickup credits (tier 1 CUSTOMER_AGREEMENT) outranks 03_Cancellation_and_Service_Credit_SOP_v4.pdf p.1 \u00a72. Failed-pickup service credits (tier 3 CURRENT_OPERATIONAL_DOC) on topic 'service_credit'",
+      "06_LumenWorks_Service_Agreement.pdf p.1 \u00a72. Cancellation terms (tier 1 CUSTOMER_AGREEMENT) outranks 03_Cancellation_and_Service_Credit_SOP_v4.pdf p.1 \u00a71. Order cancellation (tier 3 CURRENT_OPERATIONAL_DOC) on topic 'cancellation'"
+    ],
+    "reasons": [
+      "Carrier fault is unknown; the SOP forbids promising a credit until it is established."
+    ],
+    "status": "conditional"
+  },
   "uncertainties": [
     "Carrier fault is unknown; the SOP forbids promising a credit until it is established."
   ],

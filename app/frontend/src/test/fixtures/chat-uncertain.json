@@ -148,6 +148,20 @@
       "tool_name": "search_documents"
     }
   ],
+  "trust": {
+    "conflicts": [],
+    "customer_agreement_applied": false,
+    "escalation_reason": null,
+    "governing_authority_tier": 2,
+    "intents": [
+      "service_credit"
+    ],
+    "overrides": [],
+    "reasons": [
+      "no order identified, so service-credit eligibility was not evaluated"
+    ],
+    "status": "insufficient_data"
+  },
   "uncertainties": [
     "no order identified, so service-credit eligibility was not evaluated"
   ],

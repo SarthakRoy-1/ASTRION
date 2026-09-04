@@ -339,6 +339,9 @@ The central rule:
 | Data exfiltration via the model | The model can only emit what a scoped tool returned | ✔ |
 | Retrieval poisoning | Deprecated/non-authoritative sources cannot govern; precedence is computed from document metadata, not similarity | ✔ |
 | Confirmation bypass | See §4 | ✔ |
+| An unsettled answer read as settled | `TrustStatus` is derived in code from tool results — a conflict, a missing input or an unverified premise downgrades the answer and is stated with its reasons | ✔ |
+| A conflict silently resolved | The authority layer emits a `ConflictNote` when precedence *cannot* settle a tie; the trust layer promotes that to `escalate` rather than picking a winner | ✔ |
+| An action confirmed on evidence the system distrusts | A proposal made while the assessment is unactionable carries the unresolved points in the answer text, so the reviewer sees them at the confirmation | ✔ |
 
 "Structural" means the control does not depend on the model behaving. The
 system prompt does describe these boundaries — a model that understands them
@@ -513,6 +516,14 @@ creation, membership and role changes, authorization denials, tenant-isolation
 denials, agent invocations, action proposed/executed/rejected/refused, rate
 limiting, payload rejection.
 
+**Agent observability (Phase 2).** `agent.invoked` additionally records the
+intents matched, the trust status, the governing authority tier, whether a
+customer agreement applied, conflict and override counts, the escalation
+reason, the retrieved chunk **ids**, and the duration. These are labels *about*
+an investigation, never its content: the question, the answer, document text
+and model reasoning are all still absent, and a chunk id identifies a source
+for a reviewer without copying the source into the log.
+
 **Never recorded:** passwords, session tokens, API keys, reset tokens, MFA
 codes. `_redact` drops any key whose name contains a credential marker and
 truncates long values *before* the row is written — a belt-and-braces control
@@ -570,11 +581,12 @@ back to a vulnerable version.
 | --- | --- |
 | Pre-existing (unchanged in intent) | 572 |
 | `test_security_workspaces.py` (Phase 1) | 111 |
+| `test_agent_evaluation.py` (Phase 2) | 51 |
 | `test_security_auth.py` | 39 |
 | `test_security_adversarial.py` | 55 |
 | `test_security_files.py` | 44 |
-| **Backend total** | **821** |
-| Frontend (`vitest`) | 105 |
+| **Backend total** | **872** |
+| Frontend (`vitest`) | 114 |
 
 Security tests run against the **default** configuration (`AuthMode.SESSION`),
 not a loosened one. The pre-existing suite declares `AuthMode.DEMO_HEADER`
@@ -665,7 +677,27 @@ marketing.
 13. **Dependency audits are point-in-time.** They were clean when this was
     written. Automated scanning in CI is not configured.
 
-14. **No penetration test.** The adversarial suite encodes the attacks
+14. **The trust layer reads tool results, not model prose.** Under
+    `LLM_PROVIDER=real` the status is derived from the same tool results as in
+    deterministic mode, so it cannot be talked out of a downgrade — but the
+    *wording* the model produces is not verified against it. A model could in
+    principle write confident-sounding prose alongside an `insufficient_data`
+    status. The structured status is what the UI renders the banner from, so a
+    reader sees the derived verdict; the prose is not machine-checked against
+    it.
+
+15. **The evaluation suite runs on the deterministic planner only.** That is
+    what makes it reproducible with no API key, and it exercises every boundary
+    — but it does not evaluate the real model's tool selection. An LLM-backed
+    evaluation would need recorded fixtures or a live key, and neither is
+    wired up.
+
+16. **The supplied corpus contains no equal-authority conflict.** The
+    conflict-to-escalation path is therefore exercised on constructed evidence
+    in `test_agent_trust.py` rather than end to end through the corpus. The
+    code path is tested; the *scenario* is not one this document set produces.
+
+17. **No penetration test.** The adversarial suite encodes the attacks
     considered here; it is not a substitute for an adversary who thinks of
     something else.
 
@@ -703,7 +735,7 @@ and credit is offered unless you would rather not have it.
 | Vector security | ➖ Not applicable — no vector DB; BM25 over pre-scoped candidates |
 | File upload security | ✅ Validator implemented and wired into ingestion — but no upload endpoint exists yet |
 | API security | ✅ Strict schemas, `extra="forbid"`, body limits, rate limits, CSRF origin check, headers |
-| AI security | ✅ Structural, not prompt-based |
+| AI security | ✅ Structural, not prompt-based; trust status derived in code, conflicts escalated rather than resolved |
 | Deterministic engine | ✅ Persisted state machine, permission-gated, replay-proof, fingerprinted |
 | Action security | ✅ Single-use, re-validated, session-bound, conversation-owned, audited |
 | Infrastructure | ⚠️ Non-root container, no baked secrets, fail-closed config — but single-node, no WAF, no shared rate limiter |

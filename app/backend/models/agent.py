@@ -219,6 +219,39 @@ class AgentResponse(BaseModel):
     #: hidden: a truncated investigation is a reason to distrust the answer.
     step_budget_exhausted: bool = False
 
+    # --- trust (Phase 2) -----------------------------------------------------
+    #
+    # `outcome` above says what shape this response has; the fields below say
+    # how far it can be relied on. The two are separate axes and come apart
+    # routinely — a well-formed answer resting on two contradictory sources is
+    # ANSWERED and not trustworthy. Both are derived in code from tool results
+    # (see `agent/trust.py`); neither is asserted by a model.
+
+    #: `TrustStatus` as a plain string, so this model stays importable from
+    #: `agent/trust.py` without a cycle.
+    trust_status: str = "confident"
+    #: Why the status is what it is. Safe to show a user: every entry is drawn
+    #: from a tool message or a policy verification reason.
+    trust_reasons: list[str] = []
+    #: The strongest authority tier that actually governed, as an int, or None
+    #: when nothing governed.
+    governing_authority_tier: int | None = None
+    #: True when a signed customer agreement decided the answer rather than the
+    #: default policy — the single most consequential fact about a support
+    #: answer, and the one a reader is most likely to assume wrongly.
+    customer_agreement_applied: bool = False
+    #: Composed notes from the authority layer: what outranked what.
+    authority_overrides: list[str] = []
+    #: Sources of equal authority that precedence could not separate.
+    authority_conflicts: list[str] = []
+    #: Set only when the trust status is `escalate`.
+    escalation_reason: str | None = None
+
+    #: The intents the planner recognised, recorded so an operator can see why
+    #: a given set of tools ran. Not chain-of-thought: these are the routing
+    #: labels the deterministic planner matched, not the model's reasoning.
+    intents: list[str] = []
+
     @property
     def tools_used(self) -> list[str]:
         seen: list[str] = []

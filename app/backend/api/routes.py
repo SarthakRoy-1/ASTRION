@@ -19,6 +19,7 @@ The two boundaries visible from here:
 from __future__ import annotations
 
 import sqlite3
+import time
 import uuid
 
 from fastapi import APIRouter, Request
@@ -178,9 +179,11 @@ def chat(
     )
 
     orchestrator = build_orchestrator(conn, settings)
+    started = time.perf_counter()
     response = orchestrator.handle(
         AgentRequest(message=payload.message, context=context, request_id=request_id)
     )
+    elapsed_ms = int((time.perf_counter() - started) * 1000)
 
     record_event(
         conn,
@@ -193,12 +196,30 @@ def chat(
         details={
             # The message itself is deliberately not logged: it is customer
             # content, and an audit trail is metadata about access, not a
-            # transcript of everything anyone typed.
+            # transcript of everything anyone typed. The same rule governs
+            # everything added below — these are *labels about* the
+            # investigation (which tools, which sources, how it concluded),
+            # never its content and never the model's reasoning.
             "outcome": response.outcome.value,
             "tools_used": response.tools_used,
             "prepared_action": (
                 response.pending_action.action_id if response.pending_action else None
             ),
+            # Phase 2 observability. Enough to reconstruct *why* an answer came
+            # out the way it did without replaying the request.
+            "intents": response.intents,
+            "trust_status": response.trust_status,
+            "governing_authority_tier": response.governing_authority_tier,
+            "customer_agreement_applied": response.customer_agreement_applied,
+            "conflict_count": len(response.authority_conflicts),
+            "override_count": len(response.authority_overrides),
+            "escalation_reason": response.escalation_reason,
+            "escalation_recommended": response.escalation_recommended,
+            "step_budget_exhausted": response.step_budget_exhausted,
+            # Chunk ids, not chunk text: an id identifies the source for a
+            # reviewer while keeping document contents out of the log.
+            "source_chunk_ids": [item.chunk_id for item in response.evidence][:25],
+            "duration_ms": elapsed_ms,
         },
     )
     if response.pending_action is not None:

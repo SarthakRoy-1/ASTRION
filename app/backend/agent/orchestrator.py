@@ -21,7 +21,8 @@ from __future__ import annotations
 import sqlite3
 import uuid
 
-from app.backend.agent.composer import compose
+from app.backend.agent.composer import compose, unmet_policy_requirements
+from app.backend.agent import trust as trust_layer
 from app.backend.agent.provider import (
     DeterministicPlanner,
     PlannerStep,
@@ -124,9 +125,8 @@ class AgentOrchestrator:
         # not a provider that simply finished on its last allowed step.
         budget_exhausted = step >= self._max_steps and not plan.is_final
 
-        answer, outcome, uncertainties = compose(
-            request.message, history, detect_intents(request.message)
-        )
+        intents = detect_intents(request.message)
+        answer, outcome, uncertainties = compose(request.message, history, intents)
         if plan_answer := _provider_answer(self._provider, history):
             answer = plan_answer
         if budget_exhausted:
@@ -145,6 +145,32 @@ class AgentOrchestrator:
             if record.result.proposed_action
         ]
 
+        # How far the answer can be relied on, derived from what the tools
+        # actually returned. Computed here rather than in the composer because
+        # it is a property of the *investigation*, not of the prose — and the
+        # step budget, which only the loop knows about, is one of its inputs.
+        assessment = trust_layer.assess(
+            history,
+            unmet_requirements=unmet_policy_requirements(intents, history),
+            step_budget_exhausted=budget_exhausted,
+        )
+
+        # An action prepared while the evidence is unsettled is still offered —
+        # escalating *because* you cannot determine something is exactly right,
+        # and refusing to propose one would remove the safe option. What must
+        # not happen is a human confirming it without knowing that. The
+        # confirmation gate is only as good as what the reviewer is shown, so
+        # the caveat travels with the answer rather than being left implicit in
+        # a status field the UI might not render.
+        if proposals and not assessment.is_actionable:
+            caveat = (
+                "This action is being proposed while the following remain "
+                "unresolved. Confirm it only if that is what you intend:"
+            )
+            answer = "\n".join(
+                [answer, caveat, *(f"- {reason}" for reason in assessment.reasons)]
+            )
+
         return AgentResponse(
             request_id=request_id,
             outcome=outcome,
@@ -157,6 +183,18 @@ class AgentOrchestrator:
             escalation_recommended=_should_escalate(history, uncertainties),
             reference_time=self._reference_time(),
             step_budget_exhausted=budget_exhausted,
+            trust_status=assessment.status.value,
+            trust_reasons=list(assessment.reasons),
+            governing_authority_tier=(
+                int(assessment.authority.governing_tier)
+                if assessment.authority.governing_tier is not None
+                else None
+            ),
+            customer_agreement_applied=assessment.authority.customer_agreement_applied,
+            authority_overrides=list(assessment.authority.overrides),
+            authority_conflicts=list(assessment.authority.conflicts),
+            escalation_reason=assessment.escalation_reason,
+            intents=sorted(intent.value for intent in intents),
         )
 
     # --- confirmation, out of the provider's reach ----------------------------

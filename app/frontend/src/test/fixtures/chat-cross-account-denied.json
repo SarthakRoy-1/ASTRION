@@ -107,6 +107,20 @@
       "tool_name": "search_documents"
     }
   ],
+  "trust": {
+    "conflicts": [],
+    "customer_agreement_applied": false,
+    "escalation_reason": null,
+    "governing_authority_tier": 3,
+    "intents": [
+      "cancellation"
+    ],
+    "overrides": [],
+    "reasons": [
+      "order 'ORD-2001' was not found within the caller's scope"
+    ],
+    "status": "insufficient_data"
+  },
   "uncertainties": [
     "order 'ORD-2001' was not found within the caller's scope"
   ],

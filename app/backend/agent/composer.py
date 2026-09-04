@@ -31,6 +31,26 @@ _POLICY_INTENT_REQUIREMENTS: tuple[tuple[Intent, type, str], ...] = (
 )
 
 
+def unmet_policy_requirements(
+    intents: set[Intent] | None, history: list[StepRecord]
+) -> list[str]:
+    """Prerequisites a policy question needed and did not get.
+
+    Exposed so the trust layer can read the same gap the composer reports in
+    prose, rather than re-deriving it from the answer text. One computation,
+    two consumers — a second implementation would drift the moment either
+    changed.
+    """
+    decisions = [d for step in history for d in step.result.decisions]
+    # Phrased exactly as the composer phrases the matching uncertainty, so the
+    # answer text and the trust reasons use one vocabulary rather than two
+    # descriptions of the same gap.
+    return [
+        f"no order identified, so {description} was not evaluated"
+        for description in _unmet_policy_intents(intents or set(), decisions, history)
+    ]
+
+
 def compose(
     message: str, history: list[StepRecord], intents: set[Intent] | None = None
 ) -> tuple[str, ResponseOutcome, list[str]]:

@@ -786,6 +786,7 @@ export interface components {
              * @default []
              */
             tools_used: components["schemas"]["ToolUse"][];
+            trust: components["schemas"]["TrustView"];
             /**
              * Uncertainties
              * @default []
@@ -1191,6 +1192,55 @@ export interface components {
         TransferOwnershipRequest: {
             /** User Id */
             user_id: string;
+        };
+        /**
+         * TrustView
+         * @description How far this answer can be relied on, and what governed it.
+         *
+         *     A second axis alongside `outcome`. `outcome` says what shape the response
+         *     has; this says whether it can be acted on. They come apart routinely — a
+         *     well-formed answer resting on two contradictory sources is `answered` and
+         *     is not trustworthy.
+         *
+         *     Every field is derived in code from tool results (`agent/trust.py`).
+         *     Nothing here is asserted by a model, and there is deliberately no numeric
+         *     score: a number invites a threshold, and a threshold invites shipping
+         *     "0.82 is probably fine". Each status implies a different action by the
+         *     reader — proceed, check the premise, reconcile the sources, get more data,
+         *     involve a person.
+         */
+        TrustView: {
+            /**
+             * Conflicts
+             * @default []
+             */
+            conflicts: string[];
+            /**
+             * Customer Agreement Applied
+             * @default false
+             */
+            customer_agreement_applied: boolean;
+            /** Escalation Reason */
+            escalation_reason?: string | null;
+            /** Governing Authority Tier */
+            governing_authority_tier?: number | null;
+            /**
+             * Intents
+             * @default []
+             */
+            intents: string[];
+            /**
+             * Overrides
+             * @default []
+             */
+            overrides: string[];
+            /**
+             * Reasons
+             * @default []
+             */
+            reasons: string[];
+            /** Status */
+            status: string;
         };
         /** UpdateWorkspaceRequest */
         UpdateWorkspaceRequest: {

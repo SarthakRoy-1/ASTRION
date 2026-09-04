@@ -198,6 +198,25 @@
       "tool_name": "search_documents"
     }
   ],
+  "trust": {
+    "conflicts": [],
+    "customer_agreement_applied": true,
+    "escalation_reason": "the governing policy requires immediate escalation",
+    "governing_authority_tier": 1,
+    "intents": [
+      "sla"
+    ],
+    "overrides": [
+      "05_Northstar_Logistics_Enterprise_Agreement.pdf p.1 \u00a71. Support terms (tier 1 CUSTOMER_AGREEMENT) outranks 01_Support_Policy_v3_CURRENT.pdf p.1 \u00a72. Severity definitions (tier 2 CURRENT_SUPPORT_POLICY) on topic 'support_response'",
+      "05_Northstar_Logistics_Enterprise_Agreement.pdf p.1 \u00a71. Support terms (tier 1 CUSTOMER_AGREEMENT) outranks 01_Support_Policy_v3_CURRENT.pdf p.1 \u00a73. Default first-response targets (tier 2 CURRENT_SUPPORT_POLICY) on topic 'support_response'",
+      "05_Northstar_Logistics_Enterprise_Agreement.pdf p.1 \u00a71. Support terms (tier 1 CUSTOMER_AGREEMENT) outranks 01_Support_Policy_v3_CURRENT.pdf p.1 \u00a74. Escalation (tier 2 CURRENT_SUPPORT_POLICY) on topic 'support_response'"
+    ],
+    "reasons": [
+      "the governing policy requires immediate escalation",
+      "a response target was breached and must be escalated"
+    ],
+    "status": "escalate"
+  },
   "uncertainties": [],
   "user_id": "support.agent"
 }
