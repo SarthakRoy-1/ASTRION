@@ -1517,7 +1517,7 @@ Still open, to resolve when the relevant phase starts:
 
 ---
 
-## 12. Phase 1 — multi-tenant workspaces
+## 14. Phase 1 — multi-tenant workspaces
 
 Phase 0 replaced the mock identity with real authentication. Phase 1 gives that
 identity somewhere to *belong*, turning a single-tenant application into a
@@ -1613,7 +1613,7 @@ order to do it in.
 
 ---
 
-## 13. Phase 2 — trust-aware reasoning
+## 15. Phase 2 — trust-aware reasoning
 
 Phase 2 did not add a new agent. The orchestration loop, the four-tier
 authority model, the deterministic policy engine and the confirmation gate were
@@ -1747,3 +1747,185 @@ text*, run the policy tool the intent calls for, retrieve scoped documentation,
 prepare an action only when explicitly asked. The tool boundary, the reserved
 argument names, the SQL-level tenant scoping and the confirmation state machine
 are all as Phases 0–1 left them.
+
+---
+
+## 16. Phase 3 — proactive operations intelligence
+
+Phases 0–2 built a system that answers well when asked. Phase 3 addresses the
+complaint underneath the brief: *a reactive assistant only helps once someone
+thinks to ask*. It turns the tenant-scoped operational data already in the
+database into a ranked, explained list of things that deserve attention.
+
+    detect  ->  rank  ->  explain  ->  investigate  ->  optionally act
+
+### What is deterministic, and what is not
+
+**Everything in detection and ranking is deterministic rule-based code.** There
+is no model, no statistical inference, no anomaly detection, no forecasting and
+no telemetry. A support lead can read a signal's `detail` and reconstruct
+exactly why it appeared from the records themselves.
+
+The model-assisted part is *investigation only*: once a signal exists, the
+Phase 2 agent can be asked about it, and it reaches the signal through a tool
+rather than inventing one.
+
+This is a deliberate limit, not a shortcut. The supplied dataset has six orders
+and seven tickets. A statistical model over it would be unfalsifiable
+decoration, and its output could not be explained to the person acting on it.
+
+### The signal model
+
+`models/signals.py`. A `Signal` carries what was observed, the records it rests
+on (`record_refs` — required, non-empty), the accounts affected, the
+documentation it matched, its priority with a full itemised breakdown, a Phase 2
+trust status, and a recommended next step. `SignalReport` adds the reference
+time so a reader knows what "150 minutes overdue" was measured against.
+
+### Detection
+
+`operations/detection.py`. Four detectors, each chosen because the supplied
+dataset can actually evidence it:
+
+| Detector | Rule |
+| --- | --- |
+| **SLA risk** | Elapsed time on an open ticket with no first response, against *every computable* first-response target for that account |
+| **Recurring issue** | Two or more tickets from one account sharing at least three distinctive terms |
+| **Cross-customer issue** | The same cluster spanning more than one account, or one carrier missing pickup windows for several |
+| **Operational anomaly** | Pickup windows closed with no pickup recorded; a majority of in-scope orders carrying a cancellation request |
+
+**SLA detection is agreement-aware for free.** It calls the existing
+`evaluate_sla`, so a customer agreement's tighter target overrides the default
+policy automatically — the detector neither knows nor needs to know that it
+happened.
+
+**Severity is never invented.** Tickets carry no severity column, and Phase 2
+established that severity is a judgement about business impact rather than a
+calculation. So elapsed time is compared against every band:
+
+```text
+elapsed > every computable target   -> breached whichever severity applies  (confident)
+elapsed > some target               -> breached only if severity is high    (conditional)
+elapsed > 75% of the tightest       -> approaching                          (conditional)
+```
+
+Targets expressed in business hours have no fixed minute count; they are
+excluded from the comparison rather than guessed at, and the signal says so.
+
+**Known-issue correlation is correlation, not detection.** The cluster is found
+in the *ticket data*; the documentation is then searched for it through the
+ordinary scoped, authoritative-only retrieval path. Keying detection off a
+hard-coded list of known-issue ids would find only problems somebody had
+already written down — the opposite of proactive. A resolved issue can never be
+offered as the explanation for a live one.
+
+**Clustering has a real precision limit, and says so.** Two short tickets can
+share "booked", "pickup" and "minutes" while describing entirely different
+problems. The response is to keep detecting — a missed recurrence is worse than
+a checked one — and to lower the *confidence*: a cluster held together by few
+shared terms is reported as `conditional` with its shared terms named, so the
+reader verifies rather than trusts. Raising the threshold until this corpus
+stopped producing false positives would be fitting the rule to the sample.
+
+### Ranking
+
+`operations/ranking.py`. Additive, small, and fully itemised — every
+contribution is a named factor carrying its points and the observation that
+earned them:
+
+```text
++40  severity           detector severity is critical
+ +2  affected_records   1 ticket(s), 0 order(s)
++15  signal_type        sla_risk needs faster handling
+ -5  documented         matches 3 documented section(s), so it is already understood
+---
+ 52  total
+```
+
+Two rules carry most of the weight:
+
+- **Breadth amplifies severity; it cannot substitute for it.** The
+  affected-account bonus is capped at the signal's own severity points. Without
+  that cap, "4 of 6 orders carry a cancellation request" — a volume observation
+  with no established cause — outranked a first-response target that may
+  already be breached.
+- **Confidence lowers priority and never raises it.** An unverified concern is
+  scaled down so it cannot outrank a confirmed one of equal size. Ranking on
+  raw impact would put the least reliable items at the top of the page.
+
+Ties break on severity, then affected accounts, then signal id — all
+deterministic, so the list never reshuffles between identical runs.
+
+### Agent integration
+
+Two read-only tools joined the existing registry (now 11 tools, still with no
+execution path): `get_operational_signals` and `investigate_signal`. The
+planner gained an `OPERATIONS` intent, narrowly scoped — a question naming a
+specific order, ticket or account is a question about *that record*, and a
+structural guard suppresses the workspace sweep in that case rather than
+burying the answer in a list of unrelated signals.
+
+The model cannot invent a signal. Every field it reports came from a detector
+that read real records.
+
+### Authorization
+
+No new mechanism. One permission was added to the existing RBAC matrix:
+
+`operations.read`, granted **from Viewer up**. A signal is an *aggregation* of
+tickets and orders a viewer can already read one at a time; gating the summary
+above the underlying records would be security theatre while the data stayed
+reachable. What a viewer still cannot do is act on a signal — that needs
+`propose_action` and `execute_action`, unchanged.
+
+Scope comes from the caller's workspace membership and is compiled into the
+`WHERE` clause by `services/operations.py`, so an out-of-scope record is never
+loaded. `get_signal` deliberately **re-derives** the whole report under the
+caller's own scope rather than looking a signal up in a store: signals are a
+view over operational data, not persisted rows, so handing back one computed
+under someone else's scope is unrepresentable by construction.
+
+An empty account collection means "authorized for no accounts" and returns
+nothing; `None` means unrestricted and is reachable only from scripts, never
+from a request.
+
+### Actions
+
+Unchanged. `recommended_next_step` is advisory prose that triggers nothing.
+Acting on a signal goes through the same preparation tools and the same
+confirmation gate as everything else: propose, show, confirm, re-validate,
+execute, audit.
+
+### Observability
+
+Two audit events — `operations.signals_viewed` and
+`operations.signal_inspected` — recording counts, types, severity, priority,
+affected-entity counts, trust status and duration. Never ticket subjects,
+customer names or signal contents: these say *what was surfaced*, not what it
+said. The agent's own event additionally records which signal ids an
+investigation touched.
+
+### Limitations
+
+- **Detection is on-demand, not real-time.** Signals are computed when asked
+  for. There is no scheduler, no background job and no push notification, and
+  nothing in the product claims otherwise.
+- **Clustering is lexical.** It cannot recognise two descriptions of one
+  problem that share no vocabulary, and it can group two problems that share
+  generic operational words — which is why weak clusters are marked
+  `conditional` rather than asserted.
+- **Clustering needs at least four tickets in the workspace.** The ubiquity
+  filter that stops common product vocabulary grouping everything is computed
+  *relative to the corpus*: at `UBIQUITY_FRACTION = 0.6` the ceiling is
+  `max(1, int(n * 0.6))`, so below four tickets a term shared by two of them is
+  itself treated as ubiquitous and removed. A workspace with three or fewer
+  tickets therefore produces no recurring or cross-customer cluster signal. The
+  carrier-based cross-customer path is unaffected, and SLA and anomaly
+  detection work at any size. Lowering the fraction to cover tiny workspaces
+  would weaken the filter everywhere else, so the behaviour is documented
+  rather than tuned.
+- **No baselines.** "Unusual" means a rule fired, not that a historical
+  distribution was exceeded. The dataset is a single snapshot with no history
+  to compare against, so a trend claim would be fabricated.
+- **The corpus is small.** Six orders, seven tickets. The detectors are written
+  to generalise, but they have only been exercised at this scale.

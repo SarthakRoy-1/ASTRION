@@ -36,6 +36,9 @@ class Intent(StrEnum):
     SERVICE_CREDIT = "service_credit"
     SLA = "sla"
     ESCALATION = "escalation"
+    #: "What should operations look at right now?" — a question about the
+    #: workspace as a whole rather than about one named record.
+    OPERATIONS = "operations"
     INVESTIGATION = "investigation"
 
 
@@ -72,7 +75,37 @@ _INTENT_KEYWORDS: tuple[tuple[Intent, tuple[str, ...]], ...] = (
         ),
     ),
     (Intent.ESCALATION, ("escalate", "escalation")),
+    (
+        Intent.OPERATIONS,
+        # Deliberately narrow. An earlier draft included conversational
+        # phrases like "right now" and "what is going on", which fire on
+        # ordinary single-ticket questions — "TKT-504 still shows BOOKED,
+        # what is going on?" is a question about one ticket, not a request
+        # for a workspace sweep. Every phrase below is about the operation as
+        # a whole rather than about a record.
+        (
+            "operations look",
+            "needs attention",
+            "need attention",
+            "what should we look",
+            "what should i look",
+            "high priority",
+            "spike",
+            "recurring",
+            "across customers",
+            "multiple customers",
+            "other customers",
+            "customers are affected",
+            "customers affected",
+            "anomal",
+            "unusual",
+        ),
+    ),
 )
+
+#: Signal ids as they appear in a request, so a follow-up question about one
+#: signal reaches `investigate_signal` rather than starting a fresh listing.
+_SIGNAL_ID = re.compile(r"\b(?:SLA|RECUR|XCUST|PICKUP|CANCEL)-[A-Za-z0-9_.-]+")
 
 
 @dataclass
@@ -244,6 +277,29 @@ class DeterministicPlanner:
             call = ToolCall("lookup_record", {"entity": "dataset_metadata"})
             if ("lookup_record", _key(call.arguments)) not in called:
                 return PlannerStep([call])
+
+        # --- 3c. operations intelligence -----------------------------------
+        #
+        # Placed before document retrieval because "what should we look at"
+        # is answered from detected signals, not from policy text. A named
+        # signal goes straight to its detail; an open question lists the
+        # ranked set.
+        named_signals = _SIGNAL_ID.findall(message)
+        for signal_id in named_signals:
+            arguments = {"signal_id": signal_id}
+            if ("investigate_signal", _key(arguments)) not in called:
+                return PlannerStep([ToolCall("investigate_signal", arguments)])
+
+        # A workspace-wide sweep only when the request is not about a specific
+        # record. Naming an order, ticket or account makes it a question about
+        # *that* record, and answering it with a ranked list of unrelated
+        # signals would bury the answer the user actually asked for. This guard
+        # is structural: it holds however the keyword list later changes.
+        names_a_record = any(ids[kind] for kind in ("orders", "tickets", "accounts"))
+        if Intent.OPERATIONS in intents and not named_signals and not names_a_record:
+            arguments = {}
+            if ("get_operational_signals", _key(arguments)) not in called:
+                return PlannerStep([ToolCall("get_operational_signals", arguments)])
 
         # --- 4. supporting documentation ----------------------------------
         search_args: dict = {"query": message}

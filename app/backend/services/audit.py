@@ -91,6 +91,11 @@ class AuditEvent(StrEnum):
     AUTHORIZATION_DENIED = "authz.denied"
     TENANT_ISOLATION_DENIED = "authz.tenant_denied"
 
+    # Operations intelligence (Phase 3). Records what was surfaced and how it
+    # was ranked, never the ticket subjects or customer names behind it.
+    OPERATIONS_SIGNALS_VIEWED = "operations.signals_viewed"
+    OPERATIONS_SIGNAL_INSPECTED = "operations.signal_inspected"
+
     # Agent and actions
     AGENT_INVOKED = "agent.invoked"
     ACTION_PROPOSED = "action.proposed"

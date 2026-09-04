@@ -27,6 +27,7 @@ from app.backend.api.middleware import (
     SecurityHeadersMiddleware,
 )
 from app.backend.api.ratelimit import RateLimiter
+from app.backend.api.operations_routes import operations_router
 from app.backend.api.routes import router
 from app.backend.api.workspace_routes import workspace_router
 from app.backend.core.config import DEFAULT_ENV_FILE, Settings, load_settings
@@ -137,4 +138,5 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(router)
     app.include_router(auth_router)
     app.include_router(workspace_router)
+    app.include_router(operations_router)
     return app

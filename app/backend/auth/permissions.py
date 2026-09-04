@@ -121,6 +121,14 @@ class Permission(StrEnum):
     READ_RECORDS = "read_records"
     READ_DOCUMENTS = "read_documents"
     READ_AUDIT_LOG = "read_audit_log"
+    #: Operations intelligence — the detected-signal view.
+    #:
+    #: Granted from VIEWER up, deliberately. A signal is an *aggregation* of
+    #: tickets and orders the viewer can already read one at a time; gating the
+    #: summary above the underlying records would be security theatre while the
+    #: data stayed reachable. What a viewer still cannot do is act on a signal:
+    #: that needs PROPOSE_ACTION and EXECUTE_ACTION, which are unchanged.
+    READ_OPERATIONS = "operations.read"
 
     # The agent
     RUN_AGENT = "run_agent"
@@ -143,6 +151,7 @@ _VIEWER: frozenset[Permission] = frozenset(
         Permission.MEMBERS_READ,
         Permission.READ_RECORDS,
         Permission.READ_DOCUMENTS,
+        Permission.READ_OPERATIONS,
         Permission.RUN_AGENT,
     }
 )

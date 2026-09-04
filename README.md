@@ -616,6 +616,81 @@ portable baseline any of them can build from. SQLite plus a single volume
 implies single-writer semantics, which is correct for a demo and would need
 reconsideration before scaling to multiple backend instances.
 
+## Operations intelligence
+
+A reactive assistant only helps once someone thinks to ask. The **Operations**
+view answers the question nobody had to type:
+
+> What needs my attention right now, and why?
+
+It reads the tickets and orders already in your workspace and produces a ranked
+list of concerns, each one explained from the records behind it.
+
+### What it detects
+
+| | |
+| --- | --- |
+| **SLA risk** | A ticket with no first response, measured against the first-response targets that actually govern that account — including a signed customer agreement's tighter ones |
+| **Recurring issues** | The same problem reported more than once by one customer |
+| **Cross-customer issues** | One problem visible across several accounts, or a carrier missing pickup windows for more than one — the signal that turns a support ticket into an operations concern |
+| **Unusual patterns** | Pickup windows closed with no pickup recorded; a concentration of cancellation requests |
+
+Where a detected cluster matches documented material — a known issue in the
+product operations guide — the signal says so. That is *correlation*, not
+detection: the problem is found in your ticket data first, and the
+documentation is then searched for it. Keying detection off a list of known
+issue ids would only ever find problems somebody had already written down.
+
+### It is deterministic, and it says how
+
+Every signal is produced by a rule you can check, not by a model. The priority
+is additive and fully itemised, so "why is this above that one?" has an answer:
+
+```text
++40  severity           detector severity is critical
+ +2  affected_records   1 ticket(s), 0 order(s)
++15  signal_type        sla_risk needs faster handling
+ -5  documented         matches 3 documented section(s), so it is already understood
+---
+ 52  total
+```
+
+Two rules shape the order. **Breadth amplifies severity but cannot substitute
+for it** — a low-severity observation spread across many accounts never
+displaces a genuine breach. And **confidence lowers priority, never raises it**
+— an unverified concern cannot outrank a confirmed one.
+
+### It does not overclaim
+
+Severity is a judgement about business impact, so the system will not invent
+one. A ticket past its tightest target but inside its widest is reported as
+*breached if it is P1, and within target otherwise* — not as a breach.
+
+Clustering compares words, which is imprecise on two-sentence tickets. Rather
+than raise the bar until false positives disappear, a weakly-evidenced cluster
+is still reported and marked **conditional**, with the shared terms named so
+you can check it in seconds. A missed recurrence is worse than one you glance
+at.
+
+### Investigating
+
+Any signal can be handed to the assistant, which fetches it through a tool and
+answers with the same trust semantics as everywhere else. A recommendation is
+advice: nothing acts on it. Escalating still goes through the ordinary
+confirmation gate — propose, review, confirm.
+
+### Access
+
+Every workspace role can read signals, because a signal aggregates tickets and
+orders those roles can already read individually. Acting on one still requires
+the action permissions. Signals never cross a workspace boundary: the scope is
+compiled into the query, and a signal id from another workspace is reported as
+absent rather than forbidden.
+
+**Detection runs when you ask for it.** There is no scheduler, no background
+job and no notification — this is on-demand analysis of the data in your
+workspace, not live monitoring.
+
 ## Workspaces and access control
 
 ParcelPilot is multi-tenant. A person signs in as a **user**, and reaches data

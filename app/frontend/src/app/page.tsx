@@ -8,6 +8,7 @@ import { ConnectionNotice } from "@/components/ConnectionNotice";
 import { Conversation } from "@/components/Conversation";
 import { ErrorNotice } from "@/components/ErrorNotice";
 import { MembersPanel } from "@/components/MembersPanel";
+import { OperationsPanel } from "@/components/OperationsPanel";
 import { SignInPanel } from "@/components/SignInPanel";
 import { SystemStatus } from "@/components/SystemStatus";
 import { WorkspaceOnboarding } from "@/components/WorkspaceOnboarding";
@@ -64,6 +65,7 @@ export default function ChatPage() {
   // so a sleeping backend is probed once rather than twice.
   const session = useWorkspaceSession(health);
   const [showMembers, setShowMembers] = useState(false);
+  const [showOperations, setShowOperations] = useState(false);
 
   // `loading` deliberately falls through to the shell below rather than
   // rendering a spinner: while the backend is still waking, what the user
@@ -156,13 +158,29 @@ export default function ChatPage() {
               onManage={() => setShowMembers((open) => !open)}
               canManageMembers={session.can("members.read")}
             />
-            <button
-              className={styles.signOut}
-              type="button"
-              onClick={() => void session.signOut()}
-            >
-              Sign out
-            </button>
+            <div className={styles.workspaceActions}>
+              {/* Hidden when the role does not grant it — a rendering choice
+                  only. The server re-checks `operations.read` regardless. */}
+              {session.can("operations.read") ? (
+                <button
+                  className={styles.opsButton}
+                  type="button"
+                  onClick={() => {
+                    setShowMembers(false);
+                    setShowOperations((open) => !open);
+                  }}
+                >
+                  Operations
+                </button>
+              ) : null}
+              <button
+                className={styles.signOut}
+                type="button"
+                onClick={() => void session.signOut()}
+              >
+                Sign out
+              </button>
+            </div>
           </div>
         </div>
       ) : null}
@@ -188,6 +206,19 @@ export default function ChatPage() {
               <ConnectionNotice state={connection} />
             </div>
           )}
+
+          {showOperations && !isDemo ? (
+            <OperationsPanel
+              onClose={() => setShowOperations(false)}
+              onInvestigate={(question) => {
+                // Hands the question to the existing agent rather than building
+                // a second investigation path. The panel closes so the answer
+                // is what the reader sees next.
+                setShowOperations(false);
+                send(question);
+              }}
+            />
+          ) : null}
 
           {showMembers && session.activeWorkspace && session.user ? (
             <MembersPanel

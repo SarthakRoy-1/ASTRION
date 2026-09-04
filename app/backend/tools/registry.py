@@ -18,6 +18,10 @@ from app.backend.tools.document_tools import (
     GET_DOCUMENT_EVIDENCE_SPEC,
     SEARCH_DOCUMENTS_SPEC,
 )
+from app.backend.tools.operations_tools import (
+    GET_OPERATIONAL_SIGNALS_SPEC,
+    INVESTIGATE_SIGNAL_SPEC,
+)
 from app.backend.tools.policy_tools import (
     EVALUATE_CANCELLATION_SPEC,
     EVALUATE_SERVICE_CREDIT_SPEC,
@@ -36,6 +40,11 @@ READ_ONLY_TOOL_SPECS = (
     EVALUATE_CANCELLATION_SPEC,
     EVALUATE_SERVICE_CREDIT_SPEC,
     EVALUATE_SLA_SPEC,
+    # Tool E — operations intelligence (Phase 3). Read-only: it reports what
+    # was detected and never changes anything, so it belongs with the other
+    # read tools rather than behind the state-changing switch.
+    GET_OPERATIONAL_SIGNALS_SPEC,
+    INVESTIGATE_SIGNAL_SPEC,
 )
 
 # Tool D — state-changing action *preparation* only. Still not execution:

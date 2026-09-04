@@ -2359,6 +2359,97 @@
         ]
       }
     },
+    "/api/operations/signals": {
+      "get": {
+        "description": "Every operational signal detected in the caller's workspace, ranked.",
+        "operationId": "list_signals_api_operations_signals_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response List Signals Api Operations Signals Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Signals",
+        "tags": [
+          "operations"
+        ]
+      }
+    },
+    "/api/operations/signals/{signal_id}": {
+      "get": {
+        "description": "One signal in full, re-derived under the caller's own scope.\n\nA signal from another workspace is reported as **absent**, not forbidden \u2014\nthe same refusal shape the record layer uses, so this endpoint cannot be\nused to discover that another tenant has a problem.",
+        "operationId": "signal_detail_api_operations_signals__signal_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "signal_id",
+            "required": true,
+            "schema": {
+              "title": "Signal Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Signal Detail Api Operations Signals  Signal Id  Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Signal Detail",
+        "tags": [
+          "operations"
+        ]
+      }
+    },
     "/api/principals": {
       "get": {
         "description": "The mock identities this deployment accepts, and the scope each holds.\n\nExists so the demo is self-describing. It lists no credentials, because\nthere are none: Phase 5's authentication is deliberately a mock, and a\nreal identity provider replaces `auth/principals.py` without touching\nanything below it.",

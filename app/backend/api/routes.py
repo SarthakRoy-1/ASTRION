@@ -219,6 +219,19 @@ def chat(
             # Chunk ids, not chunk text: an id identifies the source for a
             # reviewer while keeping document contents out of the log.
             "source_chunk_ids": [item.chunk_id for item in response.evidence][:25],
+            # Phase 3: which operational signals the investigation surfaced, by
+            # id only. The ids are derived from record ids the caller can
+            # already read, and the signal's contents stay out of the log.
+            "operational_signal_ids": sorted(
+                {
+                    signal_id
+                    for invocation in response.tool_invocations
+                    if invocation.tool_name
+                    in ("get_operational_signals", "investigate_signal")
+                    for signal_id in [invocation.arguments.get("signal_id")]
+                    if signal_id
+                }
+            ),
             "duration_ms": elapsed_ms,
         },
     )

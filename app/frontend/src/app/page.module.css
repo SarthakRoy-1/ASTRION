@@ -100,3 +100,24 @@
   border: 1px solid var(--fail-border);
   border-radius: var(--radius-sm);
 }
+
+.workspaceActions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.opsButton {
+  appearance: none;
+  font: inherit;
+  font-size: var(--text-caption);
+  color: var(--text-secondary);
+  background: none;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  padding: var(--space-1) var(--space-2);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.opsButton:hover { color: var(--text-primary); border-color: var(--border-strong); }

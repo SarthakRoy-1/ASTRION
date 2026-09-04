@@ -117,6 +117,10 @@ def compose(
         lines.append(gap)
         uncertainties.append(f"no order identified, so {description} was not evaluated")
 
+    # Operational signals are the answer to an operations question, so they are
+    # rendered before the fallback that would otherwise report only citations.
+    lines.extend(_signal_lines(history))
+
     if proposals:
         proposed = proposals[-1]
         lines.append(
@@ -166,6 +170,76 @@ def compose(
         )
 
     return "\n".join(lines), outcome, _dedupe(uncertainties)
+
+
+def _signal_lines(history: list[StepRecord]) -> list[str]:
+    """Render detected operational signals from tool results.
+
+    Every value here was produced by a detector reading real records. Nothing
+    is summarised into a judgement the detector did not make: the priority, the
+    counts and the explanation are copied through, and a signal the detector
+    marked unsettled keeps that mark.
+    """
+    lines: list[str] = []
+
+    for step in history:
+        data = step.result.data or {}
+
+        # --- a ranked listing ---
+        signals = data.get("signals")
+        if isinstance(signals, list) and signals:
+            lines.append(
+                f"{data.get('total_detected', len(signals))} operational signal(s) "
+                f"detected in this workspace, highest priority first."
+            )
+            for signal in signals:
+                trust = signal.get("trust_status")
+                caveat = "" if trust == "confident" else f" [{trust}]"
+                lines.append(
+                    f"- [{signal.get('severity')}] {signal.get('title')} "
+                    f"(priority {signal.get('priority_score')}, "
+                    f"{signal.get('affected_account_count')} account(s), "
+                    f"id {signal.get('signal_id')}){caveat}"
+                )
+                if step_next := signal.get("recommended_next_step"):
+                    lines.append(f"  Next: {step_next}")
+
+        # --- one signal in detail ---
+        signal = data.get("signal")
+        if isinstance(signal, dict):
+            lines.append(f"{signal.get('title')}")
+            lines.append(f"Why it was detected: {signal.get('detail')}")
+            lines.append(
+                f"Severity {signal.get('severity')}, priority "
+                f"{signal.get('priority_score')}, affecting "
+                f"{signal.get('affected_account_count')} account(s), "
+                f"{signal.get('affected_ticket_count')} ticket(s) and "
+                f"{signal.get('affected_order_count')} order(s)."
+            )
+            for factor in signal.get("priority_factors", []) or []:
+                lines.append(
+                    f"  Priority factor: {factor.get('name')} "
+                    f"{factor.get('points'):+d} — {factor.get('basis')}"
+                )
+            records = signal.get("records") or []
+            if records:
+                lines.append(
+                    "Records: "
+                    + ", ".join(
+                        f"{r.get('kind')} {r.get('id')}" for r in records[:10]
+                    )
+                )
+            if next_step := signal.get("recommended_next_step"):
+                lines.append(f"Recommended next step: {next_step}")
+            # A recommendation is advice, never an instruction that anything
+            # acts on. Saying so is what keeps a reader from assuming the
+            # system has already started.
+            lines.append(
+                "This is a recommendation only. Nothing has been changed, and "
+                "any action still requires explicit confirmation."
+            )
+
+    return lines
 
 
 def _cancellation_lines(decision: CancellationDecision) -> list[str]:

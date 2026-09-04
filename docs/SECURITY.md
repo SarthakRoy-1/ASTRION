@@ -150,6 +150,13 @@ always a bug unless it names the workspace.
 | Support | ✔ | ✔ | ✔ | ✔ | **—** | — | — | — | — | — | — | — | — |
 | Viewer | ✔ | ✔ | ✔ | — | — | — | — | — | — | — | — | — | — |
 
+Phase 3 added one permission, `operations.read`, granted to **every role
+including Viewer**. An operational signal is an *aggregation* of tickets and
+orders a viewer can already read one at a time; gating the summary above the
+underlying records would be security theatre while the data stayed reachable.
+What a viewer still cannot do is act on a signal — that needs `propose_action`
+and `execute_action`, unchanged.
+
 Three splits in that table are load-bearing:
 
 - **Propose and execute are separate.** A Support member drafts an escalation;
@@ -342,6 +349,9 @@ The central rule:
 | An unsettled answer read as settled | `TrustStatus` is derived in code from tool results — a conflict, a missing input or an unverified premise downgrades the answer and is stated with its reasons | ✔ |
 | A conflict silently resolved | The authority layer emits a `ConflictNote` when precedence *cannot* settle a tie; the trust layer promotes that to `escalate` rather than picking a winner | ✔ |
 | An action confirmed on evidence the system distrusts | A proposal made while the assessment is unactionable carries the unresolved points in the answer text, so the reviewer sees them at the confirmation | ✔ |
+| A fabricated operational signal | Signals come only from deterministic detectors reading real records; the model reaches them through a tool and cannot emit one | ✔ |
+| A signal leaking another tenant's operations | Scope is compiled into the aggregate query, and `get_signal` re-derives the report under the caller's own scope rather than reading a cached one — handing back a signal computed under someone else's scope is unrepresentable | ✔ |
+| A weak detection presented as certain | Cluster confidence scales with evidence strength; a cluster held together by few shared terms is `conditional` and names them | ✔ |
 
 "Structural" means the control does not depend on the model behaving. The
 system prompt does describe these boundaries — a model that understands them
@@ -432,6 +442,8 @@ Every endpoint, with what it requires:
 | `POST /api/workspaces/{id}/invitations` | session | `members.invite` | path, re-checked | default |
 | `DELETE /api/workspaces/{id}/invitations/{inv}` | session | `members.invite` | path, re-checked | default |
 | `POST /api/invitations/accept` | session | — (address bound) | from the invitation | auth |
+| `GET /api/operations/signals` | session | `operations.read` | session org | default |
+| `GET /api/operations/signals/{id}` | session | `operations.read` | session org | default |
 | `POST /api/chat` | session | `run_agent` | session org | agent (15/min) |
 | `POST /api/actions/{id}/confirm` | session | `execute_action` | session org | default |
 | `GET /api/actions/pending` | session | — | session org | default |
@@ -524,6 +536,12 @@ an investigation, never its content: the question, the answer, document text
 and model reasoning are all still absent, and a chunk id identifies a source
 for a reviewer without copying the source into the log.
 
+**Operations observability (Phase 3).** `operations.signals_viewed` and
+`operations.signal_inspected` record signal counts, types, severity, priority,
+affected-entity counts, trust status and duration. Never ticket subjects,
+customer names, or the signal's own text: these say *what was surfaced*, not
+what it said.
+
 **Never recorded:** passwords, session tokens, API keys, reset tokens, MFA
 codes. `_redact` drops any key whose name contains a credential marker and
 truncates long values *before* the row is written — a belt-and-braces control
@@ -582,11 +600,13 @@ back to a vulnerable version.
 | Pre-existing (unchanged in intent) | 572 |
 | `test_security_workspaces.py` (Phase 1) | 111 |
 | `test_agent_evaluation.py` (Phase 2) | 51 |
+| `test_operations_evaluation.py` (Phase 3) | 41 |
+| `test_security_operations.py` (Phase 3) | 18 |
 | `test_security_auth.py` | 39 |
 | `test_security_adversarial.py` | 55 |
 | `test_security_files.py` | 44 |
-| **Backend total** | **872** |
-| Frontend (`vitest`) | 114 |
+| **Backend total** | **963** |
+| Frontend (`vitest`) | 125 |
 
 Security tests run against the **default** configuration (`AuthMode.SESSION`),
 not a loosened one. The pre-existing suite declares `AuthMode.DEMO_HEADER`
@@ -697,7 +717,27 @@ marketing.
     in `test_agent_trust.py` rather than end to end through the corpus. The
     code path is tested; the *scenario* is not one this document set produces.
 
-17. **No penetration test.** The adversarial suite encodes the attacks
+17. **Operational detection is on-demand, not real-time.** Signals are
+    computed when requested. There is no scheduler, no background job and no
+    push notification; nothing claims otherwise.
+
+18. **Issue clustering is lexical, and imprecise by nature.** It cannot group
+    two descriptions of one problem that share no vocabulary, and it can group
+    two problems that share generic operational words. Weak clusters are
+    reported as `conditional` with their shared terms named rather than
+    asserted — detection is kept and confidence is lowered, because a missed
+    recurrence is worse than one a human checks. Clustering also needs at least
+    four tickets in the workspace: the ubiquity filter is corpus-relative, so
+    below that a term shared by two tickets is itself treated as ubiquitous and
+    removed. SLA, anomaly and carrier-based cross-customer detection are
+    unaffected.
+
+19. **"Unusual" means a rule fired, not that a baseline was exceeded.** The
+    dataset is a single snapshot with no history, so there is nothing to
+    compute a distribution against. No trend, forecast or anomaly-model claim
+    is made anywhere in the product.
+
+20. **No penetration test.** The adversarial suite encodes the attacks
     considered here; it is not a substitute for an adversary who thinks of
     something else.
 
@@ -736,6 +776,7 @@ and credit is offered unless you would rather not have it.
 | File upload security | ✅ Validator implemented and wired into ingestion — but no upload endpoint exists yet |
 | API security | ✅ Strict schemas, `extra="forbid"`, body limits, rate limits, CSRF origin check, headers |
 | AI security | ✅ Structural, not prompt-based; trust status derived in code, conflicts escalated rather than resolved |
+| Operations intelligence | ✅ Deterministic detection and ranking, tenant-scoped in SQL, signals re-derived per caller — ⚠️ on-demand rather than real-time, lexical clustering |
 | Deterministic engine | ✅ Persisted state machine, permission-gated, replay-proof, fingerprinted |
 | Action security | ✅ Single-use, re-validated, session-bound, conversation-owned, audited |
 | Infrastructure | ⚠️ Non-root container, no baked secrets, fail-closed config — but single-node, no WAF, no shared rate limiter |
