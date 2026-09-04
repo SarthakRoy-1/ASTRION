@@ -36,7 +36,7 @@ from app.backend.api.dependencies import DbDep
 from app.backend.api.ratelimit import client_address
 from app.backend.auth import repository as repo
 from app.backend.auth import service as auth_service
-from app.backend.auth.permissions import OrgRole, Permission
+from app.backend.auth.permissions import Permission
 from app.backend.core.config import AuthMode, Settings
 from app.backend.core.errors import (
     AuthenticationError,
@@ -46,7 +46,6 @@ from app.backend.core.errors import (
 )
 from app.backend.services.audit import (
     AuditEvent,
-    hash_identifier,
     list_events,
     record_event,
     verify_audit_chain,
@@ -180,19 +179,6 @@ class PasswordChangeRequest(BaseModel):
 
     current_password: str = Field(min_length=1, max_length=MAX_PASSWORD)
     new_password: str = Field(min_length=1, max_length=MAX_PASSWORD)
-
-
-class MemberRoleRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    user_id: str = Field(min_length=1, max_length=64)
-    role: str = Field(min_length=1, max_length=32)
-
-
-class SelectOrgRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    org_id: str = Field(min_length=1, max_length=64)
 
 
 # --- registration and verification ------------------------------------------
@@ -398,35 +384,11 @@ def me(request: Request, conn: sqlite3.Connection = DbDep) -> dict:
     }
 
 
-@auth_router.post("/select-organization")
-def select_organization(
-    request: Request, payload: SelectOrgRequest, conn: sqlite3.Connection = DbDep
-) -> dict:
-    """Switch which organisation this session acts in.
-
-    Membership is re-checked here, and the choice is written to the *session
-    row* rather than trusted per-request. A non-member gets a 404 — the same
-    answer an organisation that does not exist gets, so this endpoint cannot be
-    used to discover which organisation ids are real.
-    """
-    settings = _settings(request)
-    caller = authenticate(request, conn, settings)
-    if caller.auth_session_id is None:
-        raise AuthorizationError("Organisation switching requires a real session.")
-
-    membership = repo.get_membership(
-        conn, org_id=payload.org_id, user_id=caller.user_id
-    )
-    if membership is None:
-        raise NotFoundError("No such organisation within your memberships.")
-
-    repo.set_session_org(conn, caller.auth_session_id, membership.org_id)
-    return {
-        "status": "switched",
-        "org_id": membership.org_id,
-        "org_name": membership.org_name,
-        "role": membership.role.value,
-    }
+# Workspace switching lives in `api/workspace_routes.py` as
+# `POST /api/workspaces/{workspace_id}/activate`. It used to be
+# `POST /api/auth/select-organization`; the behaviour is identical — membership
+# re-checked, the choice written to the session row — and the path now matches
+# the product's own word for the thing.
 
 
 # --- MFA enrolment ----------------------------------------------------------
@@ -551,70 +513,11 @@ def list_sessions(request: Request, conn: sqlite3.Connection = DbDep) -> dict:
     return {"sessions": repo.list_user_sessions(conn, caller.user_id)}
 
 
-# --- membership administration ----------------------------------------------
-
-
-@auth_router.get("/organization/members")
-def organization_members(request: Request, conn: sqlite3.Connection = DbDep) -> dict:
-    settings = _settings(request)
-    caller = authenticate(request, conn, settings)
-    if caller.org_id is None:
-        raise NotFoundError("You are not a member of any organisation.")
-    caller.require(Permission.MANAGE_MEMBERS)
-    return {"org_id": caller.org_id, "members": repo.list_org_members(conn, caller.org_id)}
-
-
-@auth_router.post("/organization/members/role")
-def set_member_role(
-    request: Request, payload: MemberRoleRequest, conn: sqlite3.Connection = DbDep
-) -> dict:
-    """Change a member's role within the caller's own organisation.
-
-    Note what is *not* taken from the request: the organisation. It comes from
-    the caller's session, so there is no `org_id` field an attacker could point
-    at somebody else's tenancy.
-    """
-    settings = _settings(request)
-    caller = authenticate(request, conn, settings)
-    if caller.org_id is None:
-        raise NotFoundError("You are not a member of any organisation.")
-    caller.require(Permission.MANAGE_MEMBERS)
-
-    try:
-        role = OrgRole(payload.role.strip().lower())
-    except ValueError as exc:
-        raise InvalidRequestError(
-            f"role must be one of: {', '.join(r.value for r in OrgRole)}"
-        ) from exc
-
-    # Only an owner may mint another owner. Without this, an admin could
-    # promote themselves past the ceiling their own role is meant to have.
-    if role is OrgRole.OWNER and not caller.has(Permission.DELETE_ORGANIZATION):
-        raise AuthorizationError("Only an owner may grant the owner role.")
-
-    target = repo.get_membership(
-        conn, org_id=caller.org_id, user_id=payload.user_id.strip()
-    )
-    if target is None:
-        raise NotFoundError("No such member in this organisation.")
-
-    previous = target.role.value
-    if not repo.set_member_role(
-        conn, org_id=caller.org_id, user_id=payload.user_id.strip(), role=role
-    ):
-        raise NotFoundError("No such member in this organisation.")
-
-    record_event(
-        conn,
-        AuditEvent.MEMBERSHIP_ROLE_CHANGED,
-        actor_user_id=caller.user_id,
-        actor_role=caller.org_role,
-        org_id=caller.org_id,
-        target_type="user",
-        target_id=payload.user_id.strip(),
-        details={"from": previous, "to": role.value},
-    )
-    return {"status": "role_updated", "user_id": payload.user_id, "role": role.value}
+# Membership administration lives in `api/workspace_routes.py`. It used to be
+# here, operating implicitly on "the caller's current organisation"; Phase 1
+# moved it to `/api/workspaces/{workspace_id}/members`, which names the
+# workspace explicitly and re-resolves the caller's membership of *that*
+# workspace on every request. One surface, one concept.
 
 
 # --- audit ------------------------------------------------------------------

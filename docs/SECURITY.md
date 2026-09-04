@@ -127,24 +127,90 @@ oracle that no amount of identical response text can close.
 
 ## 3. Authorization and tenant isolation
 
+**Workspace is the product term; `organization` / `org_id` is the internal
+identifier.** One entity, two names — the schema column and the word a person
+reads. There is deliberately no second concept, and one API surface
+(`/api/workspaces/*`) covers it.
+
 ```
 users ──< memberships >── organizations ──< organization_accounts
-              │                                      │
+              │              (workspaces)              │
              role                     the dataset account ids owned
 ```
 
-| Role | Read | Run agent | Propose | Execute | Rules | Members | Delete org |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| Owner | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ |
-| Admin | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | — |
-| Operations | ✔ | ✔ | ✔ | ✔ | — | — | — |
-| Support | ✔ | ✔ | ✔ | **—** | — | — | — |
-| Viewer | ✔ | ✔ | — | — | — | — | — |
+A user reaches a workspace only through a membership. The same person can hold
+different roles in different workspaces, so "what is this user's role" is
+always a bug unless it names the workspace.
 
-**Propose and execute are separate permissions.** A Support member drafts an
-escalation; someone with operational authority confirms it. Collapsing these
-would hand every support user the very right the confirmation gate exists to
-withhold.
+| Role | workspace.read | members.read | agent | propose | execute | audit | rules | ws.update | invite | remove | change_role | ws.delete | ownership |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Owner | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ |
+| Admin | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | — | — |
+| Operations | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | — | — | — | — | — | — | — |
+| Support | ✔ | ✔ | ✔ | ✔ | **—** | — | — | — | — | — | — | — | — |
+| Viewer | ✔ | ✔ | ✔ | — | — | — | — | — | — | — | — | — | — |
+
+Three splits in that table are load-bearing:
+
+- **Propose and execute are separate.** A Support member drafts an escalation;
+  someone with operational authority confirms it. Collapsing these would hand
+  every support user the very right the confirmation gate exists to withhold.
+- **Invite, remove and change-role are separate.** They were one coarse
+  `manage_members` in Phase 0. Splitting them makes it possible to grant the
+  ability to add people without also granting the ability to remove them.
+- **Ownership transfer is not a role change.** It is the one membership change
+  that reduces the actor's own authority, so it has its own permission, its own
+  endpoint, and its own audit event.
+
+The matrix is asserted exhaustively — every role against every protected
+operation, through HTTP — and a separate test proves it is *monotonic*: a more
+senior role can never hold fewer permissions than a junior one, so a promotion
+cannot silently remove a capability.
+
+### Guards the permission alone does not give
+
+`members.change_role` says the actor may re-role *somebody*, not *anybody*. On
+top of the permission:
+
+| Attempt | Refused because |
+| --- | --- |
+| Change your own role | Self-promotion is the attack; self-demotion orphans workspaces |
+| Act on a peer or superior | Role changes flow downward only (`outranks`) |
+| Grant a role above your own | Otherwise `members.invite` is a self-promotion primitive |
+| Grant `owner` via role change | Ownership moves only through the audited transfer |
+| Remove or demote the last owner | A workspace with zero owners is unrecoverable |
+
+### Owner protection is atomic
+
+The last-owner guard is folded **into the UPDATE's WHERE clause**, not written
+as a read-then-write in Python. An earlier draft got this wrong and the
+adversarial suite caught it: two connections removing two different owners
+simultaneously both read a count of two, both concluded they were not the last,
+and the workspace ended with **zero owners** — unmanageable, because every
+repair path needs a permission only an owner holds. Making the count part of
+the statement lets SQLite evaluate it atomically; the losing writer matches no
+rows and is refused.
+
+### How tenant scope is derived
+
+The active workspace lives on the **session row** (`sessions.org_id`), never in
+a request. There is no `workspace_id`, `org_id` or `tenant_id` field on any
+agent request — and `extra="forbid"` means supplying one is a 422 rather than a
+silently ignored field. Switching workspace is its own endpoint, which
+re-checks membership before writing.
+
+Workspace-management routes *do* take the workspace in the path, because a user
+may belong to several and should not have to "switch" to manage another. What
+makes that safe is that the path id is resolved to a membership row for the
+authenticated user **on every request** (`_require` in `api/workspace_routes.py`),
+and the resulting scope is read from the database, never from the request.
+
+**One dataset account belongs to exactly one workspace**, enforced by a UNIQUE
+index. Without it the composite key permitted the same account in two
+workspaces, and each would have seen the other's orders, tickets and actions.
+Granting an already-claimed account raises rather than being silently ignored:
+an `INSERT OR IGNORE` would have been equally safe and would have told the
+operator it had worked.
 
 ### How tenancy is enforced
 
@@ -171,8 +237,55 @@ filtered-out object in memory for a later bug to leak.
 
 An out-of-scope record is reported as **absent**, not forbidden. A 403 would
 confirm that the record exists, turning the API into an existence oracle for
-other tenants' data. This applies to records, documents, actions and
-organisation ids alike.
+other tenants' data. This applies to records, documents, actions, invitations
+and workspace ids alike.
+
+The distinction the API *does* draw:
+
+- **404** — you are not a member of this workspace, or it does not exist. These
+  two are deliberately indistinguishable, and a test asserts that the status,
+  code and message are byte-identical for both.
+- **403** — you are a member, and your role does not grant this. Hiding this
+  would leave a user unable to tell a missing feature from a missing permission.
+
+---
+
+## 3a. Invitation security
+
+An invitation is a credential: whoever holds the token can join a workspace. It
+is therefore stored exactly like a session or a reset link.
+
+| Property | How |
+| --- | --- |
+| Storage | Only the SHA-256 digest. A test greps the whole database file to prove the token appears nowhere in it |
+| Binding | Bound to the invited address, checked against the **authenticated** user's own at redemption — which they cannot choose, having verified it |
+| Single use | A guarded `UPDATE ... WHERE accepted_at_utc IS NULL AND revoked_at_utc IS NULL`, so two concurrent redemptions cannot both win |
+| Expiry | 7 days, checked at redemption |
+| Revocation | Scoped by `org_id` **in the WHERE clause**, so an invitation id from another workspace cannot be revoked even if guessed |
+| Duplicates | A partial unique index on `(org_id, email)` over open invitations only, so re-inviting after a decline works but two simultaneous invites cannot both be created |
+| Privilege ceiling | Nobody may invite at or above their own role, and `owner` cannot be granted by invitation at all |
+| Normalisation | Addresses lower-cased and trimmed at every boundary |
+| Audit | Creation, acceptance, failed acceptance and revocation — recording the role and the address's **domain only**, never the token or the full address |
+
+**Order of checks matters.** The address binding is verified *before* the
+invitation's status, so someone who finds a forwarded link cannot even learn
+whether it is still open.
+
+**Acceptance is idempotent.** Redeeming twice succeeds twice from the user's
+point of view — they are a member either way — while consuming the invitation
+exactly once. An error on the second click would only train people to retry,
+and retry loops around credentials are how replay windows get found.
+
+A concurrency test races four simultaneous acceptances of one invitation and
+asserts exactly one membership and one consumed invitation result.
+
+### Delivery is not implemented
+
+This deployment has no mail transport, and does not pretend otherwise. The
+invitation token is returned in the creation response **only when `APP_ENV` is
+not production**, and withheld when it is. The invitation still exists and is
+still valid — this is the integration boundary where a mail sender would
+attach, not a claim that one exists.
 
 ---
 
@@ -298,14 +411,24 @@ Every endpoint, with what it requires:
 | `POST /api/auth/logout` | none (idempotent) | — | own session | auth |
 | `POST /api/auth/logout-all` | session | — | own sessions | auth |
 | `GET /api/auth/me` | session | — | own | auth |
-| `POST /api/auth/select-organization` | session | membership | own memberships | auth |
 | `POST /api/auth/mfa/enrol` `/confirm` `/disable` | session | — | own | auth |
 | `POST /api/auth/password/reset-request` `/reset` | none | — | — | auth |
 | `POST /api/auth/password/change` | session | — | own | auth |
 | `GET /api/auth/sessions` | session | — | own | auth |
-| `GET /api/auth/organization/members` | session | `manage_members` | session org | auth |
-| `POST /api/auth/organization/members/role` | session | `manage_members` (+owner for owner) | session org | auth |
 | `GET /api/auth/audit` | session | `read_audit_log` | session org | auth |
+| `GET /api/workspaces` | session | — | own memberships | default |
+| `POST /api/workspaces` | session | — (any user) | creates own | default |
+| `GET /api/workspaces/{id}` | session | `workspace.read` | **path**, membership re-checked | default |
+| `PATCH /api/workspaces/{id}` | session | `workspace.update` | path, re-checked | default |
+| `POST /api/workspaces/{id}/activate` | session | `workspace.read` | path, re-checked | default |
+| `GET /api/workspaces/{id}/members` | session | `members.read` | path, re-checked | default |
+| `PATCH /api/workspaces/{id}/members/{user}` | session | `members.change_role` | path, re-checked | default |
+| `DELETE /api/workspaces/{id}/members/{user}` | session | `members.remove` (or self) | path, re-checked | default |
+| `POST /api/workspaces/{id}/ownership` | session | `ownership.transfer` | path, re-checked | default |
+| `GET /api/workspaces/{id}/invitations` | session | `members.invite` | path, re-checked | default |
+| `POST /api/workspaces/{id}/invitations` | session | `members.invite` | path, re-checked | default |
+| `DELETE /api/workspaces/{id}/invitations/{inv}` | session | `members.invite` | path, re-checked | default |
+| `POST /api/invitations/accept` | session | — (address bound) | from the invitation | auth |
 | `POST /api/chat` | session | `run_agent` | session org | agent (15/min) |
 | `POST /api/actions/{id}/confirm` | session | `execute_action` | session org | default |
 | `GET /api/actions/pending` | session | — | session org | default |
@@ -446,10 +569,11 @@ back to a vulnerable version.
 | Suite | Tests |
 | --- | --- |
 | Pre-existing (unchanged in intent) | 572 |
+| `test_security_workspaces.py` (Phase 1) | 111 |
 | `test_security_auth.py` | 39 |
 | `test_security_adversarial.py` | 55 |
 | `test_security_files.py` | 44 |
-| **Backend total** | **710** |
+| **Backend total** | **821** |
 | Frontend (`vitest`) | 105 |
 
 Security tests run against the **default** configuration (`AuthMode.SESSION`),
@@ -479,10 +603,28 @@ marketing.
    across two adjacent windows. Sliding windows avoid this at the cost of
    storing every timestamp.
 
-4. **No email transport.** Verification and reset links are returned in the API
-   response when `APP_ENV` is not production, and withheld when it is. Until a
-   mail sender exists, production email verification and password reset are not
-   operable end to end.
+4. **No email transport.** Verification, reset **and invitation** links are
+   returned in the API response when `APP_ENV` is not production, and withheld
+   when it is. Until a mail sender exists, those three flows are not operable
+   end to end in production: an operator must convey the link out of band.
+
+4a. **Workspace deletion is not implemented.** `workspace.delete` exists in the
+   permission matrix and is granted to owners, but no endpoint consumes it. A
+   workspace can be left and emptied, not destroyed — and the deletion cascade
+   (memberships, invitations, conversations, actions, and the retention
+   requirement on the audit trail) is a design decision, not a DELETE.
+
+4b. **A removed member's live sessions are not revoked.** Membership is re-read
+   on every request, so authority disappears on the *next* request rather than
+   at the moment of removal — but the session itself stays valid as an identity
+   until it expires. For a user removed from their only workspace this is
+   equivalent; for one removed from a second workspace, their session continues
+   in the first, which is correct.
+
+4c. **Invitations are not rate-limited per workspace.** `/api/invitations/` is
+   in the credential rate-limit bucket, and creation is bounded by the
+   per-client limit, but there is no per-workspace ceiling on how many
+   invitations an admin may issue.
 
 5. **SQLite has no row-level security.** Tenancy is enforced in the application's
    query layer — consistently, and in SQL rather than in Python, but there is no
@@ -553,8 +695,10 @@ and credit is offered unless you would rather not have it.
 | --- | --- |
 | Authentication | ✅ scrypt, opaque sessions, TOTP MFA, verification, reset, lockout, enumeration resistance |
 | Session management | ✅ HttpOnly/Secure/SameSite, dual expiry, revocation, fixation-resistant |
-| Authorization | ✅ Five roles, explicit permission matrix, server-side only, propose/execute split |
-| Tenant isolation | ✅ Session-derived scope, SQL-level enforcement, absence-not-forbidden refusals |
+| Authorization | ✅ Five roles, granular permission matrix, server-side only, propose/execute and invite/remove/re-role splits, monotonicity asserted |
+| Tenant isolation | ✅ Session-derived scope, path ids re-resolved to membership per request, SQL-level enforcement, one-account-one-workspace constraint, absence-not-forbidden refusals |
+| Workspaces & membership | ✅ Create, list, rename, switch, leave; last-owner protection atomic under concurrency; audited ownership transfer |
+| Invitations | ✅ Hashed tokens, address-bound, single-use, expiring, revocable, privilege-capped, audited — ⚠️ delivered out of band, no mail transport |
 | Database security | ⚠️ Parameterized, FK-enforced, STRICT tables, tenancy in SQL — but no RLS, no least-privilege, no encryption at rest |
 | Vector security | ➖ Not applicable — no vector DB; BM25 over pre-scoped candidates |
 | File upload security | ✅ Validator implemented and wired into ingestion — but no upload endpoint exists yet |

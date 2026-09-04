@@ -149,6 +149,35 @@ SECURITY_SCHEMA_STATEMENTS: tuple[str, ...] = (
         last_used_at_utc TEXT NOT NULL
     ) STRICT
     """,
+    # --- invitations --------------------------------------------------------
+    #
+    # An invitation is a credential: whoever holds the token can join a
+    # workspace. It is therefore stored exactly like a session or a reset link
+    # -- only the SHA-256 digest, never the token itself. A database
+    # disclosure yields no usable invitation.
+    #
+    # `email` is the address the invitation was *issued to*, normalised. It is
+    # checked at acceptance against the authenticated user's own address, so a
+    # leaked link cannot be redeemed by whoever happens to find it.
+    """
+    CREATE TABLE IF NOT EXISTS invitations (
+        invitation_id TEXT PRIMARY KEY,
+        org_id TEXT NOT NULL REFERENCES organizations (org_id),
+        email TEXT NOT NULL,
+        role TEXT NOT NULL,
+        token_hash TEXT NOT NULL UNIQUE,
+        invited_by TEXT NOT NULL REFERENCES users (user_id),
+        created_at_utc TEXT NOT NULL,
+        expires_at_utc TEXT NOT NULL,
+        -- Set on redemption. Single-use is enforced by a guarded UPDATE on
+        -- this column rather than by deleting the row, so a replayed link is
+        -- observable rather than merely absent.
+        accepted_at_utc TEXT,
+        accepted_by TEXT REFERENCES users (user_id),
+        revoked_at_utc TEXT,
+        revoked_by TEXT REFERENCES users (user_id)
+    ) STRICT
+    """,
     # --- audit trail --------------------------------------------------------
     #
     # Append-only and hash-chained: each entry commits to its predecessor, so
@@ -176,6 +205,21 @@ SECURITY_SCHEMA_STATEMENTS: tuple[str, ...] = (
         entry_hash TEXT NOT NULL
     ) STRICT
     """,
+    # At most ONE account may belong to ONE workspace. Without this, the same
+    # dataset account could be granted to two workspaces and each would see the
+    # other's orders, tickets and actions -- the composite primary key on
+    # (org_id, account_id) permits exactly that. This index is the tenant
+    # boundary expressed as a constraint rather than as a convention.
+    "CREATE UNIQUE INDEX IF NOT EXISTS uq_organization_accounts_account "
+    "ON organization_accounts (account_id)",
+    # One *outstanding* invitation per address per workspace. Partial, so a
+    # spent or revoked invitation does not block re-inviting someone, while two
+    # simultaneous invites to the same address cannot both be created.
+    "CREATE UNIQUE INDEX IF NOT EXISTS uq_invitations_pending "
+    "ON invitations (org_id, email) "
+    "WHERE accepted_at_utc IS NULL AND revoked_at_utc IS NULL",
+    "CREATE INDEX IF NOT EXISTS idx_invitations_org ON invitations (org_id)",
+    "CREATE INDEX IF NOT EXISTS idx_invitations_email ON invitations (email)",
     "CREATE INDEX IF NOT EXISTS idx_memberships_user ON memberships (user_id)",
     "CREATE INDEX IF NOT EXISTS idx_memberships_org ON memberships (org_id)",
     "CREATE INDEX IF NOT EXISTS idx_org_accounts_account "

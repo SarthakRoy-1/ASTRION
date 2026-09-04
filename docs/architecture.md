@@ -1497,11 +1497,14 @@ Still open, to resolve when the relevant phase starts:
   tool-calling loop needs a retention and re-authorization story (a message
   from an earlier turn was answered under the scope in force *then*) that
   Phase 5 did not have a reason to settle.
-- **Authentication is a mock.** `auth/principals.py` resolves an asserted
-  identity against a fixed directory. The boundary it protects is real — the
-  server, never the request, decides the scope — but there is no token, no
-  signature and no session store. `AUTH_SECRET_KEY` / `AUTH_TOKEN_TTL_MINUTES`
-  are reserved for the provider that replaces it.
+- ~~**Authentication is a mock.**~~ **Resolved in Phase 0.** `auth/principals.py`
+  survives only as `AUTH_MODE=demo_header`, which the application refuses to
+  start with in production. The default is real session authentication —
+  scrypt password hashing, opaque server-side sessions, TOTP MFA — and the
+  boundary it protects is unchanged: the server, never the request, decides the
+  scope. There is no `AUTH_SECRET_KEY`, because sessions are opaque random
+  tokens with server-side state rather than signed stateless ones, so there is
+  no signing key to leak or rotate. See docs/SECURITY.md.
 - **Responses are not streamed.** A multi-step investigation returns as one
   body. A chat UI will want incremental tool-step events; that is a transport
   change (SSE or websocket) over the same orchestration loop, not a
@@ -1511,3 +1514,99 @@ Still open, to resolve when the relevant phase starts:
   a genuinely different vendor means a second `PlanningProvider`
   implementation — which is the shape the abstraction intends, not a gap in
   it.
+
+---
+
+## 12. Phase 1 — multi-tenant workspaces
+
+Phase 0 replaced the mock identity with real authentication. Phase 1 gives that
+identity somewhere to *belong*, turning a single-tenant application into a
+multi-tenant one without rewriting the enforcement path underneath it.
+
+### The model
+
+```text
+User
+ └── Membership ──> Workspace ──> tenant-scoped resources
+        (role)      (organization)   accounts, orders, tickets,
+                                     documents, conversations,
+                                     actions, audit entries
+```
+
+A user reaches a workspace **only** through a membership, and holds a role in
+each one independently. Modelling this as `user.organization_id` would have made
+a person a member of exactly one workspace forever; the join table is the whole
+point.
+
+**Workspace is the product term. `organization` / `org_id` is the internal
+identifier**, fixed by the Phase 0 schema and left alone because renaming it
+would touch every tenant-scoped query for no security gain. One entity, two
+names — a column name and a word people read — and exactly one API surface,
+`/api/workspaces/*`. The Phase 0 endpoints that spoke of organisations were
+moved there rather than left alongside, so there is no second concept.
+
+### Why the enforcement path did not change
+
+The load-bearing decision was made in Phase 2 and has survived four phases: every
+repository function below the tool layer already took `allowed_account_ids`, and
+every document query already compiled it into SQL. Phase 1 changed only where
+that set *comes from*:
+
+```text
+Phase 0:  mock directory  ──> allowed_account_ids
+Phase 1:  session.org_id ──> organization_accounts ──> allowed_account_ids
+```
+
+Nothing under `services/`, `retrieval/`, `policies/` or `tools/` needed
+altering. That is the payoff for having put the boundary in the right place
+early, and it is why the Phase 0 adversarial suite still passes unchanged.
+
+### Where the tenant comes from
+
+Two different mechanisms, for two different jobs:
+
+- **The agent** runs against the workspace on the *session row*
+  (`sessions.org_id`). No agent request has a field that names a tenant, and
+  `extra="forbid"` makes supplying one a 422. Switching is its own endpoint,
+  which re-checks membership before writing.
+- **Workspace management** takes the workspace in the *path*, because a user
+  may belong to several and should not have to switch to manage another. The
+  path id is never trusted: `_require` resolves it to a membership row for the
+  authenticated user on every request, and answers 404 — not 403 — when there
+  is none.
+
+### What Phase 1 added
+
+| Area | Added |
+| --- | --- |
+| Schema | `invitations`; `UNIQUE(account_id)` on `organization_accounts`; `updated_at_utc` on users and organizations |
+| Permissions | Split `manage_members` into `members.read/invite/remove/change_role`; added `workspace.read/update/delete` and `ownership.transfer` |
+| Repository | Workspace CRUD, invitation lifecycle, atomic last-owner guards, ownership transfer |
+| Service | `auth/workspaces.py` — creation, membership changes, the invitation flow, and the rules a permission alone does not express |
+| API | `/api/workspaces/*` and `/api/invitations/accept` |
+| Audit | Workspace created/updated, membership created/removed/re-roled, ownership transferred, workspace activated, invitation created/accepted/failed/revoked |
+| Frontend | Sign-in, registration, MFA challenge, onboarding, workspace switcher, member management |
+| Migration | `scripts/bootstrap_workspace.py` |
+
+### Migration
+
+The identity tables were empty, so there was no tenant data to reassign. What
+needed a decision was the **ingested dataset accounts**, which belong to no
+workspace after ingestion. That state is fail-closed — nobody can see them,
+because no membership grants them — and `scripts/bootstrap_workspace.py` is how
+an operator opens it deliberately:
+
+```text
+ingested accounts ──> bootstrap workspace ──> operator becomes owner
+```
+
+The script never overwrites a password, never moves an account already claimed
+by another workspace, and never deletes anything; re-running it is safe.
+
+### Deliberately not built
+
+Workspace *deletion* has a permission and no endpoint. The cascade it implies —
+memberships, invitations, conversations, actions, and an audit trail whose
+retention requirement is in tension with erasure — is a design decision rather
+than a `DELETE`, and inventing one to fill a gap in a matrix would be the wrong
+order to do it in.

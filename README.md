@@ -15,8 +15,9 @@
 > The whole stack runs end to end with **no API key**:
 > `LLM_PROVIDER=deterministic` is the default and exercises every safety
 > boundary, which is also what both test suites run on. **Authentication is
-> still a mock in every mode, including the deployment config below** — see
-> [Before deploying this publicly](#before-deploying-this-publicly-authentication-is-still-a-mock).
+> real and on by default**; the hosted demo opts *down* to a persona picker,
+> which is refused in production — see
+> [Before deploying this publicly](#before-deploying-this-publicly-choose-the-right-auth_mode).
 
 ## Live deployment
 
@@ -32,9 +33,12 @@ layer and every state change still requires explicit confirmation, exactly as
 locally. The Render free tier sleeps when idle, so the first request after a
 quiet period can take a few seconds.
 
-Authentication remains a mock in the hosted deployment too — the identity picker
-in the header *is* the auth model. See
-[Before deploying this publicly](#before-deploying-this-publicly-authentication-is-still-a-mock).
+The hosted demo runs with `AUTH_MODE=demo_header`, where the identity picker in
+the header *is* the identity model — it is a demo, and the personas are the
+point. That mode is not the default and the application refuses to start with
+it when `APP_ENV` names production. A real deployment runs `AUTH_MODE=session`:
+accounts, passwords, sessions, optional TOTP, and workspaces. See
+[docs/SECURITY.md](docs/SECURITY.md).
 
 ## Purpose
 
@@ -511,7 +515,7 @@ file.
 | --- | --- | --- | --- |
 | How to run | `uvicorn` + `npm run dev` natively, or `docker compose up` with `LLM_PROVIDER` unset | Same, with `LLM_PROVIDER=real` and a real `OPENAI_API_KEY` in `.env` | `docker compose up --build` (or the two images hosted separately) on a real host, real domain, real `OPENAI_API_KEY` if using `real` |
 | API key / network | None. Fully offline. | Yes — calls the live OpenAI API | Yes, if `LLM_PROVIDER=real` |
-| Authentication | **Mock** — `user_id` / `X-ParcelPilot-User`, no token | **Mock** — unchanged | **Still mock** — nothing in Phase 5–8 replaced it. See below before exposing this publicly. |
+| Authentication | `AUTH_MODE=demo_header` — the persona picker, no credential | Same, unless you set `AUTH_MODE=session` | **`AUTH_MODE=session`** — real accounts, scrypt passwords, server-side sessions, optional TOTP, workspaces. The demo header is refused when `APP_ENV` is production. |
 | Who should reach it | Only you, on your machine | Only you, on your machine | Anyone who can reach the port — treat as public the moment it is |
 | What it proves | Every safety boundary (scoping, precedence, confirmation gate), with no key and no network | The same boundaries, plus real natural-language planning | The same application the two demo modes already exercised, not a different one |
 
@@ -520,49 +524,53 @@ what the entire test suite runs on, and it is what makes every boundary in
 this system verifiable with no API key. Switching `LLM_PROVIDER` changes which
 tools get called; it changes nothing about what any tool is permitted to do.
 
-### Before deploying this publicly: authentication is still a mock
+### Before deploying this publicly: choose the right AUTH_MODE
 
 This matters more once the API is reachable from outside your machine than it
 does in local development, so it is repeated here rather than left only in
 [Identity](#identity).
 
-There is no token, no session, and no password anywhere in this build. A
-request identifies itself by putting a plain string — `support.agent`,
-`customer.northstar`, and so on — in `user_id` or the `X-ParcelPilot-User`
-header, and the server looks that string up in a fixed, in-code directory
-(`app/backend/auth/principals.py`). `GET /api/principals` lists the full
-directory, unauthenticated, by design (the demo UI's context switcher needs it
-before any identity is chosen). **Anyone who can reach the deployed API can
-call it as any of the five demo identities, including `support.manager`,
-simply by naming it — no credential check is performed on `user_id` itself.**
+ParcelPilot has two identity modes, and the default is the safe one.
 
-What *is* real, and does not depend on fixing this: once an identity is
-accepted, the account scope and role it carries are enforced in SQL below the
-model — nothing in a message can widen them, and every finding in Phase 7's
-adversarial pass held. What is not real is the acceptance step itself. Do not
-put this build on a public host without addressing that — either put it
-behind a network you already trust (VPN, internal-only ingress), or replace
-the authentication layer first.
+**`AUTH_MODE=session` (the default).** Real authentication: accounts with
+scrypt-hashed passwords, email verification, opaque server-side sessions in an
+`HttpOnly` cookie, optional TOTP two-factor, password reset, brute-force
+lockout, and workspaces with role-based access control. Nothing is asserted by
+the client; identity, workspace, role and tenant scope are all read from the
+database. This is what a deployment should run, and it is what the security
+suites are written against.
 
-**What replacing it for real would take**, concretely, without touching
-anything below `auth/principals.py`:
+**`AUTH_MODE=demo_header` (opt-in, non-production only).** The original
+assessment behaviour, kept because the hosted demo needs to switch between
+personas without a login. A request identifies itself by putting a plain string
+— `support.agent`, `customer.northstar` — in `user_id` or the
+`X-ParcelPilot-User` header, and the server looks it up in a fixed in-code
+directory. **There is no credential check: anyone who can reach the API can
+call it as any persona.** That is acceptable for a public demo over synthetic
+data and unacceptable for anything else, so `Settings.validate_auth` refuses to
+start in this mode when `APP_ENV` names a production environment, and `/health`
+reports the active mode so a misconfigured deployment is visible from outside.
 
-1. A real identity provider (an OAuth/OIDC provider, a session cookie backed
-   by a real login, or signed API tokens issued out-of-band) in place of the
-   static `MOCK_PRINCIPALS` directory.
-2. `resolve_principal` (`app/backend/api/dependencies.py`) verifying a
-   signature or introspecting a token instead of doing a dictionary lookup on
-   a client-supplied string.
-3. `AUTH_SECRET_KEY` / `AUTH_TOKEN_TTL_MINUTES` — already reserved in
-   `.env.example` and unused today — wired to that verification.
-4. `GET /api/principals` either authenticated or replaced: it is a documented,
-   deliberate exception for the demo UI, not something a production identity
-   directory should expose to an anonymous caller.
-5. Everything downstream of `AgentContext` — scoping, precedence, the
-   confirmation gate — needs no change at all. That boundary was built to be
-   independent of how identity is established, which is the point of Phase
-   5's design: replace the module that produces `AgentContext`, and nothing
-   that consumes it has to change.
+`GET /api/principals` lists the demo directory unauthenticated, which the demo
+UI needs before any persona is chosen. Under `AUTH_MODE=session` it returns an
+empty list — the directory is not an identity source there, and advertising it
+would offer a sign-in that does not exist.
+
+What is real in **both** modes, and never depended on which one is active: once
+an identity is established, its workspace scope and role are enforced in SQL
+below the model. Nothing in a message, a document, or a tool argument can
+widen them. That boundary was built to be independent of how identity is
+established — which is why Phase 0 could replace the acceptance step and Phase
+1 could add workspaces without changing anything that consumes `AgentContext`.
+
+**Before a real deployment**, in addition to `AUTH_MODE=session`: set
+`APP_ENV=production`, keep `SESSION_COOKIE_SECURE=true`, serve over TLS with
+`HSTS_ENABLED=true`, list your real origins in `CORS_ALLOW_ORIGINS` (a wildcard
+is refused at startup), and create the first workspace with
+`scripts/bootstrap_workspace.py`. Note that there is no mail transport, so
+verification, reset and invitation links must be conveyed out of band — see
+[docs/SECURITY.md](docs/SECURITY.md) for the full list of what is and is not
+solved.
 
 ### The database is never baked into the image
 
@@ -608,6 +616,79 @@ portable baseline any of them can build from. SQLite plus a single volume
 implies single-writer semantics, which is correct for a demo and would need
 reconsideration before scaling to multiple backend instances.
 
+## Workspaces and access control
+
+ParcelPilot is multi-tenant. A person signs in as a **user**, and reaches data
+through a **membership** of a **workspace**:
+
+```text
+User
+ ├── Membership -> Workspace A   (role: Owner)
+ ├── Membership -> Workspace B   (role: Operations)
+ └── Membership -> Workspace C   (role: Viewer)
+```
+
+Everything the assistant can reach belongs to a workspace: accounts, orders,
+tickets, documents, conversations, prepared actions, and the audit trail. The
+same person can hold a different role in each one.
+
+### Roles
+
+| Role | Can do |
+| --- | --- |
+| **Viewer** | Ask questions, read evidence and the member list |
+| **Support** | The above, plus *draft* actions for someone else to confirm |
+| **Operations** | The above, plus confirm and execute actions, and read the audit trail |
+| **Admin** | The above, plus invite, remove and re-role members, and rename the workspace |
+| **Owner** | The above, plus transfer ownership |
+
+Two splits are deliberate. **Drafting and executing are separate**, so a support
+user can prepare an escalation that only someone with operational authority can
+confirm — which is what makes the confirmation gate an approval rather than a
+formality. And **inviting, removing and re-roling are separate permissions**,
+so the ability to add someone does not imply the ability to remove them.
+
+### How isolation is enforced
+
+The workspace a request acts in comes from the **server-side session**, never
+from the request. There is no `workspace_id` field on a chat request, and
+sending one is a 422 rather than a silently ignored field. Workspace-management
+routes do name the workspace in the path — you may belong to several — but that
+id is resolved to a membership row for the authenticated user on *every*
+request, and a workspace you do not belong to answers `404`, identically to one
+that does not exist.
+
+Below that, nothing changed from earlier phases: the workspace's account scope
+is compiled into the SQL `WHERE` clause, so another tenant's rows are never
+loaded into the process at all.
+
+### Inviting someone
+
+An owner or admin invites by email and role. The invitation is a credential, so
+it is treated like one: only a SHA-256 digest is stored, it is bound to the
+invited address and checked against the accepting user's own, it expires, it can
+be revoked, and it can be redeemed exactly once.
+
+**There is no mail transport in this build.** The invitation link is returned in
+the API response when `APP_ENV` is not production and withheld when it is — send
+it yourself, and see [docs/SECURITY.md](docs/SECURITY.md) for where a mail
+sender would attach.
+
+### Creating the first workspace
+
+A newly registered user belongs to no workspace and is shown an onboarding
+screen. To attach the *ingested dataset* to a workspace — which is what makes
+the demo data reachable — run:
+
+```bash
+python scripts/bootstrap_workspace.py --email you@example.com --name "Acme Logistics"
+```
+
+It never overwrites a password, never moves an account already claimed by
+another workspace, and never deletes anything, so re-running it is safe. Dataset
+accounts that belong to no workspace are visible to nobody, which is the safe
+direction to fail in.
+
 ## API
 
 Six endpoints. Full schemas at `/docs` once the server is running.
@@ -640,7 +721,7 @@ Authentication itself is a **mock** in this phase: there is no token and no
 signature. What is real is the boundary — the server, never the request,
 decides the scope, and enforcement lives in SQL below the model. Before
 running this anywhere reachable by someone other than you, read
-[Before deploying this publicly](#before-deploying-this-publicly-authentication-is-still-a-mock).
+[Before deploying this publicly](#before-deploying-this-publicly-choose-the-right-auth_mode).
 
 **`support_manager` currently grants nothing `support_agent` does not.** The
 one authorization distinction the system enforces is whether a role may change
@@ -852,7 +933,7 @@ this and are unused today.
 anyone who can reach it can call the API as `support.manager` — or any of the
 other four identities — just by naming it in a header; no credential is
 checked. That is documented, not hidden (see
-[Before deploying this publicly](#before-deploying-this-publicly-authentication-is-still-a-mock)),
+[Before deploying this publicly](#before-deploying-this-publicly-choose-the-right-auth_mode)),
 and it is the one gap that gates every other item on this list: none of them
 are safe to point at real customer data while identity is still a
 self-asserted string.

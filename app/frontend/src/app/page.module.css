@@ -52,3 +52,51 @@
     text-align: left;
   }
 }
+
+/* --- Phase 1: workspace bar and auth states ------------------------------ */
+
+.workspaceBar {
+  background: var(--surface-page);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.workspaceBar .content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding-top: var(--space-2);
+  padding-bottom: var(--space-2);
+}
+
+.signOut {
+  appearance: none;
+  font: inherit;
+  font-size: var(--text-caption);
+  color: var(--text-secondary);
+  background: none;
+  border: none;
+  padding: 0;
+  text-decoration: underline;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.signOut:hover { color: var(--text-primary); }
+
+.loading {
+  margin: var(--space-7) auto;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: var(--text-small);
+}
+
+.sessionError {
+  margin: var(--space-3) 0;
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-small);
+  color: var(--fail);
+  background: var(--fail-soft);
+  border: 1px solid var(--fail-border);
+  border-radius: var(--radius-sm);
+}

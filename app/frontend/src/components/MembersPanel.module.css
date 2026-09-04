@@ -1,0 +1,201 @@
+/* Member administration. Functional layout; the redesign is a later phase. */
+
+.panel {
+  max-width: var(--content-width);
+  margin: var(--space-4) auto;
+  padding: var(--space-5);
+  background: var(--surface-raised);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+  margin-bottom: var(--space-4);
+}
+
+.title { margin: 0; font-size: var(--text-lead); }
+
+.subtitle {
+  margin: var(--space-1) 0 0;
+  font-size: var(--text-caption);
+  color: var(--text-muted);
+}
+
+.close, .manage {
+  appearance: none;
+  font: inherit;
+  font-size: var(--text-caption);
+  color: var(--text-secondary);
+  background: none;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  padding: var(--space-1) var(--space-3);
+  cursor: pointer;
+}
+
+.close:hover { color: var(--text-primary); border-color: var(--border-strong); }
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-small);
+}
+
+.table th {
+  text-align: left;
+  font-size: var(--text-caption);
+  font-weight: 500;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: var(--space-2) var(--space-2) var(--space-2) 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.table td {
+  padding: var(--space-3) var(--space-2) var(--space-3) 0;
+  border-bottom: 1px solid var(--border-subtle);
+  vertical-align: middle;
+}
+
+.name { display: block; color: var(--text-primary); font-weight: 500; }
+.you { color: var(--text-muted); font-weight: 400; }
+
+.email {
+  display: block;
+  font-size: var(--text-caption);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+
+.roleBadge, .status {
+  display: inline-block;
+  font-size: var(--text-caption);
+  color: var(--text-secondary);
+  background: var(--surface-sunken);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 0 var(--space-2);
+  text-transform: capitalize;
+}
+
+.actions { text-align: right; }
+
+.select, .input {
+  font: inherit;
+  font-size: var(--text-ui);
+  color: var(--text-primary);
+  background: var(--surface-page);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  padding: var(--space-1) var(--space-2);
+}
+
+.select:focus-visible, .input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.sectionTitle {
+  margin: var(--space-6) 0 var(--space-3);
+  font-size: var(--text-ui);
+  color: var(--text-primary);
+}
+
+.inviteForm {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.inviteForm .input { flex: 1 1 16rem; }
+
+.primary {
+  font: inherit;
+  font-size: var(--text-ui);
+  font-weight: 500;
+  color: var(--on-accent);
+  background: var(--accent);
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: var(--space-2) var(--space-4);
+  cursor: pointer;
+}
+
+.primary:hover { background: var(--accent-hover); }
+
+.danger {
+  appearance: none;
+  font: inherit;
+  font-size: var(--text-caption);
+  color: var(--fail);
+  background: none;
+  border: 1px solid var(--fail-border);
+  border-radius: var(--radius-sm);
+  padding: var(--space-1) var(--space-2);
+  cursor: pointer;
+}
+
+.danger:hover { background: var(--fail-soft); }
+
+.hint {
+  margin: var(--space-2) 0 0;
+  font-size: var(--text-caption);
+  color: var(--text-muted);
+}
+
+.muted { color: var(--text-muted); font-size: var(--text-small); }
+
+.error {
+  margin: 0 0 var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-small);
+  color: var(--fail);
+  background: var(--fail-soft);
+  border: 1px solid var(--fail-border);
+  border-radius: var(--radius-sm);
+}
+
+.tokenNotice {
+  margin-top: var(--space-3);
+  padding: var(--space-3);
+  background: var(--caution-soft);
+  border: 1px solid var(--caution-border);
+  border-radius: var(--radius-sm);
+}
+
+.tokenLede {
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-caption);
+  color: var(--caution);
+  line-height: 1.5;
+}
+
+.token {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: var(--text-caption);
+  color: var(--text-primary);
+  word-break: break-all;
+  background: var(--surface-page);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2);
+}
+
+.invitations { list-style: none; margin: 0; padding: 0; }
+
+.invitation {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.invitation .email { flex: 1 1 auto; }

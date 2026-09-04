@@ -69,11 +69,23 @@ class AuditEvent(StrEnum):
     MFA_CHALLENGE_FAILED = "mfa.challenge_failed"
     SESSION_REVOKED = "session.revoked"
 
-    # Tenancy
+    # Tenancy. The event names keep the `org.` prefix that Phase 0 wrote, so
+    # existing entries stay queryable alongside new ones; `workspace` is the
+    # product term for the same entity.
     ORGANIZATION_CREATED = "org.created"
+    ORGANIZATION_UPDATED = "org.updated"
     MEMBERSHIP_CREATED = "org.membership_created"
     MEMBERSHIP_ROLE_CHANGED = "org.membership_role_changed"
     MEMBERSHIP_REMOVED = "org.membership_removed"
+    OWNERSHIP_TRANSFERRED = "org.ownership_transferred"
+    WORKSPACE_ACTIVATED = "org.workspace_activated"
+
+    # Invitations. The token never appears in any of these — only the
+    # invitation id, the role, and the invited address's domain.
+    INVITATION_CREATED = "invitation.created"
+    INVITATION_ACCEPTED = "invitation.accepted"
+    INVITATION_ACCEPT_FAILED = "invitation.accept_failed"
+    INVITATION_REVOKED = "invitation.revoked"
 
     # Authorization
     AUTHORIZATION_DENIED = "authz.denied"
@@ -103,6 +115,9 @@ class AuditOutcome(StrEnum):
 _REDACT_SUBSTRINGS = (
     "password",
     "secret",
+    # Catches `token`, `session_token`, `reset_token` and `invitation_token`
+    # alike — substring matching is what makes this hold for spellings nobody
+    # thought to enumerate.
     "token",
     "authorization",
     "cookie",

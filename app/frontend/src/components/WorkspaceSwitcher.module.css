@@ -1,0 +1,73 @@
+/* Compact enough to sit in the existing header without redesigning it. */
+
+.wrap {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.label {
+  font-size: var(--text-caption);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+.static {
+  font-size: var(--text-ui);
+  color: var(--text-primary);
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 14rem;
+}
+
+.select {
+  font: inherit;
+  font-size: var(--text-ui);
+  color: var(--text-primary);
+  background: var(--surface-page);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  padding: var(--space-1) var(--space-2);
+  max-width: 14rem;
+}
+
+.select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.select:disabled { opacity: 0.6; }
+
+.role {
+  font-size: var(--text-caption);
+  color: var(--text-secondary);
+  background: var(--surface-sunken);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 0 var(--space-2);
+  text-transform: capitalize;
+  white-space: nowrap;
+}
+
+.manage {
+  appearance: none;
+  font: inherit;
+  font-size: var(--text-caption);
+  color: var(--text-secondary);
+  background: none;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  padding: var(--space-1) var(--space-2);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.manage:hover {
+  color: var(--text-primary);
+  border-color: var(--border-strong);
+}

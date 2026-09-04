@@ -37,7 +37,10 @@ SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS", "TRACE"})
 #: is either expensive (the agent, which fans out into model calls) or is what
 #: an attacker guesses against (the credential endpoints).
 _AGENT_PATHS = ("/api/chat",)
-_AUTH_PATHS = ("/api/auth/",)
+#: Credential endpoints. `/api/invitations/` is here because redeeming an
+#: invitation is redeeming a credential, and an unauthenticated-adjacent
+#: endpoint that consumes a token is exactly what gets guessed against.
+_AUTH_PATHS = ("/api/auth/", "/api/invitations/")
 
 
 def request_path(request: Request) -> str:

@@ -268,6 +268,11 @@ def get_connection(db_path: Path | str = DEFAULT_DB_PATH) -> sqlite3.Connection:
     conn = sqlite3.connect(str(db_path))
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
+    # SQLite serialises writers. Without a busy timeout the loser of a race
+    # gets an immediate "database is locked" error instead of waiting its turn,
+    # which would turn the atomic guards in auth/repository.py into flaky
+    # failures rather than the clean refusals they are meant to be.
+    conn.execute("PRAGMA busy_timeout = 5000")
     return conn
 
 
@@ -278,6 +283,10 @@ def get_connection(db_path: Path | str = DEFAULT_DB_PATH) -> sqlite3.Connection:
 # applied to tables that already hold rows.
 ADDED_COLUMNS: tuple[tuple[str, str, str], ...] = (
     ("agent_actions", "session_id", "TEXT"),
+    # Phase 1. Both nullable, because they are applied to tables that already
+    # hold rows and SQLite cannot add a NOT NULL column without a default.
+    ("users", "updated_at_utc", "TEXT"),
+    ("organizations", "updated_at_utc", "TEXT"),
 )
 
 
@@ -288,6 +297,50 @@ def _apply_added_columns(conn: sqlite3.Connection) -> None:
             continue
         if column not in existing:
             conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {declaration}")
+
+
+class SchemaMigrationError(RuntimeError):
+    """The database cannot be brought to the current schema without a decision.
+
+    Raised rather than guessed at. Every case below is one where the safe
+    action would be to delete somebody's data, so the migration stops and says
+    what it found instead.
+    """
+
+
+def _check_account_exclusivity(conn: sqlite3.Connection) -> None:
+    """Refuse to continue if one dataset account is claimed by two workspaces.
+
+    Phase 1 adds a UNIQUE index making an account belong to exactly one
+    workspace, because the composite key on (org_id, account_id) permitted the
+    same account in two — and each workspace would then see the other's orders,
+    tickets and actions.
+
+    Creating the index on a database that already holds a duplicate would raise
+    an IntegrityError on *every request*, since `initialize_schema` runs per
+    request. Detecting it first turns that into one clear message naming the
+    accounts involved. Resolving it means deciding which workspace owns the
+    account, which is not a decision a migration may take on an operator's
+    behalf.
+    """
+    try:
+        rows = conn.execute(
+            """
+            SELECT account_id, COUNT(DISTINCT org_id) AS orgs
+              FROM organization_accounts
+             GROUP BY account_id HAVING orgs > 1
+            """
+        ).fetchall()
+    except sqlite3.OperationalError:
+        return  # table not created yet; nothing to check
+    if rows:
+        offenders = ", ".join(str(row[0]) for row in rows)
+        raise SchemaMigrationError(
+            "Cannot apply the Phase 1 tenant-isolation constraint: these "
+            f"accounts are granted to more than one workspace: {offenders}. "
+            "Each account must belong to exactly one workspace. Remove the "
+            "unwanted grant(s) from organization_accounts, then restart."
+        )
 
 
 def initialize_schema(conn: sqlite3.Connection) -> None:
@@ -304,6 +357,8 @@ def initialize_schema(conn: sqlite3.Connection) -> None:
     security tables hold the only copy of their data and must survive one.
     """
     from app.backend.auth.schema import SECURITY_SCHEMA_STATEMENTS
+
+    _check_account_exclusivity(conn)
 
     with conn:
         for statement in SCHEMA_STATEMENTS:

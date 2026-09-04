@@ -283,31 +283,202 @@ def add_member(
     return membership_id
 
 
+class LastOwnerError(Exception):
+    """The change would leave a workspace with no owner.
+
+    A workspace with zero owners is unrecoverable through the API: nobody can
+    invite, re-role, transfer or delete it, because every one of those requires
+    a permission only an owner holds. So this is refused at the repository —
+    the layer every path goes through — rather than only at the route that
+    happened to be written first.
+    """
+
+
+def count_owners(conn: sqlite3.Connection, org_id: str) -> int:
+    """How many *active* owners a workspace has."""
+    row = conn.execute(
+        """
+        SELECT COUNT(*) AS n FROM memberships
+         WHERE org_id = ? AND role = ? AND status = ?
+        """,
+        (org_id, OrgRole.OWNER.value, ACTIVE),
+    ).fetchone()
+    return int(row["n"]) if row else 0
+
+
+#: The last-owner guard, expressed as SQL rather than as a Python check.
+#:
+#: A read-then-write in Python is NOT sufficient here and an earlier version of
+#: this module was wrong about that: two connections removing two different
+#: owners simultaneously both read a count of two, both concluded they were not
+#: the last, and both proceeded — leaving the workspace with zero owners and
+#: unmanageable, because every repair path needs a permission only an owner
+#: holds.
+#:
+#: Folding the count into the UPDATE's WHERE clause makes the check and the
+#: write one statement, which SQLite evaluates atomically. The losing writer
+#: matches no rows and is refused.
+_NOT_LAST_OWNER = """
+    AND (
+        role != 'owner'
+        OR (
+            SELECT COUNT(*) FROM memberships AS peers
+             WHERE peers.org_id = memberships.org_id
+               AND peers.role = 'owner'
+               AND peers.status = 'active'
+        ) > 1
+    )
+"""
+
+
+def _explain_refusal(
+    conn: sqlite3.Connection, *, org_id: str, user_id: str, action: str
+) -> None:
+    """Say why a guarded UPDATE changed nothing. Always raises.
+
+    The statement itself cannot report which condition failed, so this reads
+    the row afterwards to tell "not a member" from "last owner" — a distinction
+    the caller needs in order to explain itself, and which leaks nothing
+    because the caller is already an authorized member of this workspace.
+    """
+    row = conn.execute(
+        "SELECT role FROM memberships WHERE org_id = ? AND user_id = ? AND status = ?",
+        (org_id, user_id, ACTIVE),
+    ).fetchone()
+    if row is not None and row["role"] == OrgRole.OWNER.value:
+        raise LastOwnerError(
+            f"This is the workspace's only owner and cannot be {action}. "
+            "Transfer ownership first, or promote another member to owner."
+        )
+    raise _NotAMember()
+
+
+class _NotAMember(Exception):
+    """Internal: the guarded UPDATE matched nothing because there is no member."""
+
+
 def set_member_role(
     conn: sqlite3.Connection, *, org_id: str, user_id: str, role: OrgRole
 ) -> bool:
+    """Change a member's role. Refuses to demote the last owner.
+
+    Demoting the last owner is refused rather than warned about, because the
+    resulting state cannot be repaired from inside the product. To hand the
+    workspace on, promote the successor to owner *first* — then the outgoing
+    owner is no longer the last one and may be demoted freely.
+    """
+    guard = "" if role is OrgRole.OWNER else _NOT_LAST_OWNER
     with conn:
         cursor = conn.execute(
-            """
+            f"""
             UPDATE memberships SET role = ?, updated_at_utc = ?
-             WHERE org_id = ? AND user_id = ?
+             WHERE org_id = ? AND user_id = ? AND status = ?
+                   {guard}
             """,
-            (role.value, _now().isoformat(), org_id, user_id),
+            (role.value, _now().isoformat(), org_id, user_id, ACTIVE),
         )
-    return cursor.rowcount == 1
+        if cursor.rowcount != 1:
+            try:
+                _explain_refusal(
+                    conn, org_id=org_id, user_id=user_id, action="demoted"
+                )
+            except _NotAMember:
+                return False
+    return True
 
 
 def remove_member(conn: sqlite3.Connection, *, org_id: str, user_id: str) -> bool:
-    """Deactivate rather than delete, so the audit trail keeps its referent."""
+    """Deactivate rather than delete, so the audit trail keeps its referent.
+
+    Refuses to remove the last owner, for the same reason `set_member_role`
+    refuses to demote one.
+    """
     with conn:
         cursor = conn.execute(
-            """
+            f"""
             UPDATE memberships SET status = 'removed', updated_at_utc = ?
              WHERE org_id = ? AND user_id = ? AND status = ?
+                   {_NOT_LAST_OWNER}
             """,
             (_now().isoformat(), org_id, user_id, ACTIVE),
         )
+        if cursor.rowcount != 1:
+            try:
+                _explain_refusal(
+                    conn, org_id=org_id, user_id=user_id, action="removed"
+                )
+            except _NotAMember:
+                return False
+    return True
+
+
+def transfer_ownership(
+    conn: sqlite3.Connection, *, org_id: str, from_user_id: str, to_user_id: str
+) -> bool:
+    """Promote another member to owner and demote the outgoing one, atomically.
+
+    Both halves in one transaction so the workspace is never observed with two
+    owners or none. The promotion happens first; if the demotion then failed,
+    the workspace would have an extra owner rather than no owner, which is the
+    safe direction to fail in.
+    """
+    now = _now().isoformat()
+    with conn:
+        target = conn.execute(
+            "SELECT role FROM memberships WHERE org_id = ? AND user_id = ? AND status = ?",
+            (org_id, to_user_id, ACTIVE),
+        ).fetchone()
+        if target is None:
+            return False
+        conn.execute(
+            "UPDATE memberships SET role = ?, updated_at_utc = ? "
+            "WHERE org_id = ? AND user_id = ? AND status = ?",
+            (OrgRole.OWNER.value, now, org_id, to_user_id, ACTIVE),
+        )
+        conn.execute(
+            "UPDATE memberships SET role = ?, updated_at_utc = ? "
+            "WHERE org_id = ? AND user_id = ? AND status = ?",
+            (OrgRole.ADMIN.value, now, org_id, from_user_id, ACTIVE),
+        )
+    return True
+
+
+# --- workspace reads --------------------------------------------------------
+
+
+def get_organization(conn: sqlite3.Connection, org_id: str) -> dict | None:
+    """One workspace by id, or None if it does not exist or is not active.
+
+    Callers must still check membership: existence is not access. This returns
+    a workspace to anyone who asks, and every route that uses it looks up a
+    membership first.
+    """
+    row = conn.execute(
+        "SELECT * FROM organizations WHERE org_id = ? AND status = ?",
+        (org_id, ACTIVE),
+    ).fetchone()
+    return None if row is None else dict(row)
+
+
+def update_organization(
+    conn: sqlite3.Connection, *, org_id: str, name: str
+) -> bool:
+    with conn:
+        cursor = conn.execute(
+            "UPDATE organizations SET name = ?, updated_at_utc = ? "
+            "WHERE org_id = ? AND status = ?",
+            (name.strip(), _now().isoformat(), org_id, ACTIVE),
+        )
     return cursor.rowcount == 1
+
+
+def slug_exists(conn: sqlite3.Connection, slug: str) -> bool:
+    return (
+        conn.execute(
+            "SELECT 1 FROM organizations WHERE slug = ?", (slug.strip().lower(),)
+        ).fetchone()
+        is not None
+    )
 
 
 def get_membership(
@@ -394,16 +565,45 @@ def list_org_members(conn: sqlite3.Connection, org_id: str) -> list[dict]:
 # --- tenant scope -----------------------------------------------------------
 
 
+class AccountAlreadyClaimedError(Exception):
+    """The dataset account already belongs to a different workspace."""
+
+
 def grant_account(conn: sqlite3.Connection, *, org_id: str, account_id: str) -> None:
-    with conn:
-        conn.execute(
-            """
-            INSERT OR IGNORE INTO organization_accounts
-                (org_id, account_id, created_at_utc)
-            VALUES (?, ?, ?)
-            """,
-            (org_id, account_id, _now().isoformat()),
+    """Give a workspace access to one dataset account.
+
+    Raises `AccountAlreadyClaimedError` when another workspace already owns it.
+    An earlier version used `INSERT OR IGNORE`, which was safe — no cross-tenant
+    grant was ever created — but *silent*: an operator wiring up a workspace
+    would see the call succeed and the account never appear. Failing loudly is
+    the difference between a constraint and a trap.
+
+    Re-granting the same account to the same workspace is a no-op, because that
+    is genuinely idempotent rather than a conflict.
+    """
+    existing = org_owning_account(conn, account_id)
+    if existing == org_id:
+        return
+    if existing is not None:
+        raise AccountAlreadyClaimedError(
+            f"Account {account_id!r} already belongs to another workspace. An "
+            f"account belongs to exactly one workspace."
         )
+    try:
+        with conn:
+            conn.execute(
+                """
+                INSERT INTO organization_accounts
+                    (org_id, account_id, created_at_utc)
+                VALUES (?, ?, ?)
+                """,
+                (org_id, account_id, _now().isoformat()),
+            )
+    except sqlite3.IntegrityError as exc:
+        # Lost a race with a concurrent grant. The constraint held; report it.
+        raise AccountAlreadyClaimedError(
+            f"Account {account_id!r} already belongs to another workspace."
+        ) from exc
 
 
 def accounts_for_org(conn: sqlite3.Connection, org_id: str) -> frozenset[str]:
@@ -532,7 +732,15 @@ def touch_session(
         )
 
 
-def set_session_org(conn: sqlite3.Connection, session_id: str, org_id: str) -> None:
+def set_session_org(
+    conn: sqlite3.Connection, session_id: str, org_id: str | None
+) -> None:
+    """Point a session at a workspace, or at none.
+
+    `None` clears it, which is what happens when someone leaves the workspace
+    they were acting in: the session stays valid as an identity and carries no
+    tenant authority until another workspace is activated.
+    """
     with conn:
         conn.execute(
             "UPDATE sessions SET org_id = ? WHERE session_id = ?", (org_id, session_id)
@@ -731,3 +939,209 @@ def conversation_owner(
         (conversation_id,),
     ).fetchone()
     return None if row is None else (row["user_id"], row["org_id"])
+
+
+# --- invitations ------------------------------------------------------------
+#
+# An invitation is a credential: whoever holds the token can join a workspace.
+# It therefore follows exactly the same rules as a session and a reset link.
+#
+#   - The plaintext token is returned to the caller ONCE and never stored.
+#   - Only its SHA-256 digest goes in the database.
+#   - Redemption is single-use, enforced by a guarded UPDATE rather than by
+#     deleting the row, so a replay is observable rather than merely absent.
+#   - The invited address is bound into the row and re-checked at acceptance,
+#     so a leaked link cannot be redeemed by whoever finds it.
+
+#: Long enough to be usable across a working week, short enough that a
+#: forwarded mail stops being a way in.
+INVITATION_TTL_HOURS = 168  # 7 days
+
+
+@dataclass(frozen=True)
+class Invitation:
+    """A pending or settled invitation. Never carries the token."""
+
+    invitation_id: str
+    org_id: str
+    email: str
+    role: OrgRole
+    invited_by: str
+    created_at: datetime
+    expires_at: datetime
+    accepted_at: datetime | None
+    accepted_by: str | None
+    revoked_at: datetime | None
+
+    @property
+    def status(self) -> str:
+        """One word for the UI. Order matters: settled states win over expiry."""
+        if self.accepted_at is not None:
+            return "accepted"
+        if self.revoked_at is not None:
+            return "revoked"
+        if _now() >= self.expires_at:
+            return "expired"
+        return "pending"
+
+    @property
+    def is_open(self) -> bool:
+        return self.status == "pending"
+
+
+def _row_to_invitation(row: sqlite3.Row) -> Invitation | None:
+    role = OrgRole(row["role"]) if row["role"] in set(OrgRole) else None
+    if role is None:
+        # A role written by a future version must not fail open into a
+        # membership this version cannot reason about.
+        return None
+    return Invitation(
+        invitation_id=row["invitation_id"],
+        org_id=row["org_id"],
+        email=row["email"],
+        role=role,
+        invited_by=row["invited_by"],
+        created_at=_parse(row["created_at_utc"]),
+        expires_at=_parse(row["expires_at_utc"]),
+        accepted_at=_parse(row["accepted_at_utc"]),
+        accepted_by=row["accepted_by"],
+        revoked_at=_parse(row["revoked_at_utc"]),
+    )
+
+
+class DuplicateInvitationError(Exception):
+    """An invitation to this address for this workspace is already open."""
+
+
+def create_invitation(
+    conn: sqlite3.Connection,
+    *,
+    org_id: str,
+    email: str,
+    role: OrgRole,
+    invited_by: str,
+    ttl_hours: int = INVITATION_TTL_HOURS,
+) -> tuple[Invitation, str]:
+    """Issue an invitation. Returns (invitation, plaintext token).
+
+    The token is the caller's only chance to see it; the row keeps a digest.
+
+    A second open invitation to the same address is refused by the partial
+    unique index rather than by a read-then-write check, so two simultaneous
+    invites cannot both succeed. Spent and revoked invitations are outside that
+    index, so re-inviting someone who declined works normally.
+    """
+    token = new_token()
+    now = _now()
+    invitation_id = new_id("INV")
+    normalized = normalize_email(email)
+
+    try:
+        with conn:
+            conn.execute(
+                """
+                INSERT INTO invitations
+                    (invitation_id, org_id, email, role, token_hash, invited_by,
+                     created_at_utc, expires_at_utc)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    invitation_id,
+                    org_id,
+                    normalized,
+                    role.value,
+                    hash_token(token),
+                    invited_by,
+                    now.isoformat(),
+                    (now + timedelta(hours=ttl_hours)).isoformat(),
+                ),
+            )
+    except sqlite3.IntegrityError as exc:
+        raise DuplicateInvitationError(
+            "There is already an open invitation to that address for this "
+            "workspace. Revoke it first, or wait for it to expire."
+        ) from exc
+
+    invitation = get_invitation(conn, invitation_id)
+    assert invitation is not None
+    return invitation, token
+
+
+def get_invitation(conn: sqlite3.Connection, invitation_id: str) -> Invitation | None:
+    row = conn.execute(
+        "SELECT * FROM invitations WHERE invitation_id = ?", (invitation_id,)
+    ).fetchone()
+    return None if row is None else _row_to_invitation(row)
+
+
+def find_invitation_by_token(
+    conn: sqlite3.Connection, token: str
+) -> Invitation | None:
+    """Resolve a token to its invitation, without settling it.
+
+    Looked up by digest, so the presented token is never compared against
+    anything held in plaintext. Returns the row whatever its state — expired,
+    revoked and spent invitations all come back, because the acceptance path
+    needs to tell those apart to explain itself.
+    """
+    if not token:
+        return None
+    row = conn.execute(
+        "SELECT * FROM invitations WHERE token_hash = ?", (hash_token(token),)
+    ).fetchone()
+    return None if row is None else _row_to_invitation(row)
+
+
+def list_invitations(
+    conn: sqlite3.Connection, org_id: str, *, include_settled: bool = False
+) -> list[Invitation]:
+    rows = conn.execute(
+        "SELECT * FROM invitations WHERE org_id = ? ORDER BY created_at_utc DESC",
+        (org_id,),
+    ).fetchall()
+    invitations = [inv for inv in (_row_to_invitation(r) for r in rows) if inv]
+    if include_settled:
+        return invitations
+    return [inv for inv in invitations if inv.is_open]
+
+
+def revoke_invitation(
+    conn: sqlite3.Connection, *, invitation_id: str, org_id: str, revoked_by: str
+) -> bool:
+    """Withdraw an open invitation.
+
+    Scoped by `org_id` in the WHERE clause, not merely checked beforehand, so
+    an invitation id from another workspace cannot be revoked even if guessed.
+    """
+    with conn:
+        cursor = conn.execute(
+            """
+            UPDATE invitations SET revoked_at_utc = ?, revoked_by = ?
+             WHERE invitation_id = ? AND org_id = ?
+               AND accepted_at_utc IS NULL AND revoked_at_utc IS NULL
+            """,
+            (_now().isoformat(), revoked_by, invitation_id, org_id),
+        )
+    return cursor.rowcount == 1
+
+
+def consume_invitation(
+    conn: sqlite3.Connection, *, invitation_id: str, user_id: str
+) -> bool:
+    """Mark an invitation spent. False if it was already settled.
+
+    The `accepted_at_utc IS NULL AND revoked_at_utc IS NULL` guard inside the
+    UPDATE is what makes redemption single-use: two simultaneous acceptances of
+    one link cannot both change a row, so exactly one wins and the other is
+    told the invitation is no longer open.
+    """
+    with conn:
+        cursor = conn.execute(
+            """
+            UPDATE invitations SET accepted_at_utc = ?, accepted_by = ?
+             WHERE invitation_id = ?
+               AND accepted_at_utc IS NULL AND revoked_at_utc IS NULL
+            """,
+            (_now().isoformat(), user_id, invitation_id),
+        )
+    return cursor.rowcount == 1

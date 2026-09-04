@@ -175,14 +175,14 @@ def test_an_identity_header_cannot_override_a_session(secure_settings, tenants):
     assert response.json()["account_scope"] == ["ACCT-001"]
 
 
-def test_switching_to_a_foreign_organization_is_refused(secure_settings, tenants):
-    """Scenario: manipulated organization id."""
+def test_switching_to_a_foreign_workspace_is_refused(secure_settings, tenants):
+    """Scenario: manipulated workspace id in the path."""
     client = client_for(secure_settings, tenants["people"]["alpha_owner"])
-    response = client.post(
-        "/api/auth/select-organization", json={"org_id": tenants["beta_org"]}
-    )
+    response = client.post(f"/api/workspaces/{tenants['beta_org']}/activate")
     # Reported as absent, not forbidden: a 403 would confirm the id is real.
     assert response.status_code == 404
+    # And the caller is still acting in their own workspace.
+    assert chat(client, "hello").json()["account_scope"] == ["ACCT-001"]
 
 
 def test_a_foreign_action_id_is_reported_as_absent(secure_settings, tenants, db):
@@ -254,17 +254,31 @@ def test_a_viewer_cannot_prepare_an_action(secure_settings, tenants):
     assert response.json()["proposed_action"] is None
 
 
-def test_a_viewer_cannot_reach_membership_administration(secure_settings, tenants):
+def test_a_viewer_cannot_invite_or_re_role(secure_settings, tenants):
+    """A viewer may see the member list and change nothing about it."""
     client = client_for(secure_settings, tenants["people"]["alpha_viewer"])
-    assert client.get("/api/auth/organization/members").status_code == 403
+    org = tenants["alpha_org"]
+
+    # Reading the roster is deliberately allowed for every member.
+    assert client.get(f"/api/workspaces/{org}/members").status_code == 200
+
+    assert (
+        client.post(
+            f"/api/workspaces/{org}/invitations",
+            json={"email": "someone@example.com", "role": "viewer"},
+        ).status_code
+        == 403
+    )
+    assert client.get(f"/api/workspaces/{org}/invitations").status_code == 403
 
 
-def test_a_support_member_cannot_change_roles(secure_settings, tenants):
+def test_a_support_member_cannot_change_roles(secure_settings, tenants, db):
     """Scenario 4: a support user attempts a configuration change."""
+    viewer = repo.get_user_by_email(db, tenants["people"]["alpha_viewer"])
     client = client_for(secure_settings, tenants["people"]["alpha_support"])
-    response = client.post(
-        "/api/auth/organization/members/role",
-        json={"user_id": "anyone", "role": "owner"},
+    response = client.patch(
+        f"/api/workspaces/{tenants['alpha_org']}/members/{viewer.user_id}",
+        json={"role": "admin"},
     )
     assert response.status_code == 403
 
@@ -298,20 +312,23 @@ def test_an_admin_cannot_promote_anyone_to_owner(secure_settings, tenants, db):
     """Vertical escalation: admin must not be able to reach past its ceiling."""
     viewer = repo.get_user_by_email(db, tenants["people"]["alpha_viewer"])
     client = client_for(secure_settings, tenants["people"]["alpha_admin"])
-    response = client.post(
-        "/api/auth/organization/members/role",
-        json={"user_id": viewer.user_id, "role": "owner"},
+    response = client.patch(
+        f"/api/workspaces/{tenants['alpha_org']}/members/{viewer.user_id}",
+        json={"role": "owner"},
     )
     assert response.status_code == 403
+    assert repo.get_membership(
+        db, org_id=tenants["alpha_org"], user_id=viewer.user_id
+    ).role is OrgRole.VIEWER
 
 
 def test_an_admin_may_change_an_ordinary_role(secure_settings, tenants, db):
     """The negative tests above must not be passing because everything fails."""
     viewer = repo.get_user_by_email(db, tenants["people"]["alpha_viewer"])
     client = client_for(secure_settings, tenants["people"]["alpha_admin"])
-    response = client.post(
-        "/api/auth/organization/members/role",
-        json={"user_id": viewer.user_id, "role": "support"},
+    response = client.patch(
+        f"/api/workspaces/{tenants['alpha_org']}/members/{viewer.user_id}",
+        json={"role": "support"},
     )
     assert response.status_code == 200
     assert repo.get_membership(
@@ -324,9 +341,9 @@ def test_an_admin_cannot_change_a_role_in_another_organization(
 ):
     beta_owner = repo.get_user_by_email(db, tenants["people"]["beta_owner"])
     client = client_for(secure_settings, tenants["people"]["alpha_admin"])
-    response = client.post(
-        "/api/auth/organization/members/role",
-        json={"user_id": beta_owner.user_id, "role": "viewer"},
+    response = client.patch(
+        f"/api/workspaces/{tenants['beta_org']}/members/{beta_owner.user_id}",
+        json={"role": "viewer"},
     )
     assert response.status_code == 404
     # Beta's owner is untouched.

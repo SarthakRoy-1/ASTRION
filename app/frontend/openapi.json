@@ -1,6 +1,22 @@
 {
   "components": {
     "schemas": {
+      "AcceptInvitationRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "token": {
+            "maxLength": 512,
+            "minLength": 1,
+            "title": "Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "token"
+        ],
+        "title": "AcceptInvitationRequest",
+        "type": "object"
+      },
       "ActionConfirmationRequest": {
         "additionalProperties": false,
         "description": "Confirm or reject one prepared action.\n\nConfirmation is a distinct API call with a closed vocabulary. A user typing\n\"okay\" into the chat endpoint does not confirm anything: `/api/chat` has no\npath to execution at all, which is what makes the gate structural rather\nthan a matter of parsing intent correctly.",
@@ -114,6 +130,22 @@
         ],
         "title": "ActionState",
         "type": "string"
+      },
+      "ChangeRoleRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "role": {
+            "maxLength": 32,
+            "minLength": 1,
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "role"
+        ],
+        "title": "ChangeRoleRequest",
+        "type": "object"
       },
       "ChatRequest": {
         "additionalProperties": false,
@@ -306,6 +338,22 @@
         ],
         "title": "ConfirmationDecision",
         "type": "string"
+      },
+      "CreateWorkspaceRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "CreateWorkspaceRequest",
+        "type": "object"
       },
       "ExecutedActionView": {
         "description": "The audit record of an action that reached a terminal state.\n\nCarries the timeline and the effect's identifier \u2014 enough to prove what\nhappened and when \u2014 without exposing table names or row internals.",
@@ -555,6 +603,29 @@
         "title": "HealthResponse",
         "type": "object"
       },
+      "InviteRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "email": {
+            "maxLength": 320,
+            "minLength": 3,
+            "title": "Email",
+            "type": "string"
+          },
+          "role": {
+            "maxLength": 32,
+            "minLength": 1,
+            "title": "Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "email",
+          "role"
+        ],
+        "title": "InviteRequest",
+        "type": "object"
+      },
       "LoginRequest": {
         "additionalProperties": false,
         "properties": {
@@ -576,29 +647,6 @@
           "password"
         ],
         "title": "LoginRequest",
-        "type": "object"
-      },
-      "MemberRoleRequest": {
-        "additionalProperties": false,
-        "properties": {
-          "role": {
-            "maxLength": 32,
-            "minLength": 1,
-            "title": "Role",
-            "type": "string"
-          },
-          "user_id": {
-            "maxLength": 64,
-            "minLength": 1,
-            "title": "User Id",
-            "type": "string"
-          }
-        },
-        "required": [
-          "user_id",
-          "role"
-        ],
-        "title": "MemberRoleRequest",
         "type": "object"
       },
       "MfaCodeRequest": {
@@ -1131,22 +1179,6 @@
         "title": "Role",
         "type": "string"
       },
-      "SelectOrgRequest": {
-        "additionalProperties": false,
-        "properties": {
-          "org_id": {
-            "maxLength": 64,
-            "minLength": 1,
-            "title": "Org Id",
-            "type": "string"
-          }
-        },
-        "required": [
-          "org_id"
-        ],
-        "title": "SelectOrgRequest",
-        "type": "object"
-      },
       "SourceRef": {
         "description": "One citation: where a claim came from, and how much it is worth.",
         "properties": {
@@ -1295,6 +1327,38 @@
           "status"
         ],
         "title": "ToolUse",
+        "type": "object"
+      },
+      "TransferOwnershipRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "user_id": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id"
+        ],
+        "title": "TransferOwnershipRequest",
+        "type": "object"
+      },
+      "UpdateWorkspaceRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "UpdateWorkspaceRequest",
         "type": "object"
       },
       "ValidationError": {
@@ -1872,73 +1936,6 @@
         ]
       }
     },
-    "/api/auth/organization/members": {
-      "get": {
-        "operationId": "organization_members_api_auth_organization_members_get",
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Organization Members Api Auth Organization Members Get",
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "summary": "Organization Members",
-        "tags": [
-          "auth"
-        ]
-      }
-    },
-    "/api/auth/organization/members/role": {
-      "post": {
-        "description": "Change a member's role within the caller's own organisation.\n\nNote what is *not* taken from the request: the organisation. It comes from\nthe caller's session, so there is no `org_id` field an attacker could point\nat somebody else's tenancy.",
-        "operationId": "set_member_role_api_auth_organization_members_role_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/MemberRoleRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Set Member Role Api Auth Organization Members Role Post",
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Set Member Role",
-        "tags": [
-          "auth"
-        ]
-      }
-    },
     "/api/auth/password/change": {
       "post": {
         "operationId": "password_change_api_auth_password_change_post",
@@ -2114,50 +2111,6 @@
         ]
       }
     },
-    "/api/auth/select-organization": {
-      "post": {
-        "description": "Switch which organisation this session acts in.\n\nMembership is re-checked here, and the choice is written to the *session\nrow* rather than trusted per-request. A non-member gets a 404 \u2014 the same\nanswer an organisation that does not exist gets, so this endpoint cannot be\nused to discover which organisation ids are real.",
-        "operationId": "select_organization_api_auth_select_organization_post",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/SelectOrgRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "additionalProperties": true,
-                  "title": "Response Select Organization Api Auth Select Organization Post",
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Select Organization",
-        "tags": [
-          "auth"
-        ]
-      }
-    },
     "/api/auth/sessions": {
       "get": {
         "description": "This user's sessions, so they can see a device they do not recognise.",
@@ -2285,6 +2238,50 @@
         ]
       }
     },
+    "/api/invitations/accept": {
+      "post": {
+        "description": "Redeem an invitation into a membership.\n\nRequires an authenticated account, because the invited address is checked\nagainst the *authenticated* user's own \u2014 which they cannot choose. That is\nwhat makes a leaked link useless to whoever finds it.",
+        "operationId": "accept_invitation_api_invitations_accept_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AcceptInvitationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Accept Invitation Api Invitations Accept Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Accept Invitation",
+        "tags": [
+          "workspaces"
+        ]
+      }
+    },
     "/api/principals": {
       "get": {
         "description": "The mock identities this deployment accepts, and the scope each holds.\n\nExists so the demo is self-describing. It lists no credentials, because\nthere are none: Phase 5's authentication is deliberately a mock, and a\nreal identity provider replaces `auth/principals.py` without touching\nanything below it.",
@@ -2304,6 +2301,586 @@
         "summary": "Principals",
         "tags": [
           "system"
+        ]
+      }
+    },
+    "/api/workspaces": {
+      "get": {
+        "description": "Every workspace the caller belongs to, and their role in each.\n\nDerived from membership rows, so it lists what the caller can actually\nreach rather than what they asked about.",
+        "operationId": "list_workspaces_api_workspaces_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response List Workspaces Api Workspaces Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Workspaces",
+        "tags": [
+          "workspaces"
+        ]
+      },
+      "post": {
+        "description": "Create a workspace. The caller becomes its owner.\n\nAny authenticated user may create one \u2014 this is the path out of the\nno-workspace onboarding state, so gating it on a permission would leave a\nnew account with no way forward. `MAX_WORKSPACES_PER_USER` is the ceiling.",
+        "operationId": "create_workspace_api_workspaces_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateWorkspaceRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Create Workspace Api Workspaces Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Workspace",
+        "tags": [
+          "workspaces"
+        ]
+      }
+    },
+    "/api/workspaces/{workspace_id}": {
+      "get": {
+        "operationId": "get_workspace_api_workspaces__workspace_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Get Workspace Api Workspaces  Workspace Id  Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Workspace",
+        "tags": [
+          "workspaces"
+        ]
+      },
+      "patch": {
+        "operationId": "update_workspace_api_workspaces__workspace_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateWorkspaceRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Update Workspace Api Workspaces  Workspace Id  Patch",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Workspace",
+        "tags": [
+          "workspaces"
+        ]
+      }
+    },
+    "/api/workspaces/{workspace_id}/activate": {
+      "post": {
+        "description": "Make this the workspace the agent and the tenant-scoped APIs run against.\n\nWritten to the *session row*, never held in the request. That is what stops\na client selecting a tenant per-request: there is no field to put it in,\nand this endpoint re-checks membership before writing.",
+        "operationId": "activate_workspace_api_workspaces__workspace_id__activate_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Activate Workspace Api Workspaces  Workspace Id  Activate Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Activate Workspace",
+        "tags": [
+          "workspaces"
+        ]
+      }
+    },
+    "/api/workspaces/{workspace_id}/invitations": {
+      "get": {
+        "operationId": "list_invitations_api_workspaces__workspace_id__invitations_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "include_settled",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Include Settled",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response List Invitations Api Workspaces  Workspace Id  Invitations Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Invitations",
+        "tags": [
+          "workspaces"
+        ]
+      },
+      "post": {
+        "operationId": "create_invitation_api_workspaces__workspace_id__invitations_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InviteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Create Invitation Api Workspaces  Workspace Id  Invitations Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Invitation",
+        "tags": [
+          "workspaces"
+        ]
+      }
+    },
+    "/api/workspaces/{workspace_id}/invitations/{invitation_id}": {
+      "delete": {
+        "operationId": "revoke_invitation_api_workspaces__workspace_id__invitations__invitation_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "invitation_id",
+            "required": true,
+            "schema": {
+              "title": "Invitation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Revoke Invitation Api Workspaces  Workspace Id  Invitations  Invitation Id  Delete",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Revoke Invitation",
+        "tags": [
+          "workspaces"
+        ]
+      }
+    },
+    "/api/workspaces/{workspace_id}/members": {
+      "get": {
+        "operationId": "list_members_api_workspaces__workspace_id__members_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response List Members Api Workspaces  Workspace Id  Members Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Members",
+        "tags": [
+          "workspaces"
+        ]
+      }
+    },
+    "/api/workspaces/{workspace_id}/members/{member_user_id}": {
+      "delete": {
+        "description": "Remove a member, or leave the workspace yourself.\n\nLeaving needs no `members.remove` permission \u2014 anyone may leave \u2014 so the\ngate is chosen from who the target is.",
+        "operationId": "remove_member_api_workspaces__workspace_id__members__member_user_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "member_user_id",
+            "required": true,
+            "schema": {
+              "title": "Member User Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Remove Member Api Workspaces  Workspace Id  Members  Member User Id  Delete",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Remove Member",
+        "tags": [
+          "workspaces"
+        ]
+      },
+      "patch": {
+        "operationId": "change_member_role_api_workspaces__workspace_id__members__member_user_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "member_user_id",
+            "required": true,
+            "schema": {
+              "title": "Member User Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChangeRoleRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Change Member Role Api Workspaces  Workspace Id  Members  Member User Id  Patch",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Change Member Role",
+        "tags": [
+          "workspaces"
+        ]
+      }
+    },
+    "/api/workspaces/{workspace_id}/ownership": {
+      "post": {
+        "description": "Hand the workspace to another member. Owner only; the actor becomes admin.",
+        "operationId": "transfer_ownership_api_workspaces__workspace_id__ownership_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TransferOwnershipRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Transfer Ownership Api Workspaces  Workspace Id  Ownership Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Transfer Ownership",
+        "tags": [
+          "workspaces"
         ]
       }
     },

@@ -42,7 +42,6 @@ from app.backend.auth.passwords import (
     verify_password,
     waste_time,
 )
-from app.backend.auth.permissions import OrgRole
 from app.backend.services.audit import (
     AuditEvent,
     AuditOutcome,
@@ -677,21 +676,26 @@ def provision_organization(
     *,
     owner_user_id: str,
     name: str,
-    slug: str,
+    slug: str | None = None,
     account_ids: list[str] | None = None,
     request_id: str | None = None,
 ) -> str:
-    """Create an organisation with its first owner and its tenant scope."""
-    org_id, _ = repo.create_organization(conn, name=name, slug=slug)
-    repo.add_member(conn, org_id=org_id, user_id=owner_user_id, role=OrgRole.OWNER)
-    for account_id in account_ids or []:
-        repo.grant_account(conn, org_id=org_id, account_id=account_id)
-    record_event(
+    """Create a workspace with its first owner and its tenant scope.
+
+    A thin wrapper over `auth/workspaces.py::create_workspace` so that the
+    bootstrap script, the tests and the API all create workspaces through one
+    code path — including its owner assignment, its ceiling and its audit
+    events. `slug` is accepted for call-site compatibility and ignored: the
+    slug is derived from the name and de-duplicated, so it is not something a
+    caller needs to pick correctly.
+    """
+    from app.backend.auth.workspaces import create_workspace
+
+    workspace = create_workspace(
         conn,
-        AuditEvent.ORGANIZATION_CREATED,
-        actor_user_id=owner_user_id,
-        org_id=org_id,
+        owner_user_id=owner_user_id,
+        name=name,
+        account_ids=account_ids,
         request_id=request_id,
-        details={"slug": slug, "accounts": len(account_ids or [])},
     )
-    return org_id
+    return workspace["org_id"]
