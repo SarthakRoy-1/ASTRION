@@ -95,7 +95,7 @@ chunks the caller is permitted to see (see §6).
 | Hash format | `scrypt$n$r$p$salt$hash` — self-describing, so parameters can be raised |
 | Rehash on login | `needs_rehash` upgrades weaker hashes on next successful sign-in |
 | Verification | `hmac.compare_digest` — constant time |
-| Minimum length | 12 characters. No composition rules (they push users to predictable substitutions) |
+| Minimum length | 8 characters — the NIST SP 800-63B floor for a user-chosen secret. No composition rules (they push users to predictable substitutions). Enforced by `validate_password` on registration, password change and reset alike |
 | Session tokens | 256 bits from `secrets`; **only the SHA-256 digest is stored** |
 | Cookie | `HttpOnly`, `Secure`, `SameSite=Lax`, `Path=/` |
 | Session lifetime | 60-minute idle **and** 12-hour absolute, independently enforced |

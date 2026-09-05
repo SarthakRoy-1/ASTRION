@@ -1,39 +1,103 @@
-/* A three-row shell: header, scrolling transcript, pinned composer. The
-   transcript is the only thing that scrolls, so the composer and the active
-   context are always reachable. */
-.app {
+/* Support: a transcript that scrolls, a context rail beside it, and a composer
+   pinned below both. The transcript is the only thing that moves, so what you
+   are acting as and what you can ask stay reachable at all times. */
+
+.page {
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
-  height: 100dvh;
 }
 
-.main {
+/* Below the two-column breakpoint the whole thing is one scrolling column and
+   the rail follows the transcript. It is supplementary context, so it may sit
+   below the conversation — but it is never removed, because "which accounts am
+   I allowed to see" is not a desktop-only question. */
+.grid {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
-}
-
-.content {
-  max-width: var(--content-width);
+  width: 100%;
+  max-width: var(--shell-width);
   margin: 0 auto;
   padding: 0 var(--space-5);
 }
 
-.startupError,
-.startupNotice {
-  padding-top: var(--space-5);
+.stream {
+  min-width: 0;
 }
 
-/* The connection notice renders nothing once the backend has answered, which
-   is the ordinary case. Without this its wrapper would still hold the page
-   open by its own padding. */
-.startupNotice:empty {
-  display: none;
+.rail {
+  min-width: 0;
+  border-top: 1px solid var(--border-subtle);
+}
+
+/* The conversation controls. Sticky, because switching or starting a
+   conversation is something you reach for from anywhere in a long thread. */
+.toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3) 0;
+  background: var(--surface-page);
+}
+
+.toolbarSpacer {
+  flex: 1;
+}
+
+/* Where this conversation came from, when it came from an operations signal.
+   Without it, handing a signal to the assistant loses the signal. */
+.origin {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-3);
+  margin-bottom: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--accent-border);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius-md);
+  background: var(--accent-soft);
+  font-size: var(--text-small);
+  color: var(--text-secondary);
+}
+
+.originLabel {
+  font-size: var(--text-caption);
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.originTitle {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.originLink {
+  margin-left: auto;
+  color: var(--accent);
+  font-size: var(--text-small);
+  font-weight: 500;
 }
 
 .composerBar {
+  flex: none;
   padding: var(--space-3) 0 var(--space-4);
   border-top: 1px solid var(--border-subtle);
   background: var(--surface-page);
+}
+
+.composerInner {
+  max-width: var(--shell-width);
+  margin: 0 auto;
+  padding: 0 var(--space-5);
 }
 
 .disclaimer {
@@ -43,81 +107,45 @@
   font-size: var(--text-caption);
 }
 
-@media (max-width: 640px) {
-  .content {
-    padding: 0 var(--space-4);
+@media (min-width: 1100px) {
+  .grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 300px;
+    gap: 0 var(--space-6);
+    overflow: hidden;
+  }
+
+  .stream {
+    overflow-y: auto;
+    padding-bottom: var(--space-5);
+  }
+
+  .rail {
+    overflow-y: auto;
+    border-top: 0;
+    border-left: 1px solid var(--border-subtle);
+    padding-left: var(--space-5);
+  }
+
+  /* The composer belongs to the transcript column, not to the rail. */
+  .composerInner {
+    max-width: var(--shell-width);
+    padding-right: calc(300px + var(--space-6) + var(--space-5));
+  }
+}
+
+@media (max-width: 720px) {
+  .grid,
+  .composerInner {
+    padding-left: var(--space-4);
+    padding-right: var(--space-4);
   }
 
   .disclaimer {
     text-align: left;
   }
+
+  .originLink {
+    margin-left: 0;
+  }
 }
-
-/* --- Phase 1: workspace bar and auth states ------------------------------ */
-
-.workspaceBar {
-  background: var(--surface-page);
-  border-bottom: 1px solid var(--border-subtle);
-}
-
-.workspaceBar .content {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-4);
-  padding-top: var(--space-2);
-  padding-bottom: var(--space-2);
-}
-
-.signOut {
-  appearance: none;
-  font: inherit;
-  font-size: var(--text-caption);
-  color: var(--text-secondary);
-  background: none;
-  border: none;
-  padding: 0;
-  text-decoration: underline;
-  cursor: pointer;
-  white-space: nowrap;
-}
-
-.signOut:hover { color: var(--text-primary); }
-
-.loading {
-  margin: var(--space-7) auto;
-  text-align: center;
-  color: var(--text-muted);
-  font-size: var(--text-small);
-}
-
-.sessionError {
-  margin: var(--space-3) 0;
-  padding: var(--space-2) var(--space-3);
-  font-size: var(--text-small);
-  color: var(--fail);
-  background: var(--fail-soft);
-  border: 1px solid var(--fail-border);
-  border-radius: var(--radius-sm);
-}
-
-.workspaceActions {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-}
-
-.opsButton {
-  appearance: none;
-  font: inherit;
-  font-size: var(--text-caption);
-  color: var(--text-secondary);
-  background: none;
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-sm);
-  padding: var(--space-1) var(--space-2);
-  cursor: pointer;
-  white-space: nowrap;
-}
-
-.opsButton:hover { color: var(--text-primary); border-color: var(--border-strong); }

@@ -3,17 +3,17 @@
 }
 
 .heading {
-  margin-bottom: var(--space-3);
   font-size: var(--text-caption);
-  font-weight: 500;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
   color: var(--text-muted);
 }
 
 .list {
-  display: flex;
-  flex-direction: column;
+  display: grid;
   gap: var(--space-2);
-  margin: 0;
+  margin: var(--space-3) 0 0;
   padding: 0;
   list-style: none;
 }
@@ -24,25 +24,40 @@
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
   background: var(--surface-raised);
-  color: var(--text-secondary);
+  color: var(--text-primary);
+  font: inherit;
   font-size: var(--text-ui);
+  line-height: 1.45;
   text-align: left;
   cursor: pointer;
+  transition:
+    border-color var(--duration-fast) var(--ease-out),
+    background-color var(--duration-fast) var(--ease-out);
 }
 
 .prompt:hover:not(:disabled) {
-  border-color: var(--accent-border);
-  background: var(--accent-soft);
-  color: var(--text-primary);
+  border-color: var(--border-strong);
+  background: var(--surface-sunken);
 }
 
 .prompt:disabled {
-  opacity: 0.55;
+  opacity: 0.5;
   cursor: not-allowed;
 }
 
 .note {
+  max-width: 62ch;
   margin-top: var(--space-3);
   color: var(--text-muted);
-  font-size: var(--text-small);
+  font-size: var(--text-caption);
+  line-height: 1.55;
+}
+
+/* Two columns once there is room. Five full-width bars stacked down the page
+   made the empty state read as a menu the product wanted you to choose from,
+   rather than as examples beside a composer you can type anything into. */
+@media (min-width: 720px) {
+  .list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }

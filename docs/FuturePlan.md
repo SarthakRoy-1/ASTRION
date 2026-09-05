@@ -254,7 +254,7 @@ prove it, after the fact.
 
 **What would be built.** A streaming transport (SSE or websocket) exposing
 the orchestrator's actual tool-by-tool progress as it happens, so the
-existing `InvestigationSummary` component fills in rows live instead of
+existing `AgentActivity` component fills in rows live instead of
 rendering a completed investigation after one blocking response. Alongside
 that: clearer intermediate evidence as it's found, a more structured
 source/provenance display, and richer action previews before confirmation.
@@ -274,7 +274,7 @@ and authorization foundations: a demo that streams a self-asserted
 identity's investigation live is not more trustworthy than one that
 doesn't, and polish should follow substance, not substitute for it.
 
-**What foundation enables it.** `InvestigationSummary` is already shaped to
+**What foundation enables it.** `AgentActivity` is already shaped to
 receive incremental rows; the orchestration loop already emits a discrete
 internal event per tool call (today's `tools_used[]` response field is built
 from exactly those events, just collected rather than streamed). The work

@@ -48,7 +48,15 @@ ALGORITHM = "scrypt"
 #: Minimums enforced at registration and at every password change. Length is
 #: the control that matters; composition rules push users toward predictable
 #: substitutions and are deliberately not imposed.
-MIN_PASSWORD_LENGTH = 12
+#:
+#: Eight is the floor NIST SP 800-63B sets for a user-chosen secret, and it is
+#: the number this product commits to. The defence that carries the weight is
+#: not the minimum but what sits behind it: scrypt at the parameters above,
+#: per-account lockout, and rate limiting on the authentication routes. The
+#: frontend mirrors this value so the form can refuse locally, but *this* is
+#: the enforcement — `validate_password` runs on registration, on a password
+#: change and on a reset, so no path can accept a shorter one.
+MIN_PASSWORD_LENGTH = 8
 MAX_PASSWORD_LENGTH = 1024
 
 

@@ -1,0 +1,151 @@
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* One row per signal. A button rather than a link with a click handler: it
+   selects what the detail pane shows, which is a control, not a destination —
+   and the URL is kept in step separately so the selection is still linkable. */
+.row {
+  position: relative;
+  display: flex;
+  gap: var(--space-3);
+  width: 100%;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color var(--duration-fast) var(--ease-out),
+    background-color var(--duration-fast) var(--ease-out);
+}
+
+.row:hover {
+  border-color: var(--border-strong);
+}
+
+.row[aria-current="true"] {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+/* The severity rail. Colour *and* width, so the ranking is legible in
+   greyscale — and the row still names its severity in words below. */
+.rail {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  border-radius: var(--radius-md) 0 0 var(--radius-md);
+}
+
+.rail[data-severity="critical"] {
+  background: var(--fail);
+}
+
+.rail[data-severity="high"] {
+  background: var(--fail);
+  opacity: 0.6;
+}
+
+.rail[data-severity="medium"] {
+  background: var(--caution);
+}
+
+.rail[data-severity="low"] {
+  background: var(--border-strong);
+}
+
+.body {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.top {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.title {
+  font-size: var(--text-ui);
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1.4;
+}
+
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+  font-size: var(--text-caption);
+  color: var(--text-muted);
+}
+
+.divider {
+  color: var(--border-strong);
+}
+
+/* The recommended next step, on the row. It is the reason an operations inbox
+   is not a chart: the point of the ranking is what to do about the top item. */
+.next {
+  font-size: var(--text-small);
+  color: var(--text-secondary);
+  line-height: 1.45;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.priority {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 1px;
+  padding-left: var(--space-2);
+}
+
+.priorityValue {
+  font-size: var(--text-lead);
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+  line-height: 1;
+}
+
+.priorityLabel {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+@media (max-width: 560px) {
+  .priority {
+    flex-direction: row;
+    align-items: baseline;
+    gap: var(--space-1);
+    padding-left: 0;
+  }
+
+  .row {
+    flex-direction: column;
+  }
+}

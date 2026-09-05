@@ -16,11 +16,13 @@ a style:
   The route has nothing to branch on, because the service layer already
   refused to tell it.
 - **Delivery is out of scope, and says so.** This deployment has no mail
-  sender. Verification and reset links are returned in the response *only*
-  when the deployment is not production, gated by `_may_disclose_link`. In
-  production they are withheld and logged for an operator, because a reset
-  link in an API response is a reset link anyone who can call the endpoint can
-  have.
+  sender, in any environment. Verification and reset links are returned in the
+  response *only* when the deployment is not production, gated by
+  `_may_disclose_link`, because a reset link in an API response is a reset link
+  anyone who can call the endpoint can have. In production they are therefore
+  withheld and reach nobody: issuing them to a real user needs a mail transport
+  this application does not have, and an operator has to bridge that gap out of
+  band. The frontend says so rather than implying an email was sent.
 """
 
 from __future__ import annotations
@@ -51,6 +53,8 @@ from app.backend.services.audit import (
     verify_audit_chain,
 )
 
+#: Reserved for this module's own diagnostics. Deliberately never used to
+#: record a verification or reset token — see `_may_disclose_link`.
 logger = logging.getLogger("parcelpilot.auth")
 
 auth_router = APIRouter(prefix="/api/auth", tags=["auth"])
@@ -73,6 +77,11 @@ def _may_disclose_link(settings: Settings) -> bool:
     Never in production. This deployment has no mail transport, so the links
     have to reach a developer somehow; returning them to the caller is
     acceptable on a laptop and is credential disclosure anywhere else.
+
+    The token is deliberately *not* written to the application log in the
+    production case. A log is a second copy of a credential, retained for
+    longer than the credential itself and read by more people; adding that
+    channel to close the delivery gap would trade one problem for a worse one.
     """
     return not settings.is_production
 

@@ -70,6 +70,36 @@ export function toolCategory(toolName: string): ToolCategory {
   return TOOL_DESCRIPTORS[toolName]?.category ?? "other";
 }
 
+/**
+ * What a step *did*, written as a completed action.
+ *
+ * The backend answers a request in one response rather than streaming, so this
+ * is a record of an investigation that has already finished. Past tense says
+ * so. Writing these as "Searching documents…" would dress a completed log up
+ * as live progress, which is the exact impression this product must not give
+ * about work it did not narrate as it happened.
+ *
+ * A tool the UI has not been taught about falls back to its identifier made
+ * readable rather than being hidden: a step that ran is a step the reader is
+ * entitled to see.
+ */
+const TOOL_ACTIVITY: Record<string, string> = {
+  lookup_record: "Looked up the record",
+  lookup_record_provenance: "Checked where the record came from",
+  search_documents: "Searched the document set",
+  get_document_evidence: "Read the cited passages",
+  evaluate_cancellation: "Applied the cancellation rules",
+  evaluate_service_credit: "Applied the service-credit rules",
+  prepare_escalation: "Prepared an escalation for confirmation",
+  prepare_ticket_note: "Prepared a ticket note for confirmation",
+  get_operational_signals: "Listed the operational signals in scope",
+  investigate_signal: "Investigated the operational signal",
+};
+
+export function toolActivityLabel(toolName: string): string {
+  return TOOL_ACTIVITY[toolName] ?? toolLabel(toolName);
+}
+
 export type Tone = "ok" | "caution" | "fail";
 
 const STATUS_TONES: Record<string, Tone> = {

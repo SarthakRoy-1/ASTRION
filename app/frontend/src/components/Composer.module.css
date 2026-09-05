@@ -2,19 +2,21 @@
   display: flex;
   align-items: flex-end;
   gap: var(--space-2);
-  padding: var(--space-3);
+  padding: var(--space-2);
   border: 1px solid var(--border-default);
   border-radius: var(--radius-lg);
   background: var(--surface-raised);
   box-shadow: var(--shadow-md);
+  transition: border-color var(--duration-fast) var(--ease-out);
 }
 
 .composer:focus-within {
-  border-color: var(--accent-border);
+  border-color: var(--accent);
 }
 
 .input {
   flex: 1;
+  min-width: 0;
   min-height: 42px;
   max-height: 180px;
   padding: var(--space-2) var(--space-3);
@@ -37,26 +39,40 @@
 
 .input:disabled {
   opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .send {
   flex: none;
-  padding: var(--space-2) var(--space-5);
-  border: 1px solid var(--accent);
-  border-radius: var(--radius-md);
-  background: var(--accent);
-  color: var(--on-accent);
-  font-size: var(--text-ui);
-  font-weight: 600;
-  cursor: pointer;
 }
 
-.send:hover:not(:disabled) {
-  background: var(--accent-hover);
-  border-color: var(--accent-hover);
+/* Why the composer is unavailable, said rather than left to be guessed at. A
+   disabled input with no explanation is how a waking backend reads as a
+   broken one. */
+.blocked {
+  margin-top: var(--space-2);
+  font-size: var(--text-caption);
+  color: var(--text-muted);
+  text-align: center;
 }
 
-.send:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
+@media (max-width: 560px) {
+  /* The placeholder is the first thing clipped on a narrow screen, and a
+     half-sentence prompt reads as a rendering fault. Stacking gives the field
+     the full width and moves the button under it. */
+  .composer {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  /* The placeholder wraps to two lines at this width, and a one-line box
+     clipped the second — which reads as a rendering fault rather than as a
+     hint. */
+  .input {
+    min-height: 60px;
+  }
+
+  .blocked {
+    text-align: left;
+  }
 }

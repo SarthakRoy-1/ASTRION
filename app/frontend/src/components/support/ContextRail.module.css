@@ -1,0 +1,112 @@
+.rail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  padding: var(--space-5) 0 var(--space-6);
+}
+
+.block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.blockTitle {
+  font-size: var(--text-caption);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+
+.identity {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.name {
+  font-size: var(--text-ui);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.note {
+  font-size: var(--text-caption);
+  color: var(--text-muted);
+  line-height: 1.55;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.listItem {
+  display: flex;
+  gap: var(--space-2);
+  font-size: var(--text-small);
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+.mark {
+  flex: none;
+  width: 5px;
+  height: 5px;
+  margin-top: 7px;
+  border-radius: var(--radius-pill);
+  background: var(--ok);
+}
+
+.more {
+  align-self: flex-start;
+  font-size: var(--text-caption);
+  color: var(--accent);
+}
+
+.accounts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.account {
+  padding: 1px var(--space-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunken);
+  font-family: var(--font-mono);
+  font-size: var(--text-caption);
+  color: var(--text-secondary);
+}
+
+.facts {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+}
+
+.fact {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.fact dt {
+  font-size: var(--text-caption);
+  color: var(--text-muted);
+}
+
+.fact dd {
+  margin: 0;
+  font-size: var(--text-small);
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}

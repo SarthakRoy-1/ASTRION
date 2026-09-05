@@ -28,3 +28,22 @@
   background: var(--fail-soft);
   border-color: var(--fail-border);
 }
+
+.neutral {
+  color: var(--neutral);
+  background: var(--neutral-soft);
+  border-color: var(--neutral-border);
+}
+
+.info {
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-color: var(--accent-border);
+}
+
+/* A pill that has to sit in a dense row — a signal's scope chips, a member's
+   role — where the semantic weight of 600 would shout over the row's text. */
+.quiet {
+  font-weight: 500;
+  letter-spacing: 0;
+}

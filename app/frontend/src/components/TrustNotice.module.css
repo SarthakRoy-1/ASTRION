@@ -1,5 +1,5 @@
 /* Trust and authority signals. Uses the existing tone tokens rather than
- * introducing a second palette — Phase 2 is behaviour, not a redesign. */
+ * introducing a second palette — trust is behaviour, not a colour scheme. */
 
 .wrap {
   display: flex;
@@ -23,12 +23,13 @@
   color: var(--text-secondary);
   background: var(--accent-soft);
   border: 1px solid var(--accent-border);
-  border-radius: var(--radius-sm);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius-md);
 }
 
 .overrideBadge {
   font-size: var(--text-caption);
-  font-weight: 500;
+  font-weight: 600;
   color: var(--on-accent);
   background: var(--accent);
   border-radius: var(--radius-sm);
@@ -36,49 +37,153 @@
   white-space: nowrap;
 }
 
-.caution, .escalate {
-  padding: var(--space-3);
-  border-radius: var(--radius-sm);
+.notice {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
   border: 1px solid;
+  border-left-width: 3px;
+  border-radius: var(--radius-md);
+}
+
+/* The glyph is what keeps the five states apart without colour. Hidden from
+   assistive technology, which reads the status name instead. */
+.glyph {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  margin-top: 1px;
+  border-radius: var(--radius-pill);
+  font-size: var(--text-caption);
+  font-weight: 700;
+  line-height: 1;
+}
+
+.content {
+  min-width: 0;
+  flex: 1;
 }
 
 .caution {
   background: var(--caution-soft);
   border-color: var(--caution-border);
+  border-left-color: var(--caution);
+}
+
+.caution .glyph {
+  background: var(--caution);
+  color: var(--surface-raised);
+}
+
+.neutral {
+  background: var(--neutral-soft);
+  border-color: var(--neutral-border);
+  border-left-color: var(--neutral);
+}
+
+.neutral .glyph {
+  background: var(--neutral);
+  color: var(--surface-raised);
 }
 
 .escalate {
   background: var(--fail-soft);
   border-color: var(--fail-border);
+  border-left-color: var(--fail);
+}
+
+.escalate .glyph {
+  background: var(--fail);
+  color: var(--surface-raised);
+}
+
+/* A conflict is not an escalation and must not look like one: the striped
+   left edge says "two things disagree" where the solid edge says "stop". */
+.conflict {
+  background: var(--fail-soft);
+  border-color: var(--fail-border);
+  border-left-color: transparent;
+  border-left-width: 3px;
+  background-image: repeating-linear-gradient(
+    45deg,
+    var(--fail) 0 3px,
+    transparent 3px 6px
+  );
+  background-size: 3px 100%;
+  background-repeat: no-repeat;
+  background-position: left center;
+  background-origin: border-box;
+}
+
+.conflict .glyph {
+  background: var(--fail);
+  color: var(--surface-raised);
 }
 
 .title {
-  margin: 0 0 var(--space-1);
+  margin: 0;
   font-size: var(--text-ui);
   font-weight: 600;
   color: var(--text-primary);
 }
 
 .lede {
-  margin: 0;
+  margin: var(--space-1) 0 0;
   font-size: var(--text-small);
   line-height: 1.5;
   color: var(--text-secondary);
 }
 
+.reasonsLabel {
+  margin: var(--space-3) 0 var(--space-1);
+  font-size: var(--text-caption);
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
 .reasons {
-  margin: var(--space-2) 0 0;
+  margin: 0;
   padding-left: var(--space-4);
   font-size: var(--text-small);
   line-height: 1.55;
   color: var(--text-secondary);
 }
 
-.reasons li { margin-bottom: var(--space-1); }
+.reasons li {
+  margin-bottom: var(--space-1);
+}
 
 .escalationReason {
   margin: var(--space-2) 0 0;
   font-size: var(--text-small);
   font-weight: 500;
   color: var(--text-primary);
+}
+
+/* What to do about it. The line a support agent is actually looking for, so
+   it is separated from the explanation rather than buried at the end of it. */
+.next {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin: var(--space-3) 0 0;
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--border-subtle);
+  font-size: var(--text-small);
+  color: var(--text-primary);
+}
+
+.nextLabel {
+  font-size: var(--text-caption);
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  white-space: nowrap;
 }

@@ -1,0 +1,107 @@
+.page {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: var(--shell-width);
+  margin: 0 auto;
+  padding: 0 var(--space-5);
+}
+
+.header {
+  flex: none;
+  padding: var(--space-5) 0 var(--space-4);
+}
+
+.title {
+  font-size: var(--text-title);
+  letter-spacing: -0.02em;
+}
+
+.subtitle {
+  margin-top: var(--space-1);
+  max-width: 70ch;
+  color: var(--text-secondary);
+  font-size: var(--text-ui);
+  line-height: 1.55;
+}
+
+/* The clock every detection was measured against. Stated once, at the top,
+   because "150 minutes overdue" is meaningless without it. */
+.snapshot {
+  margin-top: var(--space-2);
+  font-size: var(--text-caption);
+  color: var(--text-muted);
+}
+
+.grid {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  overflow-y: auto;
+  padding-bottom: var(--space-6);
+}
+
+.listPane {
+  min-width: 0;
+}
+
+.detailPane {
+  min-width: 0;
+}
+
+.detailCard {
+  padding: var(--space-5);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  background: var(--surface-raised);
+  box-shadow: var(--shadow-sm);
+}
+
+.count {
+  margin-bottom: var(--space-3);
+  font-size: var(--text-caption);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+
+.placeholder {
+  padding: var(--space-6) var(--space-5);
+  border: 1px dashed var(--border-default);
+  border-radius: var(--radius-lg);
+  color: var(--text-muted);
+  font-size: var(--text-ui);
+  text-align: center;
+}
+
+@media (min-width: 1000px) {
+  .grid {
+    display: grid;
+    grid-template-columns: minmax(320px, 420px) minmax(0, 1fr);
+    gap: var(--space-5);
+    align-items: start;
+    overflow: hidden;
+  }
+
+  .listPane,
+  .detailPane {
+    max-height: 100%;
+    overflow-y: auto;
+    padding-bottom: var(--space-5);
+  }
+}
+
+@media (max-width: 720px) {
+  .page {
+    padding: 0 var(--space-4);
+  }
+
+  .detailCard {
+    padding: var(--space-4);
+  }
+}

@@ -9,6 +9,7 @@ regression in behaviour.
 from __future__ import annotations
 
 import time
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from fastapi.testclient import TestClient
@@ -18,8 +19,11 @@ from app.backend.auth import service as auth_service
 from app.backend.auth import totp
 from app.backend.auth.passwords import (
     DUMMY_HASH,
+    MIN_PASSWORD_LENGTH,
+    PasswordError,
     hash_password,
     needs_rehash,
+    validate_password,
     verify_password,
 )
 from app.backend.auth.permissions import OrgRole
@@ -113,12 +117,82 @@ def test_weaker_parameters_are_flagged_for_rehash():
     assert not needs_rehash(hash_password(GOOD_PASSWORD))
 
 
-def test_short_passwords_are_refused(secure_client):
+def test_the_policy_minimum_is_eight_characters():
+    """The number itself, asserted once.
+
+    Everything below reads the constant rather than repeating the literal, so
+    this is the single test that fails if the policy is changed without anyone
+    deciding to change it.
+    """
+    assert MIN_PASSWORD_LENGTH == 8
+
+
+@pytest.mark.parametrize("password", ["", "a", "short", "sevench"])
+def test_passwords_under_the_minimum_are_refused(password):
+    """`validate_password` is the one gate every path goes through.
+
+    Registration, a password change and a reset all call it, so pinning it here
+    covers all three without asserting the same thing three times over HTTP.
+    """
+    assert len(password) < MIN_PASSWORD_LENGTH
+    with pytest.raises(PasswordError):
+        validate_password(password)
+
+
+@pytest.mark.parametrize("password", ["eightchr", "nine-char", GOOD_PASSWORD])
+def test_passwords_at_or_over_the_minimum_are_accepted(password):
+    assert len(password) >= MIN_PASSWORD_LENGTH
+    validate_password(password)  # must not raise
+
+
+def test_registration_refuses_a_seven_character_password(secure_client):
+    """One short of the line, through the endpoint a person actually reaches."""
     response = secure_client.post(
         "/api/auth/register",
-        json={"email": "short@example.com", "password": "short", "display_name": "S"},
+        json={"email": "seven@example.com", "password": "sevench", "display_name": "S"},
     )
     assert response.status_code == 400
+    # A rejected *password* is safe to explain — it says nothing about who is
+    # registered — so the reason is stated rather than hidden.
+    assert "8" in response.json()["error"]["message"]
+
+
+def test_registration_accepts_an_eight_character_password(secure_client):
+    """Exactly on the line, and usable all the way through to a session."""
+    registered = secure_client.post(
+        "/api/auth/register",
+        json={"email": "eight@example.com", "password": "eightchr", "display_name": "E"},
+    )
+    assert registered.status_code == 200
+
+    token = registered.json()["verification_token"]
+    assert (
+        secure_client.post("/api/auth/verify-email", json={"token": token}).status_code
+        == 200
+    )
+    assert sign_in(secure_client, "eight@example.com", "eightchr").status_code == 200
+
+
+def test_a_password_change_holds_to_the_same_minimum(secure_client, db):
+    """The minimum is not a registration-time formality.
+
+    A policy enforced only on the way in would let anyone step under it with one
+    password change, so the same gate has to hold on that path too.
+    """
+    make_user(db, "changer@example.com")
+    assert sign_in(secure_client, "changer@example.com").status_code == 200
+
+    refused = secure_client.post(
+        "/api/auth/password/change",
+        json={"current_password": GOOD_PASSWORD, "new_password": "sevench"},
+    )
+    assert refused.status_code == 400
+
+    accepted = secure_client.post(
+        "/api/auth/password/change",
+        json={"current_password": GOOD_PASSWORD, "new_password": "eightchr"},
+    )
+    assert accepted.status_code == 200
 
 
 # --- account enumeration ----------------------------------------------------
@@ -223,6 +297,134 @@ def test_a_verification_link_works_once(secure_client):
     assert secure_client.post("/api/auth/verify-email", json={"token": token}).status_code == 200
     replayed = secure_client.post("/api/auth/verify-email", json={"token": token})
     assert replayed.status_code == 400
+
+
+def test_registering_and_verifying_lets_the_account_sign_in(secure_client):
+    """The whole chain, in the order a person walks it.
+
+    Each half of this is covered above, but not the join between them — and the
+    join is the part that fails in a way nobody can diagnose, because the
+    backend answers an unverified sign-in with the same words it uses for a
+    wrong password.
+    """
+    registered = secure_client.post(
+        "/api/auth/register",
+        json={
+            "email": "chain@example.com",
+            "password": GOOD_PASSWORD,
+            "display_name": "Chain",
+        },
+    ).json()
+
+    # Before verifying, even the correct password is refused.
+    assert sign_in(secure_client, "chain@example.com").status_code == 401
+
+    assert (
+        secure_client.post(
+            "/api/auth/verify-email", json={"token": registered["verification_token"]}
+        ).status_code
+        == 200
+    )
+
+    signed_in = sign_in(secure_client, "chain@example.com")
+    assert signed_in.status_code == 200
+    assert signed_in.json()["status"] == "authenticated"
+    assert secure_client.get("/api/auth/me").status_code == 200
+
+
+def test_an_unknown_verification_token_is_refused(secure_client):
+    response = secure_client.post(
+        "/api/auth/verify-email", json={"token": "not-a-token-anyone-issued"}
+    )
+    assert response.status_code == 400
+
+
+def test_an_expired_verification_token_is_refused(secure_client, db):
+    """Expiry is enforced on redemption, not merely recorded at issue."""
+    registered = secure_client.post(
+        "/api/auth/register",
+        json={
+            "email": "stale@example.com",
+            "password": GOOD_PASSWORD,
+            "display_name": "Stale",
+        },
+    ).json()
+    token = registered["verification_token"]
+
+    # Age the row rather than the clock: the token itself is unchanged, so what
+    # is under test is the expiry check and nothing else.
+    with db:
+        db.execute(
+            "UPDATE auth_tokens SET expires_at_utc = ?",
+            ((datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat(),),
+        )
+
+    assert (
+        secure_client.post("/api/auth/verify-email", json={"token": token}).status_code
+        == 400
+    )
+    # And the account stays unverified, so an expired link cannot half-succeed.
+    assert sign_in(secure_client, "stale@example.com").status_code == 401
+
+
+def test_production_never_returns_a_verification_token(full_db):
+    """The link is a credential, and an API response is not a mailbox.
+
+    `_may_disclose_link` is what keeps registration from handing a verification
+    token to whoever called the endpoint. This deployment has no mail transport
+    in any environment, so the production consequence is that the link reaches
+    nobody and an operator has to bridge that gap out of band — but the wrong
+    way to close it would be to leak the token, and this is the test that says
+    so. The frontend has the matching assertion for what it renders.
+    """
+    from app.backend.api.app import create_app
+
+    settings = Settings(
+        database_path=full_db,
+        app_env="production",
+        auth_mode=AuthMode.SESSION,
+        cors_allow_origins=("https://app.example.com",),
+        session_cookie_secure=True,
+        rate_limit_enabled=False,
+    )
+
+    with TestClient(create_app(settings)) as client:
+        body = client.post(
+            "/api/auth/register",
+            json={
+                "email": "prod@example.com",
+                "password": GOOD_PASSWORD,
+                "display_name": "Prod",
+            },
+        ).json()
+
+    assert body["status"] == "registration_received"
+    # The whole response, so a token cannot reappear later under another name.
+    assert set(body) == {"status", "message"}
+
+
+def test_production_never_returns_a_password_reset_token(full_db, db):
+    """The same rule, on the endpoint where leaking it would be worse."""
+    from app.backend.api.app import create_app
+
+    make_user(db, "reset-prod@example.com")
+
+    settings = Settings(
+        database_path=full_db,
+        app_env="production",
+        auth_mode=AuthMode.SESSION,
+        cors_allow_origins=("https://app.example.com",),
+        session_cookie_secure=True,
+        rate_limit_enabled=False,
+    )
+
+    with TestClient(create_app(settings)) as client:
+        body = client.post(
+            "/api/auth/password/reset-request",
+            json={"email": "reset-prod@example.com"},
+        ).json()
+
+    assert set(body) == {"status", "message"}
 
 
 # --- sessions ---------------------------------------------------------------

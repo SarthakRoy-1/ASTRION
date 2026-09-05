@@ -7,20 +7,41 @@
  * assume. No test reaches the network, and none needs an API key.
  */
 
-import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 
-import ChatPage from "./page";
+import SupportPage from "./page";
 import { chatCalls, confirmCalls, fixtures, stubApi } from "@/test/helpers";
+import { renderApp } from "@/test/render";
 import type { ChatResponse } from "@/lib/types";
 
+/**
+ * Mounted through the real application frame rather than as a bare page.
+ *
+ * The session gate, the shell and the shared conversation state live above the
+ * page in the layout. A page rendered without them exercises none of that —
+ * which is exactly how a chat that silently dropped every message under real
+ * authentication passed a full suite.
+ */
 async function renderPage() {
   const user = userEvent.setup();
-  render(<ChatPage />);
+  renderApp(<SupportPage />);
   // The page cannot be used until the server's identity directory has loaded.
   await screen.findByRole("combobox", { name: /context/i });
   return user;
+}
+
+/**
+ * The transcript, scoped.
+ *
+ * The conversation list titles each thread with its opening question, so the
+ * page body legitimately contains a question's text twice — once as the turn
+ * and once as a thread's label. Assertions about what was *said* belong to the
+ * transcript region.
+ */
+function transcriptScope() {
+  return within(screen.getByRole("region", { name: /conversation/i }));
 }
 
 async function ask(user: ReturnType<typeof userEvent.setup>, message: string) {
@@ -60,9 +81,15 @@ describe("chat page", () => {
     await renderPage();
 
     // Account isolation is a behaviour the demo has to make visible, not just
-    // enforce, so the active scope is stated on screen.
-    expect(await screen.findByText(/authorised accounts:/i)).toBeInTheDocument();
-    expect(screen.getByText(/ACCT-001, ACCT-002, ACCT-003, ACCT-004/)).toBeInTheDocument();
+    // enforce, so the active scope is stated on screen. An answer that says an
+    // order "was not found" means something different depending on whether its
+    // account is in scope at all, and this list is where that is checked.
+    const scope = await screen.findByRole("region", {
+      name: /accounts in scope/i,
+    });
+    for (const account of ["ACCT-001", "ACCT-002", "ACCT-003", "ACCT-004"]) {
+      expect(within(scope).getByText(account)).toBeInTheDocument();
+    }
   });
 
   it("sends the typed message under the selected identity", async () => {
@@ -99,7 +126,12 @@ describe("chat page", () => {
 
     await ask(user, "Can Northstar cancel ORD-1001?");
 
-    const transcript = within(screen.getByRole("main"));
+    // Scoped to the transcript: the conversation list in the toolbar titles
+    // each thread with its opening question, so the same words legitimately
+    // appear twice on the page.
+    const transcript = within(
+      screen.getByRole("region", { name: /conversation/i }),
+    );
     expect(await transcript.findByText("Can Northstar cancel ORD-1001?")).toBeInTheDocument();
     expect(
       await transcript.findByText(/can be cancelled with no cancellation fee/i),
@@ -629,7 +661,7 @@ describe("session handling", () => {
     // Cleared from the transcript. It is still reachable from history, which
     // lives in the header — see the conversation-history tests below.
     expect(
-      within(screen.getByRole("main")).queryByText("First question"),
+      transcriptScope().queryByText("First question"),
     ).not.toBeInTheDocument();
 
     await ask(user, "Fresh question");
@@ -653,7 +685,7 @@ describe("session handling", () => {
 
     // Carrying a session across an identity change would leave a proposal made
     // under one scope sitting in a conversation running under another.
-    expect(screen.queryByText("First question")).not.toBeInTheDocument();
+    expect(transcriptScope().queryByText("First question")).not.toBeInTheDocument();
     await ask(user, "Second question");
     await waitFor(() => expect(chatCalls(stub)).toHaveLength(2));
     expect(chatCalls(stub)[1]!.body).toMatchObject({ user_id: "customer.northstar" });
@@ -674,7 +706,7 @@ describe("conversation history", () => {
   }
 
   function transcript() {
-    return within(screen.getByRole("main"));
+    return transcriptScope();
   }
 
   async function switchTo(
@@ -891,7 +923,7 @@ describe("conversation history", () => {
     // client-side only, with no backend persistence behind it.
     cleanup();
     stubApi({ chat: [{ body: fixtures.cancellation }] });
-    render(<ChatPage />);
+    renderApp(<SupportPage />);
     await screen.findByRole("combobox", { name: /context/i });
 
     expect(screen.queryByText("Before reload")).not.toBeInTheDocument();
@@ -917,7 +949,7 @@ describe("cold start", () => {
     "waits out a sleeping backend instead of calling it unreachable",
     async () => {
       const stub = stubApi({ sleeping: 2 });
-      render(<ChatPage />);
+      renderApp(<SupportPage />);
 
       // The first thing on screen is a wait, not a failure.
       await screen.findByText(/waking the parcelpilot api/i, undefined, {
@@ -955,7 +987,7 @@ describe("cold start", () => {
         body: { error: { code: "internal_error", message: "Something failed." } },
       },
     });
-    render(<ChatPage />);
+    renderApp(<SupportPage />);
 
     const alert = await screen.findByRole("alert");
     expect(within(alert).getByText(/something went wrong/i)).toBeInTheDocument();
@@ -973,7 +1005,7 @@ describe("cold start", () => {
     expect(chatCalls(stub)).toHaveLength(1);
     // And the transcript shows the question once, not once per attempt.
     expect(
-      within(screen.getByRole("main")).getAllByText("Anything"),
+      transcriptScope().getAllByText("Anything"),
     ).toHaveLength(1);
   });
 

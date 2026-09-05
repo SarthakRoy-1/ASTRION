@@ -2,6 +2,10 @@
 
 import { useState } from "react";
 
+import { Button } from "./ui/Button";
+import { Callout } from "./ui/Callout";
+import { TextField } from "./ui/Field";
+
 import styles from "./WorkspaceOnboarding.module.css";
 
 /**
@@ -9,13 +13,19 @@ import styles from "./WorkspaceOnboarding.module.css";
  *
  * This is not an error state and must not read like one. A new account is at
  * the *beginning*: the backend reports `needs_workspace`, not a failure, and
- * the copy here explains what a workspace is before asking for a name — because
- * "Create your first workspace" means nothing to someone who has not been told
- * what one holds.
+ * the copy here explains what a workspace is before asking for a name.
  *
  * A user who was invited rather than signing up arrives here too, so the panel
- * also says what to do with an invitation link.
+ * also says what to do with an invitation link — and, unlike before, there is
+ * now a screen at the other end of that link.
  */
+const HOLDS: string[] = [
+  "The accounts, orders and tickets the assistant may look up.",
+  "The policies, SOPs and signed customer agreements it answers from.",
+  "The people you work with, and what each of them is allowed to do.",
+  "Every action it prepares, and the audit trail of who confirmed what.",
+];
+
 export function WorkspaceOnboarding({
   displayName,
   busy,
@@ -37,10 +47,18 @@ export function WorkspaceOnboarding({
       <h1 className={styles.title}>Create your first workspace</h1>
 
       <p className={styles.lede}>
-        A workspace is where your operation lives in ParcelPilot. Everything the
-        assistant can reach belongs to one — your accounts, orders, tickets,
-        documents and policies, and every action it prepares for you.
+        A workspace is where your operation lives in ParcelPilot. It holds:
       </p>
+
+      <ul className={styles.holds}>
+        {HOLDS.map((item) => (
+          <li key={item} className={styles.holdsItem}>
+            <span className={styles.holdsMark} aria-hidden="true" />
+            <span>{item}</span>
+          </li>
+        ))}
+      </ul>
+
       <p className={styles.lede}>
         Workspaces are how ParcelPilot keeps one operation&apos;s data separate
         from another&apos;s. The separation is enforced on the server, not in
@@ -54,38 +72,40 @@ export function WorkspaceOnboarding({
           onCreate(name);
         }}
       >
-        <label className={styles.label} htmlFor="workspace-name">
-          Workspace name
-        </label>
-        <input
-          id="workspace-name"
-          className={styles.input}
+        <TextField
+          label="Workspace name"
           value={name}
           onChange={(event) => setName(event.target.value)}
           placeholder="Acme Logistics"
+          hint="Usually your company or team name. You can change it later."
           minLength={2}
           maxLength={120}
           required
           autoFocus
         />
-        <p className={styles.hint}>
-          Usually your company or team name. You can change it later.
-        </p>
 
-        {error ? <p className={styles.error}>{error}</p> : null}
+        {error ? (
+          <Callout tone="fail" role="alert" title="Could not create the workspace">
+            {error}
+          </Callout>
+        ) : null}
 
-        <button className={styles.primary} type="submit" disabled={busy}>
+        <Button type="submit" variant="primary" block disabled={busy}>
           {busy ? "Creating…" : "Create workspace"}
-        </button>
+        </Button>
       </form>
 
       <p className={styles.footnote}>
-        Been invited to an existing workspace? Open the invitation link you were
-        sent while signed in as the address it was issued to.
+        A new workspace starts empty. Records reach it when an operator attaches
+        them on the server — nothing is invented here, so the assistant will say
+        it cannot find an order rather than answer about one you do not have.
       </p>
-      <button className={styles.link} type="button" onClick={onSignOut}>
-        Sign out
-      </button>
+
+      <div className={styles.actions}>
+        <Button variant="ghost" size="sm" onClick={onSignOut}>
+          Sign out
+        </Button>
+      </div>
     </div>
   );
 }

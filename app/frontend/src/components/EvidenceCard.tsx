@@ -12,6 +12,16 @@ import styles from "./EvidenceCard.module.css";
  * citation the reader cannot check against the source document would defeat
  * the point of showing one.
  *
+ * The authority tier is on the *collapsed* row, not hidden inside. Whether a
+ * passage came from a signed customer agreement or from an operational
+ * document is the difference between two opposite answers, and a reader
+ * scanning a list of six citations must not have to open each one to find out.
+ *
+ * A superseded document is styled as historical rather than merely labelled:
+ * muted, with its name struck through. It stays in the list because explaining
+ * that a rule changed needs the rule that changed, and it must be impossible
+ * to skim as current policy.
+ *
  * `<details>` rather than a scripted disclosure: it is keyboard-operable,
  * announced correctly, and findable by the browser's own in-page search even
  * while collapsed.
@@ -26,11 +36,15 @@ export function EvidenceCard({
   const deprecated = source.is_deprecated;
 
   return (
-    <details className={styles.card}>
+    <details className={styles.card} data-deprecated={deprecated || undefined}>
       <summary className={styles.summary}>
         <span className={styles.heading}>
           <span className={styles.name}>{sourceName(source)}</span>
           <span className={styles.locator}>
+            <span className={styles.authority}>
+              {authorityLabel(source.authority_tier)}
+            </span>
+            <span aria-hidden="true"> · </span>
             Page {source.page}
             {source.section ? ` · §${source.section}` : ""}
           </span>
@@ -42,7 +56,7 @@ export function EvidenceCard({
           ) : governing ? (
             <StatusPill tone="ok">Governing</StatusPill>
           ) : (
-            <StatusPill tone="caution">Context only</StatusPill>
+            <StatusPill tone="neutral">Context only</StatusPill>
           )}
         </span>
       </summary>
@@ -57,6 +71,12 @@ export function EvidenceCard({
             <dt>Authority</dt>
             <dd>{authorityLabel(source.authority_tier)}</dd>
           </div>
+          {source.topic && (
+            <div className={styles.metaRow}>
+              <dt>Topic</dt>
+              <dd>{source.topic}</dd>
+            </div>
+          )}
           {source.account_id && (
             <div className={styles.metaRow}>
               <dt>Account</dt>
@@ -66,6 +86,10 @@ export function EvidenceCard({
         </dl>
 
         <blockquote className={styles.excerpt}>{source.excerpt}</blockquote>
+
+        {source.citation && (
+          <p className={styles.citation}>{source.citation}</p>
+        )}
 
         {deprecated && (
           <p className={styles.warning}>

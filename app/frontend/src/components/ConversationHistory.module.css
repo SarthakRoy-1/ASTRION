@@ -1,5 +1,3 @@
-/* A disclosure in the header controls, closed by default. The transcript is
-   the product; this is a way back to an earlier one, not a navigation rail. */
 .wrapper {
   position: relative;
 }
@@ -8,11 +6,13 @@
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
-  padding: 6px var(--space-3);
+  min-height: var(--control-height-sm);
+  padding: var(--control-padding-sm);
   border: 1px solid var(--border-default);
   border-radius: var(--radius-md);
   background: var(--surface-raised);
-  font-size: var(--text-ui);
+  color: var(--text-primary);
+  font-size: var(--text-small);
   font-weight: 500;
   cursor: pointer;
   list-style: none;
@@ -29,8 +29,13 @@
 }
 
 .count {
-  padding: 0 6px;
-  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 16px;
+  padding: 0 5px;
+  border-radius: var(--radius-pill);
   background: var(--surface-sunken);
   color: var(--text-secondary);
   font-size: var(--text-caption);
@@ -38,52 +43,50 @@
 }
 
 .wrapper[open] .summary {
-  border-color: var(--accent-border);
+  border-color: var(--accent);
 }
 
-/* Floated over the transcript rather than pushing it down, so opening the
-   list never reflows what the user was reading. */
 .panel {
   position: absolute;
-  right: 0;
   z-index: 20;
-  width: min(340px, calc(100vw - var(--space-6)));
-  margin-top: var(--space-2);
+  top: calc(100% + var(--space-1));
+  left: 0;
+  width: min(320px, calc(100vw - var(--space-6)));
   padding: var(--space-3);
   border: 1px solid var(--border-default);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   background: var(--surface-raised);
-  box-shadow: var(--shadow-md);
+  box-shadow: var(--shadow-lg);
 }
 
 .scope {
   margin-bottom: var(--space-2);
-  color: var(--text-muted);
   font-size: var(--text-caption);
-  overflow-wrap: anywhere;
+  color: var(--text-muted);
 }
 
 .list {
   display: flex;
   flex-direction: column;
-  gap: var(--space-1);
+  gap: 2px;
   max-height: 320px;
+  overflow-y: auto;
   margin: 0;
   padding: 0;
-  overflow-y: auto;
   list-style: none;
 }
 
 .item {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
-  gap: 2px;
+  gap: 1px;
   width: 100%;
-  padding: var(--space-2) var(--space-3);
-  border: 1px solid transparent;
-  border-radius: var(--radius-sm);
-  background: transparent;
+  padding: var(--space-2);
+  border: 0;
+  border-radius: var(--radius-md);
+  background: none;
+  color: inherit;
+  font: inherit;
   text-align: left;
   cursor: pointer;
 }
@@ -93,42 +96,35 @@
 }
 
 .item[data-active] {
-  border-color: var(--accent-border);
   background: var(--accent-soft);
 }
 
 .item:disabled {
-  opacity: 0.55;
+  opacity: 0.5;
   cursor: not-allowed;
 }
 
 .title {
-  color: var(--text-primary);
   font-size: var(--text-small);
   font-weight: 500;
-  overflow-wrap: anywhere;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .meta {
   display: flex;
-  align-items: baseline;
   gap: var(--space-2);
   font-size: var(--text-caption);
   color: var(--text-muted);
 }
 
 .current {
-  color: var(--accent);
   font-weight: 600;
+  color: var(--accent);
 }
 
 .messages {
   font-variant-numeric: tabular-nums;
-}
-
-@media (max-width: 640px) {
-  .panel {
-    right: auto;
-    left: 0;
-  }
 }

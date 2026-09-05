@@ -66,6 +66,14 @@
   color: var(--text-muted);
 }
 
+/* The authority tier, on the collapsed row. Which tier a passage came from is
+   the difference between two opposite answers, so it is not something a reader
+   should have to open the card to discover. */
+.authority {
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
 .badges {
   flex: none;
 }
@@ -113,8 +121,32 @@
   white-space: pre-wrap;
 }
 
+/* The backend's own formatted citation line, kept verbatim so it can be
+   pasted into a ticket and still be checkable against the document. */
+.citation {
+  margin-top: var(--space-2);
+  font-size: var(--text-caption);
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
 .warning {
   margin-top: var(--space-2);
   color: var(--fail);
   font-size: var(--text-small);
+  font-weight: 500;
+}
+
+/* Superseded material is set as historical, not merely labelled. Colour alone
+   would not survive greyscale, and the pill alone is easy to skim past in a
+   list of six citations — the struck-through title is not. */
+.card[data-deprecated] {
+  background: var(--surface-page);
+  border-style: dashed;
+}
+
+.card[data-deprecated] .name {
+  color: var(--text-muted);
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
 }

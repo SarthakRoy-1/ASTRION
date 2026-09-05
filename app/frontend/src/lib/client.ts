@@ -398,15 +398,23 @@ export async function listPrincipals(
  */
 export function sendChat(input: {
   message: string;
-  identity: string;
+  /**
+   * The demo persona to act as, or `null` under session authentication.
+   *
+   * Null is the ordinary case for a real deployment. There, identity comes
+   * from the `HttpOnly` session cookie and the backend ignores `user_id`
+   * entirely; sending an empty one would put a meaningless value on the wire
+   * and a meaningless header on the request.
+   */
+  identity: string | null;
   sessionId: string | null;
 }): Promise<ChatResponse> {
   const payload: ChatRequest = {
     message: input.message,
-    user_id: input.identity,
+    ...(input.identity ? { user_id: input.identity } : {}),
     ...(input.sessionId ? { session_id: input.sessionId } : {}),
   };
-  return postJson<ChatResponse>("/api/chat", payload, input.identity);
+  return postJson<ChatResponse>("/api/chat", payload, input.identity ?? undefined);
 }
 
 /**
@@ -424,19 +432,20 @@ export function sendChat(input: {
 export function confirmAction(input: {
   actionId: string;
   decision: "approve" | "reject";
-  identity: string;
+  /** As for `sendChat`: null under session authentication. */
+  identity: string | null;
   sessionId: string;
   fingerprint: string;
 }): Promise<ActionConfirmationResponse> {
   const payload: ActionConfirmationRequest = {
     decision: input.decision,
-    user_id: input.identity,
+    ...(input.identity ? { user_id: input.identity } : {}),
     session_id: input.sessionId,
     expected_fingerprint: input.fingerprint,
   };
   return postJson<ActionConfirmationResponse>(
     `/api/actions/${encodeURIComponent(input.actionId)}/confirm`,
     payload,
-    input.identity,
+    input.identity ?? undefined,
   );
 }

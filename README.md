@@ -26,7 +26,8 @@
 | **App (Vercel)** | <https://parcelpilot-taupe.vercel.app/> |
 | **API (Render)** | <https://parcelpilot-api-7ro7.onrender.com> |
 
-Open the app, pick a context in the header, and ask something — no setup and no
+Open the app, pick a context in the **Acting as** panel beside the transcript,
+and ask something — no setup and no
 API key needed. The hosted API runs `LLM_PROVIDER=deterministic`, so answers are
 reproducible and cost nothing to serve. Account scope is enforced in the data
 layer and every state change still requires explicit confirmation, exactly as
@@ -34,7 +35,7 @@ locally. The Render free tier sleeps when idle, so the first request after a
 quiet period can take a few seconds.
 
 The hosted demo runs with `AUTH_MODE=demo_header`, where the identity picker in
-the header *is* the identity model — it is a demo, and the personas are the
+the context panel *is* the identity model — it is a demo, and the personas are the
 point. That mode is not the default and the application refuses to start with
 it when `APP_ENV` names production. A real deployment runs `AUTH_MODE=session`:
 accounts, passwords, sessions, optional TOTP, and workspaces. See
@@ -297,7 +298,8 @@ message — if a port is taken or `npm install` has not been run, rather than
 failing halfway up. It uses the repository's own `.venv` whether or not the
 environment is activated.
 
-Open <http://localhost:3000>, pick a context in the header, and ask something.
+Open <http://localhost:3000>, pick a context in the **Acting as** panel beside
+the transcript, and ask something.
 
 Running the two services separately still works exactly as before, and is
 still the right choice when you want to restart one without the other:
@@ -435,7 +437,7 @@ uncertainty, the confirmation gate — is fully exercisable offline.
 
 #### Using the demo contexts
 
-The header's **Context** selector switches which identity the conversation runs
+The **Context** selector, in the panel beside the transcript, switches which identity the conversation runs
 as. Its options come from `GET /api/principals`, so the browser can only assert
 an identity the server already knows, and the strip beneath it always shows the
 active role and the accounts that identity may reach.
@@ -1168,7 +1170,7 @@ today they're just not persisted anywhere beyond the single action's own row.
 ### 6. Streaming agent investigation
 
 **What:** Expose the orchestrator's actual tool-by-tool progress over SSE or
-a websocket, so the UI's `InvestigationSummary` component fills in rows as
+a websocket, so the UI's `AgentActivity` component fills in rows as
 each tool call resolves, instead of rendering a completed investigation in
 one shot after `POST /api/chat` returns.
 
@@ -1186,7 +1188,7 @@ one response. A multi-step investigation (document search → record lookup →
 policy evaluation) can take a few real seconds; showing it live is a better
 experience for exactly the reason a spinner is worse than a progress bar.
 
-**What already enables it:** `InvestigationSummary` is already shaped to
+**What already enables it:** `AgentActivity` is already shaped to
 receive incremental rows — the component doesn't need to change, only the
 transport feeding it. The orchestration loop already emits a discrete event
 per tool call internally (`tools_used[]` in today's response is built from

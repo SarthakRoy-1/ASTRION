@@ -1,201 +1,187 @@
-/* Member administration. Functional layout; the redesign is a later phase. */
-
-.panel {
-  max-width: var(--content-width);
-  margin: var(--space-4) auto;
-  padding: var(--space-5);
-  background: var(--surface-raised);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-sm);
-}
-
-.header {
+.list {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--space-4);
-  margin-bottom: var(--space-4);
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
 
-.title { margin: 0; font-size: var(--text-lead); }
+/* Rows rather than a table. A member has four facts and one control, and a
+   `<table>` of that shape either overflows a phone horizontally or gets its
+   columns crushed to two characters each — both of which the previous version
+   did. */
+.member {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+}
 
-.subtitle {
-  margin: var(--space-1) 0 0;
-  font-size: var(--text-caption);
+.identity {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.name {
+  font-size: var(--text-ui);
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+
+.you {
+  margin-left: var(--space-1);
+  font-weight: 400;
   color: var(--text-muted);
 }
 
-.close, .manage {
-  appearance: none;
-  font: inherit;
-  font-size: var(--text-caption);
-  color: var(--text-secondary);
-  background: none;
+.email {
+  font-size: var(--text-small);
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
+.roleCell {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.select {
+  min-height: var(--control-height-sm);
+  padding: 0 var(--space-2);
   border: 1px solid var(--border-default);
-  border-radius: var(--radius-sm);
-  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: var(--text-small);
   cursor: pointer;
 }
 
-.close:hover { color: var(--text-primary); border-color: var(--border-strong); }
-
-.table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: var(--text-small);
+.actions {
+  flex: none;
+  display: flex;
+  gap: var(--space-2);
 }
 
-.table th {
-  text-align: left;
-  font-size: var(--text-caption);
-  font-weight: 500;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  padding: var(--space-2) var(--space-2) var(--space-2) 0;
-  border-bottom: 1px solid var(--border-subtle);
-}
-
-.table td {
-  padding: var(--space-3) var(--space-2) var(--space-3) 0;
-  border-bottom: 1px solid var(--border-subtle);
-  vertical-align: middle;
-}
-
-.name { display: block; color: var(--text-primary); font-weight: 500; }
-.you { color: var(--text-muted); font-weight: 400; }
-
-.email {
-  display: block;
-  font-size: var(--text-caption);
-  color: var(--text-muted);
-  font-family: var(--font-mono);
-}
-
-.roleBadge, .status {
-  display: inline-block;
-  font-size: var(--text-caption);
-  color: var(--text-secondary);
-  background: var(--surface-sunken);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-sm);
-  padding: 0 var(--space-2);
-  text-transform: capitalize;
-}
-
-.actions { text-align: right; }
-
-.select, .input {
-  font: inherit;
-  font-size: var(--text-ui);
-  color: var(--text-primary);
-  background: var(--surface-page);
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-sm);
-  padding: var(--space-1) var(--space-2);
-}
-
-.select:focus-visible, .input:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
+.section {
+  margin-top: var(--space-6);
 }
 
 .sectionTitle {
-  margin: var(--space-6) 0 var(--space-3);
-  font-size: var(--text-ui);
-  color: var(--text-primary);
+  font-size: var(--text-lead);
+  letter-spacing: -0.01em;
+}
+
+.sectionLede {
+  margin-top: var(--space-1);
+  max-width: 68ch;
+  color: var(--text-secondary);
+  font-size: var(--text-small);
+  line-height: 1.55;
 }
 
 .inviteForm {
   display: flex;
-  gap: var(--space-2);
   flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
 }
 
-.inviteForm .input { flex: 1 1 16rem; }
-
-.primary {
-  font: inherit;
-  font-size: var(--text-ui);
-  font-weight: 500;
-  color: var(--on-accent);
-  background: var(--accent);
-  border: none;
-  border-radius: var(--radius-sm);
-  padding: var(--space-2) var(--space-4);
-  cursor: pointer;
+.inviteEmail {
+  flex: 1 1 240px;
+  min-width: 0;
 }
 
-.primary:hover { background: var(--accent-hover); }
-
-.danger {
-  appearance: none;
-  font: inherit;
-  font-size: var(--text-caption);
-  color: var(--fail);
-  background: none;
-  border: 1px solid var(--fail-border);
-  border-radius: var(--radius-sm);
-  padding: var(--space-1) var(--space-2);
-  cursor: pointer;
+.inviteRole {
+  flex: 0 0 180px;
 }
 
-.danger:hover { background: var(--fail-soft); }
-
-.hint {
-  margin: var(--space-2) 0 0;
-  font-size: var(--text-caption);
-  color: var(--text-muted);
-}
-
-.muted { color: var(--text-muted); font-size: var(--text-small); }
-
-.error {
-  margin: 0 0 var(--space-3);
-  padding: var(--space-2) var(--space-3);
-  font-size: var(--text-small);
-  color: var(--fail);
-  background: var(--fail-soft);
-  border: 1px solid var(--fail-border);
-  border-radius: var(--radius-sm);
+.inviteSubmit {
+  flex: none;
 }
 
 .tokenNotice {
   margin-top: var(--space-3);
-  padding: var(--space-3);
-  background: var(--caution-soft);
-  border: 1px solid var(--caution-border);
-  border-radius: var(--radius-sm);
-}
-
-.tokenLede {
-  margin: 0 0 var(--space-2);
-  font-size: var(--text-caption);
-  color: var(--caution);
-  line-height: 1.5;
 }
 
 .token {
   display: block;
+  margin-top: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
   font-family: var(--font-mono);
   font-size: var(--text-caption);
-  color: var(--text-primary);
   word-break: break-all;
-  background: var(--surface-page);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-sm);
-  padding: var(--space-2);
 }
 
-.invitations { list-style: none; margin: 0; padding: 0; }
+.invitations {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: var(--space-3) 0 0;
+  padding: 0;
+  list-style: none;
+}
 
 .invitation {
   display: flex;
   align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-2) 0;
-  border-bottom: 1px solid var(--border-subtle);
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
 }
 
-.invitation .email { flex: 1 1 auto; }
+.invitationEmail {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--text-ui);
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+
+.roleReference {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: var(--space-3) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.roleRow {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-3);
+  font-size: var(--text-small);
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.roleName {
+  flex: none;
+  width: 96px;
+}
+
+@media (max-width: 560px) {
+  .inviteForm > * {
+    flex-basis: 100%;
+  }
+}

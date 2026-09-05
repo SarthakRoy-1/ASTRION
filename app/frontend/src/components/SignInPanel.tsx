@@ -2,13 +2,27 @@
 
 import { useState } from "react";
 
+import { Button } from "./ui/Button";
+import { Callout } from "./ui/Callout";
+import { TextField } from "./ui/Field";
+
 import styles from "./SignInPanel.module.css";
+
+/**
+ * The shortest password the backend will store.
+ *
+ * Mirrors `MIN_PASSWORD_LENGTH` in `app/backend/auth/passwords.py`, which is
+ * the authority — this is a copy so the form can say so before a round trip,
+ * and refuse locally rather than let someone submit a password the server is
+ * certain to reject. If the backend's policy changes, this constant and the
+ * hint below are the only two places the frontend has to follow it.
+ */
+const MIN_PASSWORD_LENGTH = 8;
 
 /**
  * Sign in, register, and the second-factor challenge.
  *
- * Functional rather than finished — the product redesign is a later phase.
- * What it does hold to:
+ * What it holds to:
  *
  * - **It never says whether an account exists.** The backend answers
  *   registration and sign-in identically for known and unknown addresses, and
@@ -20,6 +34,13 @@ import styles from "./SignInPanel.module.css";
  * - **Autocomplete is spelled correctly** (`current-password` vs
  *   `new-password`), so password managers offer the right thing and people are
  *   not pushed toward reusing one they can remember.
+ *
+ * Registration hands its result *up* rather than swallowing it. That is the
+ * fix for a dead end: the backend issues a verification link, refuses sign-in
+ * until it is used, and — outside production, where there is no mail
+ * transport — returns the token in the response so the flow can be completed.
+ * Discarding it left a new user registered, unable to sign in, and told only
+ * "Incorrect email address or password."
  */
 export function SignInPanel({
   stage,
@@ -35,25 +56,58 @@ export function SignInPanel({
   error: string | null;
   onSignIn(email: string, password: string): void;
   onSubmitMfaCode(code: string): void;
-  onRegistered(message: string, verificationToken?: string): void;
+  onRegistered(message: string, verificationToken: string | undefined, email: string): void;
   onDismissError(): void;
 }) {
   const [mode, setMode] = useState<"signin" | "register">("signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [code, setCode] = useState("");
-  const [notice, setNotice] = useState<string | null>(null);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [confirmError, setConfirmError] = useState<string | null>(null);
+
+  /**
+   * What is wrong with the password pair, if anything.
+   *
+   * Both messages are shown against the field they belong to rather than as a
+   * banner, so a screen reader hears the problem while the offending control
+   * has focus. The length message is worded exactly as the backend words it,
+   * because the backend is what enforces it — a user who somehow gets past
+   * this check should not be told two different things by two layers.
+   */
+  function validateRegistration(): boolean {
+    const tooShort =
+      password.length < MIN_PASSWORD_LENGTH
+        ? `Password must be at least ${MIN_PASSWORD_LENGTH} characters.`
+        : null;
+    // Compared exactly. Trimming or case-folding here would let someone
+    // "confirm" a password they did not type, which is the whole point of the
+    // second field.
+    const mismatched =
+      !tooShort && password !== confirmPassword ? "Passwords do not match." : null;
+
+    setPasswordError(tooShort);
+    setConfirmError(mismatched);
+    return !tooShort && !mismatched;
+  }
 
   async function submitRegistration(event: React.FormEvent) {
     event.preventDefault();
     onDismissError();
+    if (!validateRegistration()) return;
+
     const { register } = await import("@/lib/auth-client");
     try {
+      // The confirmation is deliberately absent: it is not a credential and
+      // the API has no field for it. It exists so a mistyped password is
+      // caught here rather than becoming an account nobody can sign in to.
       const result = await register({ email, password, displayName });
-      setNotice(result.message);
-      onRegistered(result.message, result.verification_token);
-      setMode("signin");
+      // Neither copy of the password outlives the request that used it.
+      setPassword("");
+      setConfirmPassword("");
+      onRegistered(result.message, result.verification_token, email);
     } catch {
       // The hook surfaces the error; nothing useful to add here, and inventing
       // a message would risk contradicting the backend's careful wording.
@@ -65,7 +119,9 @@ export function SignInPanel({
       <div className={styles.panel}>
         <h1 className={styles.title}>Two-factor authentication</h1>
         <p className={styles.lede}>
-          Enter the six-digit code from your authenticator app.
+          Enter the six-digit code from your authenticator app. You are half
+          signed in: the session exists but can do nothing until this is
+          answered.
         </p>
         <form
           className={styles.form}
@@ -74,12 +130,8 @@ export function SignInPanel({
             onSubmitMfaCode(code);
           }}
         >
-          <label className={styles.label} htmlFor="mfa-code">
-            Authentication code
-          </label>
-          <input
-            id="mfa-code"
-            className={styles.input}
+          <TextField
+            label="Authentication code"
             value={code}
             onChange={(event) => setCode(event.target.value)}
             inputMode="numeric"
@@ -88,10 +140,20 @@ export function SignInPanel({
             required
             autoFocus
           />
-          {error ? <p className={styles.error}>{error}</p> : null}
-          <button className={styles.primary} type="submit" disabled={busy}>
+          {error ? (
+            <Callout tone="fail" role="alert" title="Could not verify">
+              {error}
+            </Callout>
+          ) : null}
+          <Button
+            type="submit"
+            variant="primary"
+            block
+            disabled={busy}
+            className={styles.submit}
+          >
             {busy ? "Checking…" : "Verify"}
-          </button>
+          </Button>
         </form>
       </div>
     );
@@ -101,21 +163,26 @@ export function SignInPanel({
 
   return (
     <div className={styles.panel}>
-      <h1 className={styles.title}>ParcelPilot</h1>
+      <h1 className={styles.title}>
+        {registering ? "Create your account" : "Sign in"}
+      </h1>
       <p className={styles.lede}>
-        Deterministic AI for logistics operations. AI investigates,
-        deterministic rules decide, humans stay in control.
+        {registering
+          ? "You will name your first workspace next. A workspace holds one operation's accounts, orders, tickets and documents."
+          : "Use the address your workspace was created with, or the one an invitation was sent to."}
       </p>
 
-      <div className={styles.tabs} role="tablist">
+      <div className={styles.tabs} role="tablist" aria-label="Sign in or register">
         <button
           type="button"
           role="tab"
           aria-selected={!registering}
-          className={!registering ? styles.tabActive : styles.tab}
+          className={!registering ? `${styles.tab} ${styles.tabActive}` : styles.tab}
           onClick={() => {
             setMode("signin");
             onDismissError();
+            setPasswordError(null);
+            setConfirmError(null);
           }}
         >
           Sign in
@@ -124,10 +191,12 @@ export function SignInPanel({
           type="button"
           role="tab"
           aria-selected={registering}
-          className={registering ? styles.tabActive : styles.tab}
+          className={registering ? `${styles.tab} ${styles.tabActive}` : styles.tab}
           onClick={() => {
             setMode("register");
             onDismissError();
+            setPasswordError(null);
+            setConfirmError(null);
           }}
         >
           Create account
@@ -146,27 +215,17 @@ export function SignInPanel({
         }
       >
         {registering ? (
-          <>
-            <label className={styles.label} htmlFor="name">
-              Your name
-            </label>
-            <input
-              id="name"
-              className={styles.input}
-              value={displayName}
-              onChange={(event) => setDisplayName(event.target.value)}
-              autoComplete="name"
-              required
-            />
-          </>
+          <TextField
+            label="Your name"
+            value={displayName}
+            onChange={(event) => setDisplayName(event.target.value)}
+            autoComplete="name"
+            required
+          />
         ) : null}
 
-        <label className={styles.label} htmlFor="email">
-          Email
-        </label>
-        <input
-          id="email"
-          className={styles.input}
+        <TextField
+          label="Email"
           type="email"
           value={email}
           onChange={(event) => setEmail(event.target.value)}
@@ -174,29 +233,66 @@ export function SignInPanel({
           required
         />
 
-        <label className={styles.label} htmlFor="password">
-          Password
-        </label>
-        <input
-          id="password"
-          className={styles.input}
+        <TextField
+          label="Password"
           type="password"
           value={password}
-          onChange={(event) => setPassword(event.target.value)}
+          onChange={(event) => {
+            setPassword(event.target.value);
+            // Clearing on edit rather than re-validating on every keystroke:
+            // telling someone their password is too short while they are still
+            // typing it is noise, not help.
+            setPasswordError(null);
+            setConfirmError(null);
+          }}
           autoComplete={registering ? "new-password" : "current-password"}
+          hint={
+            registering ? `At least ${MIN_PASSWORD_LENGTH} characters.` : undefined
+          }
+          error={registering ? passwordError : null}
           required
         />
+
         {registering ? (
-          <p className={styles.hint}>At least 12 characters.</p>
+          <TextField
+            label="Confirm password"
+            type="password"
+            value={confirmPassword}
+            onChange={(event) => {
+              setConfirmPassword(event.target.value);
+              setConfirmError(null);
+            }}
+            autoComplete="new-password"
+            error={confirmError}
+            required
+          />
         ) : null}
 
-        {error ? <p className={styles.error}>{error}</p> : null}
-        {notice ? <p className={styles.notice}>{notice}</p> : null}
+        {error ? (
+          <Callout
+            tone="fail"
+            role="alert"
+            title={registering ? "Could not create the account" : "Could not sign in"}
+          >
+            {error}
+          </Callout>
+        ) : null}
 
-        <button className={styles.primary} type="submit" disabled={busy}>
+        <Button
+          type="submit"
+          variant="primary"
+          block
+          disabled={busy}
+          className={styles.submit}
+        >
           {busy ? "Working…" : registering ? "Create account" : "Sign in"}
-        </button>
+        </Button>
       </form>
+
+      <p className={styles.footnote}>
+        Invited to an existing workspace? Open the invitation link you were
+        sent, signed in as the address it was issued to.
+      </p>
     </div>
   );
 }

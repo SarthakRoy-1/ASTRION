@@ -265,7 +265,20 @@ def get_connection(db_path: Path | str = DEFAULT_DB_PATH) -> sqlite3.Connection:
     """Open a connection with row access by column name and FKs enforced."""
     db_path = Path(db_path)
     db_path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(str(db_path))
+    # `check_same_thread=False` because FastAPI hands one request's connection
+    # between threadpool workers. A sync generator dependency has its setup,
+    # its route body and its teardown scheduled separately —
+    # `contextmanager_in_threadpool` runs `__exit__` under its own limiter — so
+    # the `conn.close()` in `get_db`'s `finally` regularly lands on a different
+    # worker than the `sqlite3.connect` that opened it, and sqlite3's default
+    # thread check turns that into a 500 the browser reports as a CORS failure.
+    #
+    # This does not make a connection shared. `get_db` opens one per request and
+    # closes it in the same request, so the hand-off is sequential within a
+    # single task and no two threads ever touch a connection at once. What is
+    # switched off is a guard against a pattern this code does not use; the
+    # serialisation SQLite itself provides between *connections* is untouched.
+    conn = sqlite3.connect(str(db_path), check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     # SQLite serialises writers. Without a busy timeout the loser of a race

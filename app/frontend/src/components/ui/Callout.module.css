@@ -1,0 +1,104 @@
+/* A tone'd message block. Colour reinforces; the glyph and the title carry the
+   meaning, so the five states stay distinguishable in greyscale and to a
+   screen reader. */
+
+.callout {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid;
+  border-left-width: 3px;
+  border-radius: var(--radius-md);
+}
+
+.glyph {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  margin-top: 1px;
+  border-radius: var(--radius-pill);
+  font-size: var(--text-caption);
+  font-weight: 700;
+  line-height: 1;
+}
+
+.content {
+  min-width: 0;
+  flex: 1;
+}
+
+.title {
+  font-size: var(--text-ui);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.body {
+  margin-top: var(--space-1);
+  font-size: var(--text-small);
+  line-height: 1.55;
+  color: var(--text-secondary);
+}
+
+.title + .body {
+  margin-top: var(--space-1);
+}
+
+.info {
+  background: var(--accent-soft);
+  border-color: var(--accent-border);
+  border-left-color: var(--accent);
+}
+
+.info .glyph {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.ok {
+  background: var(--ok-soft);
+  border-color: var(--ok-border);
+  border-left-color: var(--ok);
+}
+
+.ok .glyph {
+  background: var(--ok);
+  color: var(--surface-raised);
+}
+
+.caution {
+  background: var(--caution-soft);
+  border-color: var(--caution-border);
+  border-left-color: var(--caution);
+}
+
+.caution .glyph {
+  background: var(--caution);
+  color: var(--surface-raised);
+}
+
+.fail {
+  background: var(--fail-soft);
+  border-color: var(--fail-border);
+  border-left-color: var(--fail);
+}
+
+.fail .glyph {
+  background: var(--fail);
+  color: var(--surface-raised);
+}
+
+.neutral {
+  background: var(--neutral-soft);
+  border-color: var(--neutral-border);
+  border-left-color: var(--neutral);
+}
+
+.neutral .glyph {
+  background: var(--neutral);
+  color: var(--surface-raised);
+}

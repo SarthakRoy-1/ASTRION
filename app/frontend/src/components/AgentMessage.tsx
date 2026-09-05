@@ -1,11 +1,12 @@
 "use client";
 
 import { ActionCard } from "./ActionCard";
+import { AgentActivity } from "./AgentActivity";
 import { AnswerNotes } from "./AnswerNotes";
 import { DecisionCard } from "./DecisionCard";
 import { EvidenceSection } from "./EvidenceSection";
-import { InvestigationSummary } from "./InvestigationSummary";
 import { TrustNotice } from "./TrustNotice";
+import { TrustStatusChip } from "./TrustStatusChip";
 import { UncertaintyNotice } from "./UncertaintyNotice";
 import {
   decisionSubject,
@@ -13,9 +14,8 @@ import {
   undisplayedNotes,
   withoutActionRestatement,
 } from "@/lib/presentation";
-import { mayChangeState } from "@/lib/types";
 import type { ActionProgress } from "@/hooks/useConversation";
-import type { ChatResponse, Role } from "@/lib/types";
+import type { ChatResponse } from "@/lib/types";
 
 import styles from "./AgentMessage.module.css";
 
@@ -43,12 +43,24 @@ import styles from "./AgentMessage.module.css";
 export function AgentMessage({
   response,
   action,
-  role,
+  canConfirmActions,
   onRespondToAction,
 }: {
   response: ChatResponse;
   action: ActionProgress;
-  role: Role;
+  /**
+   * Whether this caller may confirm a prepared action.
+   *
+   * Passed in rather than derived from a role here, because the two
+   * authentication modes answer it from different places: a demo persona's
+   * `role`, or a workspace membership's `execute_action` permission. Deriving
+   * it from a role alone rendered every signed-in operations user the
+   * "you cannot approve this" message, whatever their workspace granted them.
+   *
+   * A rendering decision only. The backend re-checks on every confirmation and
+   * refuses independently of what this component drew.
+   */
+  canConfirmActions: boolean;
   onRespondToAction: (decision: "approve" | "reject") => void;
 }) {
   const proposal = response.proposed_action;
@@ -72,6 +84,11 @@ export function AgentMessage({
 
       <header className={styles.header}>
         <span className={styles.author}>ParcelPilot agent</span>
+        {/* Reliability and what governed the answer sit in the byline, beside
+            the timestamp, so both are on every answer without a bordered
+            notice appearing on every answer. The explanation, when there is
+            one to give, is `TrustNotice` below. */}
+        <TrustStatusChip trust={response.trust} />
         {response.reference_time && (
           <span className={styles.reference}>
             As of {formatReferenceTime(response.reference_time)}
@@ -112,7 +129,7 @@ export function AgentMessage({
         <ActionCard
           proposal={proposal}
           progress={action}
-          canConfirm={mayChangeState(role)}
+          canConfirm={canConfirmActions}
           onRespond={onRespondToAction}
         />
       )}
@@ -124,8 +141,12 @@ export function AgentMessage({
       )}
 
       <AnswerNotes notes={notes} />
-      <EvidenceSection sources={response.sources} />
-      <InvestigationSummary tools={response.tools_used} />
+      <EvidenceSection sources={response.sources} trust={response.trust} />
+      <AgentActivity
+        tools={response.tools_used}
+        trust={response.trust}
+        outcome={response.outcome}
+      />
     </article>
   );
 }

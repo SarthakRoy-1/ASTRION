@@ -2,8 +2,13 @@
 
 import { useCallback, useEffect, useState } from "react";
 
-import styles from "./MembersPanel.module.css";
-
+import { StatusPill } from "./StatusPill";
+import { Button } from "./ui/Button";
+import { Callout } from "./ui/Callout";
+import { Dialog } from "./ui/Dialog";
+import { SelectField, TextField } from "./ui/Field";
+import { Panel } from "./ui/Panel";
+import { SkeletonRows } from "./ui/Loading";
 import {
   changeMemberRole,
   inviteMember,
@@ -21,6 +26,12 @@ import {
   type WorkspaceRole,
 } from "@/lib/auth-types";
 import { ApiError } from "@/lib/client";
+import {
+  invitationStatusLabel,
+  roleLabel,
+} from "@/lib/workspace-presentation";
+
+import styles from "./MembersPanel.module.css";
 
 /**
  * Member list, role changes, removals and invitations for one workspace.
@@ -34,17 +45,21 @@ import { ApiError } from "@/lib/client";
  *
  * The invitation token is displayed once, at creation, because this deployment
  * has no mail transport. It is never stored and never re-fetched — the server
- * keeps only a digest, so there is nowhere to fetch it back from.
+ * keeps only a digest, so there is nowhere to fetch it back from. It is now
+ * offered as a link to `/join`, which is the screen that actually accepts it;
+ * before, the token was printed with nowhere to use it.
+ *
+ * Removing someone goes through a confirmation dialog. It is the one action on
+ * this screen that cannot be undone from this screen — re-adding a member
+ * means issuing a fresh invitation and waiting for them to accept it.
  */
 export function MembersPanel({
   workspace,
   currentUserId,
-  onClose,
   onChanged,
 }: {
   workspace: Workspace;
   currentUserId: string;
-  onClose(): void;
   onChanged(): void;
 }) {
   const [members, setMembers] = useState<WorkspaceMember[]>([]);
@@ -52,7 +67,10 @@ export function MembersPanel({
   const [ownerCount, setOwnerCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [issuedToken, setIssuedToken] = useState<string | null>(null);
+  const [issued, setIssued] = useState<{ email: string; token: string } | null>(
+    null,
+  );
+  const [confirming, setConfirming] = useState<WorkspaceMember | null>(null);
 
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<WorkspaceRole>("support");
@@ -103,34 +121,25 @@ export function MembersPanel({
   }
 
   return (
-    <section className={styles.panel} aria-label="Workspace members">
-      <header className={styles.header}>
-        <div>
-          <h2 className={styles.title}>{workspace.name}</h2>
-          <p className={styles.subtitle}>
-            {members.length} member{members.length === 1 ? "" : "s"} ·{" "}
-            {ownerCount} owner{ownerCount === 1 ? "" : "s"}
-          </p>
-        </div>
-        <button className={styles.close} type="button" onClick={onClose}>
-          Close
-        </button>
-      </header>
+    <>
+      <Panel
+        title="Members"
+        description={
+          loading
+            ? "Loading the member list…"
+            : `${members.length} member${members.length === 1 ? "" : "s"}, ${ownerCount} owner${ownerCount === 1 ? "" : "s"}. A person's role decides what they can do in this workspace and nowhere else.`
+        }
+      >
+        {error ? (
+          <Callout tone="fail" role="alert" title="That did not work">
+            {error}
+          </Callout>
+        ) : null}
 
-      {error ? <p className={styles.error}>{error}</p> : null}
-
-      {loading ? (
-        <p className={styles.muted}>Loading…</p>
-      ) : (
-        <table className={styles.table}>
-          <thead>
-            <tr>
-              <th>Member</th>
-              <th>Role</th>
-              <th aria-label="Actions" />
-            </tr>
-          </thead>
-          <tbody>
+        {loading ? (
+          <SkeletonRows rows={3} label="Loading the member list." />
+        ) : (
+          <ul className={styles.list}>
             {members.map((member) => {
               const isSelf = member.user_id === currentUserId;
               const isOwner = member.role === "owner";
@@ -142,15 +151,16 @@ export function MembersPanel({
                 (can("members.remove") && !isSelf && !isOwner) || isSelf;
 
               return (
-                <tr key={member.user_id}>
-                  <td>
+                <li key={member.user_id} className={styles.member}>
+                  <span className={styles.identity}>
                     <span className={styles.name}>
                       {member.display_name}
-                      {isSelf ? <span className={styles.you}> (you)</span> : null}
+                      {isSelf ? <span className={styles.you}>(you)</span> : null}
                     </span>
                     <span className={styles.email}>{member.email}</span>
-                  </td>
-                  <td>
+                  </span>
+
+                  <span className={styles.roleCell}>
                     {mayReRole ? (
                       <select
                         className={styles.select}
@@ -168,108 +178,124 @@ export function MembersPanel({
                       >
                         {ASSIGNABLE_ROLES.map((role) => (
                           <option key={role} value={role}>
-                            {role}
+                            {roleLabel(role)}
                           </option>
                         ))}
                       </select>
                     ) : (
-                      <span className={styles.roleBadge}>{member.role}</span>
+                      <StatusPill tone="neutral" quiet>
+                        {roleLabel(member.role)}
+                      </StatusPill>
                     )}
-                  </td>
-                  <td className={styles.actions}>
+                  </span>
+
+                  <span className={styles.actions}>
                     {mayRemove ? (
-                      <button
-                        className={styles.danger}
-                        type="button"
-                        onClick={() =>
-                          act(() =>
-                            removeMember(workspace.workspace_id, member.user_id),
-                          )
-                        }
+                      <Button
+                        variant="danger"
+                        size="sm"
+                        onClick={() => setConfirming(member)}
                       >
                         {isSelf ? "Leave" : "Remove"}
-                      </button>
+                      </Button>
                     ) : null}
-                  </td>
-                </tr>
+                  </span>
+                </li>
               );
             })}
-          </tbody>
-        </table>
-      )}
+          </ul>
+        )}
+      </Panel>
 
       {can("members.invite") ? (
-        <>
-          <h3 className={styles.sectionTitle}>Invite a member</h3>
+        <Panel
+          className={styles.section}
+          title="Invite someone"
+          description="An invitation is issued to one address and one role. It can only be accepted by someone signed in as that address."
+        >
           <form
             className={styles.inviteForm}
             onSubmit={(event) => {
               event.preventDefault();
-              setIssuedToken(null);
+              setIssued(null);
+              const email = inviteEmail;
               void act(async () => {
                 const invitation = await inviteMember(
                   workspace.workspace_id,
-                  inviteEmail,
+                  email,
                   inviteRole,
                 );
                 setInviteEmail("");
                 if (invitation.invitation_token) {
-                  setIssuedToken(invitation.invitation_token);
+                  setIssued({ email, token: invitation.invitation_token });
                 }
               });
             }}
           >
-            <input
-              className={styles.input}
+            <TextField
+              className={styles.inviteEmail}
+              label="Email address"
               type="email"
               value={inviteEmail}
               onChange={(event) => setInviteEmail(event.target.value)}
               placeholder="colleague@example.com"
-              aria-label="Email address to invite"
               required
             />
-            <select
-              className={styles.select}
+            <SelectField
+              className={styles.inviteRole}
+              label="Role"
               value={inviteRole}
-              aria-label="Role for the invitee"
+              hint={ROLE_DESCRIPTIONS[inviteRole]}
               onChange={(event) =>
                 setInviteRole(event.target.value as WorkspaceRole)
               }
             >
               {ASSIGNABLE_ROLES.map((role) => (
                 <option key={role} value={role}>
-                  {role}
+                  {roleLabel(role)}
                 </option>
               ))}
-            </select>
-            <button className={styles.primary} type="submit">
-              Invite
-            </button>
+            </SelectField>
+            <Button type="submit" variant="primary" className={styles.inviteSubmit}>
+              Send invitation
+            </Button>
           </form>
-          <p className={styles.hint}>{ROLE_DESCRIPTIONS[inviteRole]}</p>
 
-          {issuedToken ? (
+          {issued ? (
             <div className={styles.tokenNotice}>
-              <p className={styles.tokenLede}>
-                This deployment has no email delivery, so send this invitation
-                link yourself. It is shown once and cannot be retrieved again.
-              </p>
-              <code className={styles.token}>{issuedToken}</code>
+              <Callout tone="info" title="Send this link yourself">
+                This deployment has no email delivery, so the invitation link is
+                shown here once and cannot be retrieved again — the server keeps
+                only a digest of it. Give it to {issued.email}, who must be
+                signed in as that address to accept.
+                <code className={styles.token}>
+                  {joinUrl(issued.token)}
+                </code>
+              </Callout>
             </div>
           ) : null}
 
           {invitations.length > 0 ? (
-            <>
-              <h3 className={styles.sectionTitle}>Pending invitations</h3>
+            <div className={styles.section}>
+              <h3 className={styles.sectionTitle}>Outstanding invitations</h3>
               <ul className={styles.invitations}>
                 {invitations.map((invitation) => (
                   <li key={invitation.invitation_id} className={styles.invitation}>
-                    <span className={styles.email}>{invitation.email}</span>
-                    <span className={styles.roleBadge}>{invitation.role}</span>
-                    <span className={styles.status}>{invitation.status}</span>
-                    <button
-                      className={styles.danger}
-                      type="button"
+                    <span className={styles.invitationEmail}>
+                      {invitation.email}
+                    </span>
+                    <StatusPill tone="neutral" quiet>
+                      {roleLabel(invitation.role)}
+                    </StatusPill>
+                    <StatusPill
+                      tone={invitation.status === "pending" ? "caution" : "neutral"}
+                      quiet
+                    >
+                      {invitationStatusLabel(invitation.status)}
+                    </StatusPill>
+                    <Button
+                      variant="danger"
+                      size="sm"
                       onClick={() =>
                         act(() =>
                           revokeInvitation(
@@ -280,14 +306,83 @@ export function MembersPanel({
                       }
                     >
                       Revoke
-                    </button>
+                    </Button>
                   </li>
                 ))}
               </ul>
-            </>
+            </div>
           ) : null}
-        </>
+        </Panel>
       ) : null}
-    </section>
+
+      <Panel
+        className={styles.section}
+        title="What each role can do"
+        description="Roles are per workspace. The same person can hold a different one in another workspace, and the server checks the role on every request rather than trusting what this screen drew."
+      >
+        <ul className={styles.roleReference}>
+          {(["viewer", "support", "operations", "admin", "owner"] as const).map(
+            (role) => (
+              <li key={role} className={styles.roleRow}>
+                <span className={styles.roleName}>
+                  <StatusPill tone="neutral" quiet>
+                    {roleLabel(role)}
+                  </StatusPill>
+                </span>
+                <span>{ROLE_DESCRIPTIONS[role]}</span>
+              </li>
+            ),
+          )}
+        </ul>
+      </Panel>
+
+      {confirming ? (
+        <Dialog
+          title={
+            confirming.user_id === currentUserId
+              ? "Leave this workspace?"
+              : `Remove ${confirming.display_name}?`
+          }
+          confirmLabel={
+            confirming.user_id === currentUserId ? "Leave workspace" : "Remove"
+          }
+          onCancel={() => setConfirming(null)}
+          onConfirm={() => {
+            const target = confirming;
+            setConfirming(null);
+            void act(() =>
+              removeMember(workspace.workspace_id, target.user_id),
+            );
+          }}
+        >
+          {confirming.user_id === currentUserId ? (
+            <>
+              You will lose access to {workspace.name} — its records, its
+              documents and its audit trail — until someone invites you back.
+            </>
+          ) : (
+            <>
+              {confirming.display_name} will lose access to {workspace.name}.
+              Bringing them back means issuing a fresh invitation and waiting
+              for them to accept it. Work they already did stays in the audit
+              trail.
+            </>
+          )}
+        </Dialog>
+      ) : null}
+    </>
   );
+}
+
+/**
+ * The link an invitee opens.
+ *
+ * Built in the browser from the current origin, because the backend has no
+ * mail transport and therefore no configured frontend URL to put in one. On
+ * the server render there is no origin to read, so the bare token is shown and
+ * replaced once the component hydrates.
+ */
+function joinUrl(token: string): string {
+  if (typeof window === "undefined") return token;
+  return `${window.location.origin}/join?token=${encodeURIComponent(token)}`;
 }

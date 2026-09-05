@@ -33,6 +33,13 @@ import type {
   HealthResponse,
   PrincipalsResponse,
 } from "@/lib/types";
+import type {
+  CurrentUser,
+  MemberListing,
+  Workspace,
+  WorkspaceListing,
+} from "@/lib/auth-types";
+import type { SignalReport } from "@/lib/operations-types";
 
 export const fixtures = {
   principals: principals as PrincipalsResponse,
@@ -74,6 +81,64 @@ export interface ApiStub {
 }
 
 /**
+ * A signed-in deployment, as `/health`, `/api/auth/me` and `/api/workspaces`
+ * describe it.
+ *
+ * Demo mode is the default everywhere else because that is what the recorded
+ * fixtures were captured under. This is how a test asks for the *other* mode —
+ * the one a real deployment runs, where identity comes from a cookie,
+ * `/api/principals` is empty, and what a caller may do comes from their
+ * membership rather than from a persona.
+ */
+export interface SessionFixture {
+  user?: Partial<CurrentUser>;
+  workspace?: Partial<Workspace>;
+  /** Overrides the workspace's own permission list. */
+  permissions?: string[];
+  members?: Partial<MemberListing>;
+  signals?: SignalReport | Reply;
+}
+
+/** The names the server really issues — see `app/backend/auth/permissions.py`. */
+const DEFAULT_PERMISSIONS = [
+  "run_agent",
+  "read_records",
+  "read_documents",
+  "propose_action",
+  "execute_action",
+  "operations.read",
+  "members.read",
+  "members.invite",
+];
+
+export function sessionUser(overrides: Partial<CurrentUser> = {}): CurrentUser {
+  return {
+    user_id: "USR-test",
+    display_name: "Ada Support",
+    org_id: "ORG-test",
+    org_name: "Northstar Logistics",
+    role: "support_agent",
+    permissions: DEFAULT_PERMISSIONS,
+    account_scope: ["ACCT-001", "ACCT-002"],
+    memberships: [],
+    auth_mode: "session",
+    ...overrides,
+  };
+}
+
+export function sessionWorkspace(overrides: Partial<Workspace> = {}): Workspace {
+  return {
+    workspace_id: "ORG-test",
+    name: "Northstar Logistics",
+    slug: "northstar-logistics",
+    created_at_utc: "2026-08-01T00:00:00Z",
+    role: "operations",
+    permissions: DEFAULT_PERMISSIONS,
+    ...overrides,
+  };
+}
+
+/**
  * Install a `fetch` that serves the recorded fixtures.
  *
  * Chat and confirmation replies are queues, so a test can script a sequence —
@@ -94,6 +159,8 @@ export function stubApi(
     chat?: Reply[];
     confirm?: Reply[];
     sleeping?: number;
+    /** Serve a real session instead of the demo identity header. */
+    session?: SessionFixture;
   } = {},
 ): ApiStub {
   const calls: ApiStub["calls"] = [];
@@ -104,6 +171,38 @@ export function stubApi(
     ...(options.confirm ?? [{ body: fixtures.actionExecuted }]),
   ];
   const principalsReply = options.principals ?? { body: fixtures.principals };
+
+  const session = options.session;
+  const workspace = session
+    ? sessionWorkspace({
+        ...session.workspace,
+        ...(session.permissions ? { permissions: session.permissions } : {}),
+      })
+    : null;
+  const user = session ? sessionUser(session.user) : null;
+  const workspaceListing: WorkspaceListing | null = workspace
+    ? {
+        workspaces: [workspace],
+        active_workspace_id: workspace.workspace_id,
+        needs_workspace: false,
+      }
+    : null;
+  const memberListing: MemberListing | null = workspace
+    ? {
+        workspace_id: workspace.workspace_id,
+        members: [
+          {
+            user_id: user!.user_id,
+            email: "ada@northstar.example",
+            display_name: user!.display_name,
+            role: workspace.role ?? "operations",
+            status: "active",
+          },
+        ],
+        owner_count: 1,
+        ...session?.members,
+      }
+    : null;
 
   function take(queue: Reply[]): Reply {
     return queue.length > 1 ? queue.shift()! : (queue[0] ?? { body: null });
@@ -129,8 +228,44 @@ export function stubApi(
         return respond({ networkError: true });
       }
 
-      if (url.includes("/api/principals")) return respond(principalsReply);
-      if (url.includes("/health")) return respond({ body: fixtures.health });
+      if (url.includes("/api/principals")) {
+        // A real deployment's directory of demo personas is empty: identity
+        // there comes from the session cookie, not from a picker.
+        return respond(session ? { body: { principals: [] } } : principalsReply);
+      }
+      if (url.includes("/health")) {
+        return respond({
+          body: session
+            ? { ...fixtures.health, auth_mode: "session" }
+            : fixtures.health,
+        });
+      }
+      if (session) {
+        if (url.includes("/api/auth/me")) return respond({ body: user });
+        if (url.includes("/api/operations/signals")) {
+          const reply = session.signals;
+          return respond(
+            reply && "signals" in reply
+              ? { body: reply }
+              : ((reply as Reply | undefined) ?? {
+                  body: {
+                    signals: [],
+                    count: 0,
+                    highest_severity: null,
+                    reference_time: null,
+                    scope_account_ids: [],
+                  },
+                }),
+          );
+        }
+        if (url.includes("/members")) return respond({ body: memberListing });
+        if (url.includes("/invitations")) {
+          return respond({ body: { invitations: [] } });
+        }
+        if (url.includes("/api/workspaces")) {
+          return respond({ body: workspaceListing });
+        }
+      }
       if (url.includes("/confirm")) return respond(take(confirmQueue));
       if (url.includes("/api/chat")) return respond(take(chatQueue));
 

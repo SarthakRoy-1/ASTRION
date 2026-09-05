@@ -25,7 +25,12 @@
 
   --text-primary: #131820;
   --text-secondary: #4d5765;
-  --text-muted: #6d7787;
+  /* Darkened from #6d7787, which cleared 4.5:1 on the page surface but fell to
+     4.1:1 on the tinted ones — an accent-soft signal row, a caution panel —
+     where captions and meta lines actually sit. This value clears 4.5:1 on
+     every surface in the light palette while staying visibly lighter than
+     `--text-secondary`. */
+  --text-muted: #5b6472;
   --text-inverse: #f6f7f9;
 
   --accent: #1f4d8f;
@@ -47,10 +52,6 @@
   --fail: #9a2d2d;
   --fail-soft: #fbeaea;
   --fail-border: #e6b7b7;
-
-  --radius-sm: 4px;
-  --radius-md: 8px;
-  --radius-lg: 12px;
 
   --space-1: 4px;
   --space-2: 8px;
@@ -79,7 +80,38 @@
   --shadow-sm: 0 1px 2px rgba(19, 24, 32, 0.06);
   --shadow-md: 0 2px 8px rgba(19, 24, 32, 0.08);
 
+  /* A fourth, deliberately colourless tone. Trust has five states and the
+     three semantic colours cannot carry them all without two of them looking
+     alike; `neutral` is what "context only" and "not enough information" wear,
+     so they read as *absent* signal rather than as a mild warning. */
+  --neutral: #4d5765;
+  --neutral-soft: #eef0f4;
+  --neutral-border: #cdd3db;
+
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-pill: 999px;
+
+  /* Control geometry, so a button, an input and a select line up on one row
+     without each component picking its own padding. */
+  --control-height-sm: 28px;
+  --control-height-md: 36px;
+  --control-padding-sm: 0 var(--space-3);
+  --control-padding-md: 0 var(--space-4);
+
+  --shadow-lg: 0 12px 32px rgba(19, 24, 32, 0.16);
+
+  /* The width of a reading column. `--content-width` stays what it was so the
+     transcript is unchanged; `--shell-width` is the wider frame the shell,
+     the operations inbox and the workspace screens lay out inside. */
   --content-width: 880px;
+  --shell-width: 1320px;
+
+  --header-height: 56px;
+  --duration-fast: 120ms;
+  --duration-base: 200ms;
+  --ease-out: cubic-bezier(0.2, 0.8, 0.3, 1);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -118,8 +150,13 @@
     --fail-soft: #2b1a1a;
     --fail-border: #4d2f2f;
 
+    --neutral: #b3bac6;
+    --neutral-soft: #212734;
+    --neutral-border: #39414f;
+
     --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35);
     --shadow-md: 0 2px 10px rgba(0, 0, 0, 0.45);
+    --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.55);
   }
 }
 
@@ -197,4 +234,25 @@ button {
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
+}
+
+/* Keyboard users land here first, before the shell's navigation, so reaching
+   the transcript never costs a walk through every nav item. Visible only when
+   focused — it is a keyboard affordance, not a banner. */
+.skip-link {
+  position: absolute;
+  left: var(--space-3);
+  top: -100%;
+  z-index: 100;
+  padding: var(--space-2) var(--space-4);
+  background: var(--accent);
+  color: var(--on-accent);
+  border-radius: var(--radius-md);
+  font-size: var(--text-ui);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.skip-link:focus {
+  top: var(--space-3);
 }

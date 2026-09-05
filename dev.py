@@ -38,12 +38,37 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent
 FRONTEND_DIR = ROOT / "app" / "frontend"
 
+#: What uvicorn binds to. Loopback only, so nothing on the network can reach
+#: a development backend that runs without TLS.
 BACKEND_HOST = "127.0.0.1"
 BACKEND_PORT = 8000
 FRONTEND_PORT = 3000
 
+#: The host the *browser* uses for both servers, and it has to be one host.
+#:
+#: `localhost` and `127.0.0.1` are the same machine but different registrable
+#: hosts, so a page served from one calling an API on the other is a cross-site
+#: request. The session cookie is `SameSite=Lax` and is therefore not sent on
+#: it: `POST /api/auth/login` sets the cookie, `GET /api/auth/me` does not carry
+#: it, and sign-in appears to succeed and then silently does not. The backend's
+#: CORS allow-list defaults to `http://localhost:3000`, which is the same
+#: choice made from the other side.
+#:
+#: Nothing about the cookie itself needs relaxing for local work: `localhost`
+#: is a trustworthy origin, so a browser stores and returns a `Secure` cookie
+#: over plaintext HTTP there. `SESSION_COOKIE_SECURE` stays true.
+BROWSER_HOST = "localhost"
+
+#: Where the browser sends API calls. This value also becomes the frontend's
+#: `connect-src` in `next.config.ts`, so the client and the Content-Security-
+#: Policy cannot disagree about which origin is allowed.
+BACKEND_ORIGIN = f"http://{BROWSER_HOST}:{BACKEND_PORT}"
+
+#: Where *this script* polls health. Addressed by the bind address rather than
+#: by name, so the check cannot fail on a machine whose `localhost` resolves to
+#: `::1` before `127.0.0.1`.
 BACKEND_URL = f"http://{BACKEND_HOST}:{BACKEND_PORT}"
-FRONTEND_URL = f"http://localhost:{FRONTEND_PORT}"
+FRONTEND_URL = f"http://{BROWSER_HOST}:{FRONTEND_PORT}"
 
 IS_WINDOWS = os.name == "nt"
 
@@ -197,9 +222,10 @@ def build_services() -> list[Service]:
     backend_env.setdefault("PYTHONPATH", str(ROOT))
 
     frontend_env = os.environ.copy()
-    # Point the browser bundle at the backend this script actually started.
-    # Set here rather than relied upon from a file so the two always agree.
-    frontend_env["NEXT_PUBLIC_API_BASE_URL"] = BACKEND_URL
+    # Point the browser bundle at the backend this script actually started, on
+    # the host the browser reaches *it* by — see `BROWSER_HOST`. Set here rather
+    # than relied upon from a file so the two always agree.
+    frontend_env["NEXT_PUBLIC_API_BASE_URL"] = BACKEND_ORIGIN
 
     npm = shutil.which("npm") or "npm"
 
@@ -250,7 +276,7 @@ def wait_until_healthy(timeout: float = 45.0) -> bool:
 def banner() -> None:
     print()
     print(_paint("  ParcelPilot - local development", "1"))
-    print(f"  {_paint('backend ', '36')} {BACKEND_URL}      (health at {BACKEND_URL}/health)")
+    print(f"  {_paint('backend ', '36')} {BACKEND_ORIGIN}      (health at {BACKEND_URL}/health)")
     print(f"  {_paint('frontend', '35')} {FRONTEND_URL}")
     print()
     print(_paint("  Open the frontend URL. Press Ctrl+C once to stop both.", "2"))

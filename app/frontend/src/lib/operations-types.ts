@@ -64,18 +64,9 @@ export interface SignalReport {
   scope_account_ids: string[];
 }
 
-/** How each signal type is written for a person. */
-export const SIGNAL_TYPE_LABELS: Record<SignalType, string> = {
-  sla_risk: "SLA risk",
-  recurring_issue: "Recurring issue",
-  cross_customer_issue: "Affects several customers",
-  operational_anomaly: "Unusual pattern",
-};
-
-/** Display order: most urgent band first. */
-export const SEVERITY_ORDER: SignalSeverity[] = [
-  "critical",
-  "high",
-  "medium",
-  "low",
-];
+/*
+ * How each of these reads on screen lives in `operations-presentation.ts`,
+ * beside the rest of the operations vocabulary. This file describes the wire
+ * shape and nothing else, for the same reason `types.ts` and `presentation.ts`
+ * are separate: a rename in the API should break a type, not a label.
+ */

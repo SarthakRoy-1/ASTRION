@@ -1,28 +1,24 @@
 .wrapper {
   display: flex;
-  align-items: center;
-  gap: var(--space-2);
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
 }
 
 .label {
   font-size: var(--text-caption);
-  font-weight: 500;
   color: var(--text-muted);
 }
 
 .select {
-  appearance: none;
-  padding: 6px 28px 6px var(--space-3);
+  width: 100%;
+  min-height: var(--control-height-md);
+  padding: 0 var(--space-2);
   border: 1px solid var(--border-default);
   border-radius: var(--radius-md);
-  background-color: var(--surface-raised);
-  /* Chevron drawn inline so the control needs no icon asset or extra request. */
-  background-image: linear-gradient(45deg, transparent 50%, currentColor 50%),
-    linear-gradient(135deg, currentColor 50%, transparent 50%);
-  background-position: calc(100% - 15px) 50%, calc(100% - 10px) 50%;
-  background-size: 5px 5px, 5px 5px;
-  background-repeat: no-repeat;
+  background: var(--surface-raised);
   color: var(--text-primary);
+  font: inherit;
   font-size: var(--text-ui);
   font-weight: 500;
   cursor: pointer;

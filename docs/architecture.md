@@ -1187,10 +1187,12 @@ provenance and investigation. Conclusions first, supporting material below.
 | Component | Renders | Rule it holds |
 | --- | --- | --- |
 | `AgentMessage` | the whole turn | sections appear only when the field is present — an empty Sources block would suggest citations were merely collapsed |
+| `TrustStatusChip` | `trust.status`, `trust.governing_authority_tier` | in the byline on *every* answer, so the five trust states are always tellable apart; states which authority decided |
+| `TrustNotice` | `trust` | renders nothing for a settled answer with no override — a bordered block on every answer stops being read; the chip carries the state instead |
 | `UncertaintyNotice` | `uncertainties` | caution styling, never error styling: declining to answer is a correct outcome, not a fault |
 | `DecisionCard` | `policy_decisions[]` | `requires_verification` overrides `applies`, so a provisional figure can never read as settled |
 | `EvidenceSection` / `EvidenceCard` | `sources[]` | split on `is_authoritative`; deprecated material is shown, labelled, and explained |
-| `InvestigationSummary` | `tools_used[]` | tool *arguments* never rendered; the raw step count is stated alongside the grouped rows |
+| `AgentActivity` | `tools_used[]`, `trust`, `outcome` | an ordered narrative of completed steps in past tense; tool *arguments* never rendered, and the closing rows are drawn from `trust` and `outcome` so the summary cannot disagree with the answer above it |
 | `ActionCard` | `proposed_action` | says "nothing has changed yet" in words while pending; both buttons disable on first submit |
 
 Two things are never rendered, because the API never returns them: the model's
@@ -1200,8 +1202,11 @@ trace. The contract promises conclusions and provenance.
 ### 11.5 Tool activity without streaming
 
 The assessment asks the interface to show which tool is being used. The API
-answers a request in a single response and does not stream, so Phase 6 shows a
-faithful *post-hoc* investigation summary rather than a simulated live feed.
+answers a request in a single response and does not stream, so the interface
+shows a faithful *post-hoc* record of the investigation rather than a
+simulated live feed. Phase 4 changed its shape — from capability groupings to
+an ordered sequence of steps, written in the past tense precisely because the
+work has already finished — but not that principle.
 
 `summariseInvestigation` groups calls by capability, preserves the order each
 was first reached for, and gives a group its **worst** outcome — one refused
@@ -1262,7 +1267,15 @@ behaviour rather than promoting it to an error banner.
 CSS Modules with custom properties in `src/app/globals.css`; no UI framework
 and no styling dependency. One neutral ramp, one accent, and three semantic
 tones — ok, caution, fail — which carry the only colour with meaning in the
-product, so the vocabulary is learned once.
+product, so the vocabulary is learned once. Phase 4 added a fourth,
+deliberately colourless tone (`neutral`) because trust has five states and
+three semantic colours cannot carry them all without two of them looking alike;
+`conditional` and `insufficient_data` are told apart by tone, glyph and name.
+
+The shared primitives live in `src/components/ui/` — `Button`, `Panel`,
+`Callout`, `Field`, `EmptyState`, `Dialog`, the loading placeholders — and
+exist because seven components had each declared their own control, with four
+paddings and three radii sitting next to each other in one header row.
 
 Colour is never the sole carrier of meaning: every tone is paired with a text
 label, so the interface reads correctly in greyscale and to a screen reader.
@@ -1286,6 +1299,41 @@ the README for the current count).
 
 **Deferred:** streaming tool activity; conversation memory; a proactive-issue
 dashboard; production authentication; actual hosting. See §13.
+
+### 11.10 Information architecture (Phase 4)
+
+Phase 6 shipped one route. Phases 1–3 then added workspaces, members and
+operations intelligence to it as boolean toggles that injected panels above the
+transcript, in the transcript's own scroll container, two at a time. Phase 4
+turned those into places.
+
+| Route | Answers | Gated by |
+| --- | --- | --- |
+| `/` | "what is happening with this customer, and what should I do?" | a session, or a demo persona |
+| `/operations` | "what needs my attention right now, and why?" | `operations.read`; `?signal=` deep-links one signal |
+| `/workspace` | "who is here, what may they do, and what may I do?" | a session; the member list needs `members.read` |
+| `/join?token=` | accepting an invitation | signed in, before belonging to any workspace |
+| `/verify-email?token=` | confirming an address | reachable signed out — that is who opens it |
+
+Three properties this arrangement is responsible for:
+
+- **The session resolves once.** `AppProviders` holds `useConversation` and
+  `useWorkspaceSession` above the router, so moving between areas re-renders
+  the page body and nothing else. A sleeping backend is probed once, not once
+  per area.
+- **An investigation survives navigation.** Handing a signal to the assistant
+  moves to `/` and keeps the signal on the thread (`ConversationThread.origin`),
+  with a link back to it. Signal → evidence → explanation → proposed action →
+  confirmation → audit happens without losing workspace context.
+- **The route decides the frame before the session does.** `/join` and
+  `/verify-email` never wear the signed-in chrome, whatever stage resolves —
+  otherwise an invitation link showed a navigation bar and a workspace switcher
+  until the backend answered, then replaced the whole tree.
+
+`/verify-email` and `/join` exist because the endpoints behind them already
+did, and nothing called them: a registered user could not sign in (the backend
+correctly refuses an unverified address, and correctly refuses to say why), and
+every invitation the members screen issued was unacceptable.
 
 **One backend change was required**, and it was the smallest available:
 `GET /api/principals` now returns the directory in declaration order rather
@@ -1437,11 +1485,10 @@ authority the model's prose does and does not carry (§10.12).
 Still open, to resolve when the relevant phase starts:
 
 - **The UI shows tool activity after the fact, not live.** The API answers a
-  request in one response and does not stream, so `InvestigationSummary`
-  renders a completed investigation. The component is shaped so a live
-  indicator would fill in the same rows; implementing it needs a streaming
-  endpoint first, and simulating progress in the meantime would misrepresent
-  what the system does.
+  request in one response and does not stream, so `AgentActivity` renders a
+  completed investigation. The component is shaped so a live indicator would
+  fill in the same rows; implementing it needs a streaming endpoint first, and
+  simulating progress in the meantime would misrepresent what the system does.
 - **The frontend has no conversation memory, because the backend has none.**
   A `session_id` is issued and binds prepared actions, but no prior turn is
   replayed to the model. Each request is answered independently. Replaying

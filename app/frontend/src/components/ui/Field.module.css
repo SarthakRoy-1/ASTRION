@@ -1,0 +1,64 @@
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.label {
+  font-size: var(--text-small);
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.required {
+  margin-left: var(--space-1);
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+.control {
+  width: 100%;
+  min-height: var(--control-height-md);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: var(--text-ui);
+}
+
+.control:hover:not(:disabled) {
+  border-color: var(--border-strong);
+}
+
+.control:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.control::placeholder {
+  color: var(--text-muted);
+}
+
+.invalid {
+  border-color: var(--fail);
+}
+
+.hint {
+  font-size: var(--text-caption);
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+/* The message sits with the field it belongs to and names the problem in
+   words, so it survives a colour-blind reader and a screen reader alike. */
+.error {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-1);
+  font-size: var(--text-caption);
+  font-weight: 500;
+  color: var(--fail);
+  line-height: 1.5;
+}

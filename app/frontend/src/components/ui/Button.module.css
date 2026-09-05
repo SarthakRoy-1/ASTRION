@@ -1,0 +1,95 @@
+/* One button. Before this, seven components each declared their own control —
+   `.primary`, `.close`, `.manage`, `.investigate`, `.opsButton`, `.signOut`,
+   `.reset` — with four different paddings and three different radii sitting
+   next to each other in the same header row. */
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  font: inherit;
+  font-weight: 500;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background-color var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out);
+}
+
+.button:disabled,
+.button[aria-disabled="true"] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* --- sizes --------------------------------------------------------------- */
+
+.md {
+  min-height: var(--control-height-md);
+  padding: var(--control-padding-md);
+  font-size: var(--text-ui);
+}
+
+.sm {
+  min-height: var(--control-height-sm);
+  padding: var(--control-padding-sm);
+  font-size: var(--text-small);
+}
+
+/* --- variants ------------------------------------------------------------ */
+
+.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
+  font-weight: 600;
+}
+
+.primary:hover:not(:disabled) {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+}
+
+.secondary {
+  background: var(--surface-raised);
+  border-color: var(--border-default);
+  color: var(--text-primary);
+}
+
+.secondary:hover:not(:disabled) {
+  background: var(--surface-sunken);
+  border-color: var(--border-strong);
+}
+
+.ghost {
+  background: transparent;
+  border-color: transparent;
+  color: var(--text-secondary);
+}
+
+.ghost:hover:not(:disabled) {
+  background: var(--surface-sunken);
+  color: var(--text-primary);
+}
+
+/* Destructive work is outlined rather than filled: a solid red button next to
+   a solid blue one turns "remove this person" into a coin toss at a glance. */
+.danger {
+  background: var(--surface-raised);
+  border-color: var(--fail-border);
+  color: var(--fail);
+}
+
+.danger:hover:not(:disabled) {
+  background: var(--fail-soft);
+  border-color: var(--fail);
+}
+
+.block {
+  width: 100%;
+}

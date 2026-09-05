@@ -162,3 +162,39 @@ def test_dataset_metadata_rejects_second_row(tmp_path):
 def test_default_db_path_is_under_data_processed():
     assert db.DEFAULT_DB_PATH.parent.name == "processed"
     assert db.DEFAULT_DB_PATH.name == "parcelpilot.db"
+
+
+def test_a_connection_survives_being_handed_between_threads(tmp_path):
+    """One request's connection may be opened and closed on different threads.
+
+    FastAPI schedules a sync generator dependency's setup, its route body and
+    its teardown separately: `contextmanager_in_threadpool` runs `__exit__`
+    under its own limiter, so the `conn.close()` in `get_db`'s `finally`
+    regularly lands on a different anyio worker than the `sqlite3.connect` that
+    opened it. With sqlite3's default thread check that raised
+    `ProgrammingError` from inside the dependency's teardown — a 500 that the
+    browser reports as a CORS failure, because an unhandled exception never
+    reaches the middleware that would have added the header.
+
+    Nothing is shared here: the hand-off is sequential within one request. What
+    this pins is that the hand-off itself is allowed.
+    """
+    import threading
+
+    conn = db.get_connection(tmp_path / "handover.db")
+    db.initialize_schema(conn)
+
+    failures: list[BaseException] = []
+
+    def use_and_close() -> None:
+        try:
+            conn.execute("SELECT 1").fetchone()
+            conn.close()
+        except BaseException as exc:  # noqa: BLE001 - recorded, then re-raised
+            failures.append(exc)
+
+    worker = threading.Thread(target=use_and_close)
+    worker.start()
+    worker.join()
+
+    assert not failures, f"connection could not cross threads: {failures[0]!r}"

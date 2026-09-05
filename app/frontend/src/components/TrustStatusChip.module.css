@@ -1,0 +1,47 @@
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 1px var(--space-2);
+  border: 1px solid;
+  border-radius: var(--radius-pill);
+  font-size: var(--text-caption);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.glyph {
+  font-weight: 700;
+}
+
+.ok {
+  color: var(--ok);
+  background: var(--ok-soft);
+  border-color: var(--ok-border);
+}
+
+.caution {
+  color: var(--caution);
+  background: var(--caution-soft);
+  border-color: var(--caution-border);
+}
+
+.fail {
+  color: var(--fail);
+  background: var(--fail-soft);
+  border-color: var(--fail-border);
+}
+
+.neutral {
+  color: var(--neutral);
+  background: var(--neutral-soft);
+  border-color: var(--neutral-border);
+}
+
+/* What governed the answer, stated beside the status. Together they are the
+   two facts a reader needs before reading a word of the answer: how far it can
+   be relied on, and which authority decided it. */
+.governed {
+  font-size: var(--text-caption);
+  color: var(--text-muted);
+}

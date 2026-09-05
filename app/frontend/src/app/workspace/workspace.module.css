@@ -1,0 +1,80 @@
+.page {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  width: 100%;
+  max-width: 900px;
+  margin: 0 auto;
+  padding: var(--space-5) var(--space-5) var(--space-7);
+}
+
+.header {
+  margin-bottom: var(--space-5);
+}
+
+.title {
+  font-size: var(--text-title);
+  letter-spacing: -0.02em;
+}
+
+.subtitle {
+  margin-top: var(--space-1);
+  max-width: 70ch;
+  color: var(--text-secondary);
+  font-size: var(--text-ui);
+  line-height: 1.55;
+}
+
+.identity {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4) var(--space-6);
+  margin: 0;
+}
+
+.fact {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.fact dt {
+  font-size: var(--text-caption);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+
+.fact dd {
+  margin: 0;
+  font-size: var(--text-ui);
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+
+.slug {
+  font-family: var(--font-mono);
+  font-size: var(--text-small);
+  color: var(--text-secondary);
+}
+
+.permissions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.section {
+  margin-top: var(--space-5);
+}
+
+@media (max-width: 720px) {
+  .page {
+    padding: var(--space-4) var(--space-4) var(--space-6);
+  }
+}

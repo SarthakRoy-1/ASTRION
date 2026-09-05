@@ -1,0 +1,159 @@
+.section {
+  margin-top: var(--space-4);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.heading {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+  font-size: var(--text-caption);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+
+.count,
+.capabilities,
+.divider {
+  font-size: var(--text-caption);
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--text-muted);
+}
+
+.divider {
+  margin: 0 var(--space-2) 0 0;
+  padding-left: var(--space-2);
+}
+
+.capabilityRow {
+  margin: calc(-1 * var(--space-2)) 0 var(--space-3);
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* The connecting rail. It is what turns a set of rows into a sequence, which
+   is the whole point: the order the agent did things in is information. */
+.item {
+  position: relative;
+  display: flex;
+  gap: var(--space-3);
+  padding-bottom: var(--space-3);
+}
+
+.item:last-child {
+  padding-bottom: 0;
+}
+
+.item::before {
+  content: "";
+  position: absolute;
+  left: 5px;
+  top: 14px;
+  bottom: 0;
+  width: 1px;
+  background: var(--border-default);
+}
+
+.item:last-child::before {
+  display: none;
+}
+
+.marker {
+  position: relative;
+  z-index: 1;
+  flex: none;
+  width: 11px;
+  height: 11px;
+  margin-top: 4px;
+  border-radius: var(--radius-pill);
+  border: 2px solid var(--surface-raised);
+  background: var(--border-strong);
+}
+
+.marker[data-tone="ok"] {
+  background: var(--ok);
+}
+
+.marker[data-tone="caution"] {
+  background: var(--caution);
+}
+
+.marker[data-tone="fail"] {
+  background: var(--fail);
+}
+
+.body {
+  display: block;
+  min-width: 0;
+  flex: 1;
+}
+
+/* Block, not inline: the step's own words and the backend's summary of what
+   it produced are two lines, and running them together produced
+   "Looked up the recordorder lookup". */
+.label {
+  display: block;
+  font-size: var(--text-small);
+  color: var(--text-primary);
+  line-height: 1.45;
+}
+
+/* The backend's own one-line description of what the step produced —
+   "order lookup", "6 evidence item(s)". Never the arguments it was called
+   with: those are the agent's planning, and the contract promises what was
+   consulted and how it finished, not how the query was phrased. */
+.detail {
+  display: block;
+  margin-top: 1px;
+  font-size: var(--text-caption);
+  color: var(--text-muted);
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.failed {
+  color: var(--fail);
+}
+
+.status {
+  margin-left: var(--space-2);
+}
+
+/* The closing rows: what the investigation concluded, drawn from the same
+   structured fields the rest of the turn renders. */
+.outcome .marker {
+  background: var(--accent);
+}
+
+.outcomeLabel {
+  display: block;
+  font-size: var(--text-small);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .item {
+    animation: step var(--duration-base) var(--ease-out) both;
+  }
+
+  @keyframes step {
+    from {
+      opacity: 0;
+      transform: translateY(-2px);
+    }
+  }
+}

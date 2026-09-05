@@ -1,8 +1,10 @@
 "use client";
 
-import styles from "./WorkspaceSwitcher.module.css";
-
+import { StatusPill } from "./StatusPill";
+import { roleLabel } from "@/lib/workspace-presentation";
 import type { Workspace } from "@/lib/auth-types";
+
+import styles from "./WorkspaceSwitcher.module.css";
 
 /**
  * Which workspace the assistant is currently acting in, and how to change it.
@@ -16,21 +18,21 @@ import type { Workspace } from "@/lib/auth-types";
  * The role is shown next to the name because the same person can hold different
  * roles in different workspaces, and "why can't I do this here" is otherwise an
  * invisible difference.
+ *
+ * A native `<select>` rather than a scripted menu: it is keyboard-operable and
+ * announced correctly for free, and on a phone it opens the platform's own
+ * picker instead of a list this code would have to make scrollable itself.
  */
 export function WorkspaceSwitcher({
   workspaces,
   activeWorkspace,
   busy,
   onSwitch,
-  onManage,
-  canManageMembers,
 }: {
   workspaces: Workspace[];
   activeWorkspace: Workspace | null;
   busy: boolean;
   onSwitch(workspaceId: string): void;
-  onManage(): void;
-  canManageMembers: boolean;
 }) {
   if (!activeWorkspace) return null;
 
@@ -41,9 +43,7 @@ export function WorkspaceSwitcher({
       <span className={styles.label}>Workspace</span>
 
       {single ? (
-        <span className={styles.static} title={activeWorkspace.slug}>
-          {activeWorkspace.name}
-        </span>
+        <span className={styles.name}>{activeWorkspace.name}</span>
       ) : (
         <select
           className={styles.select}
@@ -58,23 +58,32 @@ export function WorkspaceSwitcher({
         >
           {workspaces.map((workspace) => (
             <option key={workspace.workspace_id} value={workspace.workspace_id}>
-              {workspace.name}
+              {optionLabel(workspace, workspaces)}
             </option>
           ))}
         </select>
       )}
 
       {activeWorkspace.role ? (
-        <span className={styles.role}>{activeWorkspace.role}</span>
-      ) : null}
-
-      {/* Hidden when the role does not grant it — a rendering decision only.
-          The server refuses the request regardless of what this button does. */}
-      {canManageMembers ? (
-        <button className={styles.manage} type="button" onClick={onManage}>
-          Members
-        </button>
+        <StatusPill tone="neutral" quiet>
+          {roleLabel(activeWorkspace.role)}
+        </StatusPill>
       ) : null}
     </div>
   );
+}
+
+/**
+ * A label that identifies one workspace among the caller's own.
+ *
+ * Two workspaces may legitimately share a name — the same team spins up a
+ * second one, or an operator bootstraps one that already existed. Rendering
+ * both as "Northstar Logistics" makes the switcher a coin toss, and switching
+ * tenant by accident is the one mistake this control must not enable. The slug
+ * is appended only where it disambiguates, so the ordinary case stays clean.
+ */
+function optionLabel(workspace: Workspace, all: Workspace[]): string {
+  const duplicated =
+    all.filter((other) => other.name === workspace.name).length > 1;
+  return duplicated ? `${workspace.name} (${workspace.slug})` : workspace.name;
 }
