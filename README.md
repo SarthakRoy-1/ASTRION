@@ -1,6 +1,6 @@
 # ParcelPilot Support & Operations AI Agent
 
-> **Status: Phase 8 — deployed and live.**
+> **Status: publicly demonstrable.**
 > Source pack verified (Phase 1); SQLite structured-data layer (Phase 2);
 > document ingestion and authority-ranked retrieval (Phase 3); agent
 > orchestration, deterministic policy decisions, and confirmation-gated
@@ -12,12 +12,17 @@
 > (Phase 7); both Docker images verified to build and run end to end, a
 > database-path consistency fix, and a secrets/CORS/health audit (Phase 8).
 >
+> Since then: multi-tenant workspaces with role-based access control;
+> trust-aware reasoning and evaluation; proactive operations intelligence; a
+> rebuilt product interface; accountable service-credit actions with
+> manager approval and an audit trail; and a seeded public demo tenant.
+>
 > The whole stack runs end to end with **no API key**:
 > `LLM_PROVIDER=deterministic` is the default and exercises every safety
 > boundary, which is also what both test suites run on. **Authentication is
-> real and on by default**; the hosted demo opts *down* to a persona picker,
-> which is refused in production — see
-> [Before deploying this publicly](#before-deploying-this-publicly-choose-the-right-auth_mode).
+> real, on by default, and on in the hosted deployment** — the public demo is
+> an ordinary account signing in at the ordinary endpoint, not a mode that
+> switches the controls off. See [Live deployment](#live-deployment).
 
 ## Live deployment
 
@@ -26,20 +31,61 @@
 | **App (Vercel)** | <https://parcelpilot-taupe.vercel.app/> |
 | **API (Render)** | <https://parcelpilot-api-7ro7.onrender.com> |
 
-Open the app, pick a context in the **Acting as** panel beside the transcript,
-and ask something — no setup and no
-API key needed. The hosted API runs `LLM_PROVIDER=deterministic`, so answers are
-reproducible and cost nothing to serve. Account scope is enforced in the data
-layer and every state change still requires explicit confirmation, exactly as
-locally. The Render free tier sleeps when idle, so the first request after a
-quiet period can take a few seconds.
+The hosted deployment runs `APP_ENV=production` and **`AUTH_MODE=session`** —
+real accounts, scrypt-hashed passwords, server-side sessions, workspaces and
+role-based access control. It is the same application described in the rest of
+this README, configured the way a real one would be.
 
-The hosted demo runs with `AUTH_MODE=demo_header`, where the identity picker in
-the context panel *is* the identity model — it is a demo, and the personas are the
-point. That mode is not the default and the application refuses to start with
-it when `APP_ENV` names production. A real deployment runs `AUTH_MODE=session`:
-accounts, passwords, sessions, optional TOTP, and workspaces. See
-[docs/SECURITY.md](docs/SECURITY.md).
+### Getting in
+
+Open the app and sign in with the published demo account shown on the sign-in
+screen. There is no separate demo mode: that account is an ordinary member of
+an ordinary workspace, signing in at `POST /api/auth/login` like anyone else,
+and every control — RBAC, tenant scoping, the confirmation gate, the manager
+threshold, audit authorization — applies to it unchanged.
+
+Three accounts are seeded, at three roles, so the authorization boundaries are
+something you can walk into rather than read about:
+
+| Address | Role | What it demonstrates |
+| --- | --- | --- |
+| `support@demo.parcelpilot.example` | Support | Investigates and *proposes*. Cannot execute an action, cannot read the audit trail. |
+| `operations@demo.parcelpilot.example` | Operations | Executes confirmed actions and reads the audit trail. Cannot approve a credit above the SOP threshold. |
+| `owner@demo.parcelpilot.example` | Owner | Everything, including manager approval and workspace administration. |
+
+The password is the same for all three and is set per deployment; the sign-in
+screen shows the one this deployment published. It is a deployment secret, not
+a repository one — nothing in this repository contains it.
+
+### What to expect
+
+- **The workspace is shared.** Everyone who visits uses the same one, so
+  actions you confirm and audit entries you create are visible to whoever
+  comes next — and some of what you find was left by whoever came before.
+- **The records are synthetic.** They are the supplied ParcelPilot assessment
+  pack: fictional accounts, orders, tickets, agreements and SOPs. There is no
+  real customer data anywhere in this system.
+- **The actions are real inside it.** Confirming a service credit writes a
+  service credit, records an audit entry, and cannot be undone from the UI. A
+  demo that faked the confirmation gate would be demonstrating nothing.
+- **Answers are reproducible.** The hosted API runs
+  `LLM_PROVIDER=deterministic`, so it costs nothing to serve and gives the
+  same answer twice.
+- **The first request may be slow.** The Render free tier sleeps when idle;
+  the interface says so while it wakes rather than looking broken.
+
+### Creating your own account instead
+
+Registration works and is unchanged, but **it cannot complete on the hosted
+deployment**: an account must verify its address before it can sign in, this
+application has no mail transport, and the verification link is withheld
+outside development rather than being returned in an API response. So a
+self-registered account can be created and not used. That is the honest
+behaviour of a system with no mail provider, stated here rather than papered
+over with a "check your inbox" that would be false. Use the demo account.
+
+Locally there is no such gap: outside production the verification link is
+returned in the registration response, and the UI hands it to you.
 
 ## Purpose
 
@@ -517,7 +563,7 @@ file.
 | --- | --- | --- | --- |
 | How to run | `uvicorn` + `npm run dev` natively, or `docker compose up` with `LLM_PROVIDER` unset | Same, with `LLM_PROVIDER=real` and a real `OPENAI_API_KEY` in `.env` | `docker compose up --build` (or the two images hosted separately) on a real host, real domain, real `OPENAI_API_KEY` if using `real` |
 | API key / network | None. Fully offline. | Yes — calls the live OpenAI API | Yes, if `LLM_PROVIDER=real` |
-| Authentication | `AUTH_MODE=demo_header` — the persona picker, no credential | Same, unless you set `AUTH_MODE=session` | **`AUTH_MODE=session`** — real accounts, scrypt passwords, server-side sessions, optional TOTP, workspaces. The demo header is refused when `APP_ENV` is production. |
+| Authentication | `AUTH_MODE=session` by default; `AUTH_MODE=demo_header` available locally for the persona picker | Same | **`AUTH_MODE=session`** — real accounts, scrypt passwords, server-side sessions, optional TOTP, workspaces. The demo header is refused when `APP_ENV` is production, and the hosted deployment does not use it. |
 | Who should reach it | Only you, on your machine | Only you, on your machine | Anyone who can reach the port — treat as public the moment it is |
 | What it proves | Every safety boundary (scoping, precedence, confirmation gate), with no key and no network | The same boundaries, plus real natural-language planning | The same application the two demo modes already exercised, not a different one |
 
@@ -543,8 +589,8 @@ database. This is what a deployment should run, and it is what the security
 suites are written against.
 
 **`AUTH_MODE=demo_header` (opt-in, non-production only).** The original
-assessment behaviour, kept because the hosted demo needs to switch between
-personas without a login. A request identifies itself by putting a plain string
+assessment behaviour, kept so the persona contexts stay reachable locally
+without a login. The hosted deployment does **not** use it. A request identifies itself by putting a plain string
 — `support.agent`, `customer.northstar` — in `user_id` or the
 `X-ParcelPilot-User` header, and the server looks it up in a fixed in-code
 directory. **There is no credential check: anyone who can reach the API can
@@ -961,7 +1007,19 @@ nothing in them is a source of truth.
 | **5** | FastAPI surface; mock auth context; real LLM provider; confirmation API | **Done** |
 | **6** | Next.js UI: chat, citations, tool activity, confirmation cards | **Done** |
 | **7** | Deterministic SLA targets/breach; assessment test matrix; adversarial pass | **Done** |
-| **8** | Deployment configuration verified: both images build, compose stack runs end to end, `DATABASE_URL` consistency fixed, secrets/CORS/health audited | **Done** — hosting itself pending an actual platform/account |
+| **8** | Deployment configuration verified: both images build, compose stack runs end to end, `DATABASE_URL` consistency fixed, secrets/CORS/health audited | **Done** |
+
+The build phases above delivered the assessment. What followed took it from a
+submission to a product, and is numbered separately:
+
+| Phase | Scope | State |
+| --- | --- | --- |
+| **1** | Multi-tenant workspaces, memberships, invitations, RBAC | **Done** |
+| **2** | Trust-aware reasoning, agent evaluation and observability | **Done** |
+| **3** | Proactive operations intelligence | **Done** |
+| **4** | The interface rebuilt as a product: routed shell, support/operations/workspace areas, design system, accessibility | **Done** |
+| **5** | Accountable service credits: a third action type, manager approval enforced at confirmation, and the audit trail given a product surface | **Done** |
+| **6** | Public demonstrability: a seeded demo tenant, ordinary sign-in, corrected deployment documentation, CI | **Done** |
 
 Phase 5 absorbed what earlier planning had split across phases 5, 6 and 8:
 the authorization hook the Phase 2/3 repositories already carried needed a

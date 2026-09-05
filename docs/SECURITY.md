@@ -125,6 +125,39 @@ oracle that no amount of identical response text can close.
 
 ---
 
+## 2a. The public demo tenant
+
+A hosted deployment running real authentication has no way in for a visitor:
+registration issues a verification link, there is no mail transport to deliver
+it, and an unverified account cannot sign in. The gap is closed by seeding
+ordinary accounts, not by relaxing anything.
+
+| Decision | Why |
+| --- | --- |
+| Seeded accounts sign in at `POST /api/auth/login` | No second authentication path exists. There is no endpoint that mints a session for a named user, and a test asserts the obvious spellings of one are unroutable. |
+| One workspace, slug `parcelpilot-demo` | `uq_organization_accounts_account` gives an account exactly one workspace, so per-visitor tenants over one dataset are impossible. One shared tenant is the honest shape, and it is labelled as shared in the UI. |
+| Three roles: support, operations, owner | The authorization boundaries become something a visitor walks into. There is **no demo-only permission** — roles resolve through `ROLE_PERMISSIONS` like any other. |
+| Seeded accounts are marked verified by the seed | Same justification as `bootstrap_workspace.py`: the operator running it on the server is the out-of-band proof. `REQUIRE_VERIFIED_EMAIL` is untouched and every other account still has to verify. |
+| `DEMO_SEED_ENABLED` is read by `docker-entrypoint.sh`, not by the application | The running server has no concept of a demo, so there is nowhere for a demo bypass to grow. The flag controls one thing: whether the seed script runs at boot. It is never implied by `APP_ENV`. |
+| The demo password is a deployment secret | Published to visitors by the deployment, never present in this repository. A test scans every tracked file for an assignment carrying a value. |
+| The seed never modifies an existing account | It cannot distinguish an address it created from one somebody registered, so it declines to touch either. Rotating the password means rebuilding the database, which is also the documented reset. |
+
+**What a demo visitor still cannot do:** reach another workspace, read audit
+events outside their own, execute an action without confirming it, confirm a
+credit above the SOP threshold without manager authority, impersonate another
+user, or choose their own role. Each of those is asserted in
+`tests/test_demo_seed.py` against the seeded identities specifically, not only
+against generic fixtures.
+
+**Accepted risk.** The demo workspace is shared mutable state: one visitor's
+executed action and audit entries are visible to the next. That is what a
+workspace means, it is stated on the sign-in screen, and the data it concerns
+is synthetic. Reset is by rebuilding the database from `data/source/` — never
+by deleting audit rows, because a hash chain that can be tidied is not a
+chain.
+
+---
+
 ## 3. Authorization and tenant isolation
 
 **Workspace is the product term; `organization` / `org_id` is the internal
@@ -471,15 +504,38 @@ tool arguments.
 microphone, payment, usb all denied), `Cache-Control: no-store`,
 plus HSTS when `HSTS_ENABLED=true`.
 
-**Frontend** (`next.config.ts`): `script-src 'self'` with no `unsafe-inline`
-and no `unsafe-eval` in production; `connect-src` pinned to the configured API
-origin so exfiltration fails at the browser; `frame-ancestors 'none'`;
-`object-src 'none'`; COOP/CORP `same-origin`; `poweredByHeader: false`.
+**Frontend** (`src/middleware.ts`): `script-src 'self' 'nonce-<per request>'
+'strict-dynamic'` — no `unsafe-inline`, no `unsafe-eval`; `connect-src` pinned
+to the configured API origin so exfiltration fails at the browser;
+`frame-ancestors 'none'`; `object-src 'none'`; COOP/CORP `same-origin`
+(`next.config.ts`); `poweredByHeader: false`.
+
+**Why the nonce, and why it is in middleware.** The policy was a static header
+until Phase 6, and `script-src 'self'` was enforcing exactly as written — on
+Next.js's own inline bootstrap scripts, which carry the React payload into the
+document. In production the browser blocked them, hydration failed with React
+error #412, and the deployed application rendered its server-side markup and
+then did nothing at all: no session request, no API call, a permanent
+"Connecting to the ParcelPilot API…". It had been broken since the header
+shipped.
+
+The fix was not to add `'unsafe-inline'`, which would readmit precisely the
+injected-script attack the directive exists to stop. A per-request nonce
+admits those two scripts and nothing else, and `'strict-dynamic'` lets the
+bundle they bootstrap load its own chunks without trusting anything by origin.
+A header declared in `next.config.ts` cannot vary per request, so the policy
+moved to middleware; pages render per request rather than being prerendered,
+which costs nothing here because every page is a client component that fetches
+its own data at runtime.
+
+`NEXT_PUBLIC_API_BASE_URL` is therefore needed at *runtime* as well as at
+build time — the middleware reads it to pin `connect-src`, while the bundle
+inlined it at build. `app/frontend/Dockerfile` bakes the same build arg into
+the runtime stage so the two cannot disagree; if they did, the browser would
+block every request the bundle makes.
 
 `style-src` retains `'unsafe-inline'` because Next injects component styles as
-inline `<style>` in every build mode. Inline *style* cannot execute; the
-alternative is a per-request nonce, which a statically exported app cannot
-produce.
+inline `<style>` in every build mode. Inline *style* cannot execute.
 
 ### CSRF
 
@@ -583,8 +639,11 @@ login into a 500 or, far worse, abort the transaction a security check runs in.
   absent by `load_settings`, so a placeholder can never read as a credential.
 - `Settings.openai_api_key` is `repr=False` and never serialised.
   `/health` reports the provider *mode*, never its configuration.
-- Only `NEXT_PUBLIC_*` variables reach the browser bundle, and the only one is
-  the API base URL.
+- Only `NEXT_PUBLIC_*` variables reach the browser bundle. Two of the three
+  are the API base URL and the demo address; the third,
+  `NEXT_PUBLIC_DEMO_PASSWORD`, is a *published* demo credential by design (a
+  public demo means anyone may sign in) and is deployment configuration, never
+  repository content. Unset, the sign-in page shows no demo panel at all.
 - The Docker image bakes in no secret, runs as a non-root user (uid 1000), and
   copies nothing from `data/processed/`.
 - **There is no session signing key** (§2), so the largest category of

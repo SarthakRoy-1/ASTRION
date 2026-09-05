@@ -100,3 +100,50 @@
   gap: var(--space-2);
   margin-top: var(--space-3);
 }
+
+/* The public-demo panel, above the tabs.
+
+   It sits before the form because it is the shorter path for the visitor this
+   deployment is for, and it stays visually quieter than the primary submit so
+   it reads as an alternative rather than as the thing being asked of you. */
+.demo {
+  margin-top: var(--space-4);
+}
+
+.demo p + p {
+  margin-top: var(--space-2);
+}
+
+.demoAccount {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-5);
+  margin: var(--space-3) 0;
+}
+
+.demoAccount div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.demoAccount dt {
+  font-size: var(--text-caption);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+
+.demoAccount dd {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-small);
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+
+.demoNote {
+  color: var(--text-secondary);
+}

@@ -107,10 +107,34 @@ The distinction matters: each of these is traceable to a clause in the pack. A
 general-purpose "surface anything interesting" feature would be the kind of
 unbounded proactivity that becomes noise.
 
+## Trying it
+
+The hosted deployment runs real authentication, so there is a published demo
+account rather than a persona picker. Three accounts are seeded at three roles
+— support, operations and owner — into one shared workspace holding the
+supplied synthetic dataset. They are ordinary accounts: they sign in at the
+ordinary endpoint, and every control applies to them unchanged.
+
+Three things a visitor should know before acting:
+
+- **The workspace is shared.** What one visitor confirms, the next one sees.
+- **The records are synthetic.** Fictional accounts, orders, tickets and
+  agreements. No real customer data exists in this system at all.
+- **The actions are real inside it.** Confirming a credit issues one and
+  writes an audit entry. Faking that would demonstrate nothing.
+
+Registering your own account works, but cannot complete on a hosted
+deployment: verification is required and there is no mail transport, so the
+link reaches nobody. That is stated plainly in the interface rather than
+hidden behind a "check your inbox" that would be false.
+
 ## Roles and what each may do
 
-Five identities ship. Authentication is a **mock** — the caller names an
-identity and the server resolves its role and scope from a fixed directory.
+Below is the **demo identity directory** used by `AUTH_MODE=demo_header`, the
+original assessment mode, which is available locally and refused in
+production. Under real authentication (the default, and what the hosted
+deployment runs) roles come from workspace membership instead — see
+[docs/SECURITY.md](SECURITY.md).
 
 | Identity | Role | Account scope | May change state | May approve a large credit |
 | --- | --- | --- | --- | --- |

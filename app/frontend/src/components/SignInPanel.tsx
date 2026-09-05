@@ -5,6 +5,7 @@ import { useState } from "react";
 import { Button } from "./ui/Button";
 import { Callout } from "./ui/Callout";
 import { TextField } from "./ui/Field";
+import { demoAccess } from "@/lib/demo";
 
 import styles from "./SignInPanel.module.css";
 
@@ -160,12 +161,22 @@ export function SignInPanel({
   }
 
   const registering = mode === "register";
+  const demo = demoAccess();
 
   return (
     <div className={styles.panel}>
       <h1 className={styles.title}>
         {registering ? "Create your account" : "Sign in"}
       </h1>
+
+      {demo && !registering ? (
+        <DemoAccess
+          email={demo.email}
+          password={demo.password}
+          busy={busy}
+          onSignIn={onSignIn}
+        />
+      ) : null}
       <p className={styles.lede}>
         {registering
           ? "You will name your first workspace next. A workspace holds one operation's accounts, orders, tickets and documents."
@@ -294,5 +305,83 @@ export function SignInPanel({
         sent, signed in as the address it was issued to.
       </p>
     </div>
+  );
+}
+
+/**
+ * The way in, for a visitor who has no account and no reason to make one.
+ *
+ * Rendered only when the deployment published a demo address. It is an
+ * ordinary sign-in: the button fills nothing the form could not be filled with
+ * by hand and posts to the same endpoint, so the session that comes back went
+ * through the same password check, the same rate limiter, the same lockout and
+ * the same workspace scoping as anyone else's.
+ *
+ * Everything it says is a fact a visitor needs *before* they act, not
+ * marketing:
+ *
+ * - the workspace is **shared**, so what they do is visible to the next
+ *   person, and what they find may have been done by the last one;
+ * - the records are **synthetic** — the supplied ParcelPilot pack, no real
+ *   customer anywhere in it;
+ * - actions are **real inside it**, because a demo that faked the
+ *   confirmation gate would be demonstrating nothing.
+ *
+ * The password is shown because a published demo credential has to be
+ * reachable to be usable. It never travels in a URL, is never logged, and is
+ * only ever sent in the body of the sign-in request the visitor asked for.
+ */
+function DemoAccess({
+  email,
+  password,
+  busy,
+  onSignIn,
+}: {
+  email: string;
+  password: string | null;
+  busy: boolean;
+  onSignIn(email: string, password: string): void;
+}) {
+  return (
+    <Callout tone="info" title="Public demo" className={styles.demo}>
+      <p>
+        This deployment has a shared demo workspace holding the sample
+        ParcelPilot dataset — synthetic accounts, orders, tickets and policy
+        documents. There is no real customer data in it.
+      </p>
+      <p>
+        Everyone shares one workspace, so actions you confirm and audit entries
+        you create are visible to whoever visits next. Inside it, everything is
+        real: the assistant runs, the confirmation gate holds, and your role
+        decides what you may do.
+      </p>
+      <dl className={styles.demoAccount}>
+        <div>
+          <dt>Email</dt>
+          <dd>{email}</dd>
+        </div>
+        {password ? (
+          <div>
+            <dt>Password</dt>
+            <dd>{password}</dd>
+          </div>
+        ) : null}
+      </dl>
+      {password ? (
+        <Button
+          type="button"
+          variant="secondary"
+          disabled={busy}
+          onClick={() => onSignIn(email, password)}
+        >
+          {busy ? "Working…" : "Sign in to the demo"}
+        </Button>
+      ) : (
+        <p className={styles.demoNote}>
+          Ask whoever runs this deployment for the demo password, or sign in
+          with your own account below.
+        </p>
+      )}
+    </Callout>
   );
 }

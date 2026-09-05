@@ -8,73 +8,26 @@ import type { NextConfig } from "next";
  *
  * The API sets its own headers (see `app/backend/api/middleware.py`), but the
  * API returns JSON. *This* is the response that loads scripts and renders a
- * document, so this is where the interesting policy lives.
+ * document, so this is where the browser-facing policy lives.
  */
-
-/** Where the browser is allowed to send API requests. */
-const apiOrigin = (() => {
-  const configured = process.env.NEXT_PUBLIC_API_BASE_URL?.trim();
-  if (!configured) return "http://127.0.0.1:8000";
-  try {
-    return new URL(configured).origin;
-  } catch {
-    // A malformed value must not silently widen the policy to everything.
-    return "http://127.0.0.1:8000";
-  }
-})();
-
-const isProduction = process.env.NODE_ENV === "production";
 
 /**
- * The Content-Security-Policy, assembled rather than pasted.
+ * The Content-Security-Policy is **not** here.
  *
- * Two directives carry almost all of the value and are worth reading closely:
+ * It needs a per-request nonce, because Next.js streams its React payload into
+ * the document as inline `<script>` blocks and a static `script-src 'self'`
+ * blocks them — which it did, in production, leaving the deployed app rendered
+ * but never hydrated. A header declared here cannot carry a nonce, so the
+ * policy moved to `src/middleware.ts`, which issues one per request. Read that
+ * file for the policy and why each directive is in it.
  *
- * - `script-src 'self'` with no `'unsafe-eval'`, and no `'unsafe-inline'` in
- *   production. This is what turns an injected `<script>` from code execution
- *   into an inert node. React escapes by default and this app renders no
- *   HTML from data, so nothing legitimate needs either escape hatch.
- * - `frame-ancestors 'none'` — clickjacking. Without it, an attacker frames
- *   the real UI invisibly and a user's click lands on the confirm button of a
- *   state-changing action they never saw.
- *
- * `connect-src` is pinned to the configured API origin, so exfiltration to a
- * third party fails at the browser even if something did manage to run.
- *
- * Development keeps `'unsafe-inline'` and `'unsafe-eval'` because Next's dev
- * server and React Fast Refresh genuinely require them. Shipping that policy
- * to production would be the single most common way a CSP ends up decorative,
- * which is why the two are branched here rather than merged into one string
- * somebody later forgets to read.
+ * The headers below are the ones that are the same on every response.
  */
-const contentSecurityPolicy = [
-  "default-src 'self'",
-  isProduction
-    ? "script-src 'self'"
-    : "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
-  // Next.js injects component styles as inline <style> tags; there is no build
-  // mode in which it does not. Inline *style* is a far narrower exposure than
-  // inline script — it cannot execute — and the alternative is a per-request
-  // nonce, which a statically exported app cannot produce.
-  "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data: blob:",
-  "font-src 'self' data:",
-  `connect-src 'self' ${apiOrigin}`,
-  // Nothing in this application embeds, plugs in, or frames anything.
-  "object-src 'none'",
-  "frame-src 'none'",
-  "frame-ancestors 'none'",
-  "base-uri 'self'",
-  // The app posts JSON through fetch, never through a form submission, so no
-  // origin is a legitimate form target.
-  "form-action 'self'",
-  "manifest-src 'self'",
-  ...(isProduction ? ["upgrade-insecure-requests"] : []),
-].join("; ");
+const isProduction = process.env.NODE_ENV === "production";
 
 const securityHeaders = [
-  { key: "Content-Security-Policy", value: contentSecurityPolicy },
-  // Belt and braces with frame-ancestors, for anything that predates CSP.
+  // Belt and braces with frame-ancestors (set in the middleware's CSP), for
+  // anything that predates CSP.
   { key: "X-Frame-Options", value: "DENY" },
   // Stops a browser second-guessing a declared Content-Type — the route by
   // which a non-HTML response gets rendered as HTML and its contents executed.

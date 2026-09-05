@@ -29,4 +29,26 @@ else
     echo "docker-entrypoint: $DB_PATH already present; skipping ingestion."
 fi
 
+# The public demo tenant, seeded only when a deployment explicitly asks for it.
+#
+# Off unless DEMO_SEED_ENABLED is exactly "true": an unset variable, an empty
+# one, or any other spelling leaves the database with no demo workspace at all.
+# APP_ENV has no bearing on it -- a demo tenant is a deliberate choice an
+# operator makes, never something a deployment inherits from calling itself
+# production.
+#
+# Outside the ingestion branch above on purpose. The seed is idempotent, so
+# running it on every boot is what lets an already-populated volume gain the
+# demo tenant (and lets a half-finished first boot finish), while a database
+# that already has it is left exactly as it is.
+#
+# `set -eu` makes a failure fatal, which is the intent: a container that
+# started with a half-created demo environment would present a broken product
+# to the one audience this feature exists for.
+if [ "${DEMO_SEED_ENABLED:-false}" = "true" ]; then
+    echo "docker-entrypoint: DEMO_SEED_ENABLED=true; seeding the demo workspace ..."
+    python scripts/seed_demo.py --db "$DB_PATH"
+    echo "docker-entrypoint: demo seed complete."
+fi
+
 exec "$@"

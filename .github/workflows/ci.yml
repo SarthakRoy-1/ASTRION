@@ -1,0 +1,81 @@
+# The gates this project already runs by hand, run on every push.
+#
+# Deliberately the same commands a developer types — `pytest`, `vitest run`,
+# `tsc --noEmit`, `next build` — rather than a CI-only variant, so a green run
+# here means the same thing as a green run locally. Nothing is skipped or
+# reduced for speed.
+#
+# No secrets. The whole stack runs with `LLM_PROVIDER=deterministic`, which is
+# the default and what the entire test suite exercises; the test database is
+# built from the source pack committed under `data/source/`. A workflow that
+# needed an API key would be a workflow that could not run on a fork.
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+# A second push supersedes the first: there is no value in finishing a run for
+# a commit that is already history.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: Backend tests
+    runs-on: ubuntu-latest
+    env:
+      # Stated rather than inherited. The suite's defaults are already these,
+      # and saying so here means a change to a default shows up as a CI
+      # difference instead of silently changing what was verified.
+      LLM_PROVIDER: deterministic
+      APP_ENV: test
+      AUTH_MODE: session
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: pytest
+        run: python -m pytest -q
+
+  frontend:
+    name: Frontend tests, typecheck and build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app/frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: app/frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Vitest
+        run: npm test
+
+      - name: TypeScript
+        run: npm run typecheck
+
+      - name: Production build
+        # No NEXT_PUBLIC_DEMO_* here on purpose: the build CI verifies is the
+        # one with no published credentials, and the sign-in page must be
+        # correct without them.
+        run: npm run build

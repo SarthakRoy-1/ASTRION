@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 
 import SupportPage from "./page";
+import WorkspacePage from "./workspace/page";
 import { chatCalls, fixtures, stubApi } from "@/test/helpers";
 import { setTestRoute } from "@/test/next-navigation";
 import { renderApp } from "@/test/render";
@@ -200,4 +201,50 @@ describe("a backend that is still waking", () => {
     },
     15_000,
   );
+});
+
+
+/**
+ * The way to the audit trail.
+ *
+ * The link is an *offer*, not a control: the endpoint refuses a caller without
+ * `read_audit_log` whether or not it was drawn, and `audit.test.tsx` covers
+ * that refusal. What is asserted here is that the offer follows the
+ * permission the server issued, so nobody is invited down a path that ends in
+ * a 403.
+ */
+describe("reaching the audit trail", () => {
+  async function renderWorkspace(permissions?: string[]) {
+    setTestRoute("/workspace");
+    stubApi({
+      session: permissions ? { permissions } : {},
+    });
+    renderApp(<WorkspacePage />);
+    await screen.findByRole("heading", { name: "Northstar Logistics" });
+  }
+
+  const WITH_AUDIT = [
+    "run_agent",
+    "read_records",
+    "read_documents",
+    "propose_action",
+    "execute_action",
+    "operations.read",
+    "members.read",
+    "read_audit_log",
+  ];
+
+  it("offers the trail to a role the server granted it to", async () => {
+    await renderWorkspace(WITH_AUDIT);
+
+    const link = screen.getByRole("link", { name: /view audit trail/i });
+    expect(link).toHaveAttribute("href", "/workspace/audit");
+  });
+
+  it("offers nothing to a role without the permission", async () => {
+    // The default fixture permissions do not include `read_audit_log`.
+    await renderWorkspace();
+
+    expect(screen.queryByRole("link", { name: /view audit trail/i })).toBeNull();
+  });
 });

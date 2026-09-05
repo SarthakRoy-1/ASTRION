@@ -7,12 +7,17 @@
 #   docker build --build-arg NEXT_PUBLIC_API_BASE_URL=https://api.example.com \
 #       -t parcelpilot-frontend app/frontend
 #
-# IMPORTANT — NEXT_PUBLIC_API_BASE_URL is a BUILD-TIME value, not a runtime
-# one. Next.js inlines every NEXT_PUBLIC_* variable into the compiled client
+# IMPORTANT — NEXT_PUBLIC_API_BASE_URL is a BUILD-TIME value for the browser
+# bundle. Next.js inlines every NEXT_PUBLIC_* variable into the compiled client
 # JavaScript at `next build`; setting it with `docker run -e` on an
-# already-built image has no effect on the browser bundle; that request
-# checked, no undo is possible short of rebuilding. Rebuild the image for
-# each backend URL you deploy against — there is no runtime substitution here.
+# already-built image has no effect on the bundle. Rebuild the image for each
+# backend URL you deploy against — there is no runtime substitution here.
+#
+# It is ALSO needed at runtime, by `src/middleware.ts`, which pins the CSP's
+# `connect-src` to that origin on every response. The same build arg is
+# therefore baked into the runtime stage below: if the two disagreed, the
+# browser would block every request the bundle makes to an origin the policy
+# does not name, and the app would render and then do nothing.
 
 FROM node:24-slim AS deps
 WORKDIR /app
@@ -30,6 +35,10 @@ RUN npm run build
 FROM node:24-slim AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
+# Re-declared so the runtime stage carries the same value the bundle was built
+# with. One `--build-arg` still supplies both.
+ARG NEXT_PUBLIC_API_BASE_URL
+ENV NEXT_PUBLIC_API_BASE_URL=${NEXT_PUBLIC_API_BASE_URL}
 # The node:24-slim base image already ships a non-root `node` user at
 # UID/GID 1000 — reused rather than creating a second one, which fails
 # because that uid is already taken.

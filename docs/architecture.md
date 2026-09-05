@@ -2055,3 +2055,90 @@ committing on their behalf would publish their unfinished work.
 - **Credits are not aggregated against the monthly cap.** Unchanged from
   Phase 4: `service_credits` now records issuance, but no decision consults the
   history yet.
+
+
+## 18. Phase 6 — public demonstrability
+
+Phase 5 finished a product nobody could open. The hosted deployment runs
+`APP_ENV=production` with `AUTH_MODE=session`, which is correct — and left a
+visitor at a sign-in screen they could never get past, because registration
+requires a verification link that no mail transport exists to deliver.
+
+Three ways to close that, and why this is the one:
+
+1. Re-enable `AUTH_MODE=demo_header` in production. Refused: the application
+   itself refuses it, because every authorization control would then rest on a
+   header anyone can set.
+2. Add an endpoint that mints a session for a named demo user. Rejected: it is
+   a session issued without a credential, and the only thing standing between
+   it and impersonation would be an allow-list nobody would notice going stale.
+3. **Seed ordinary accounts and publish one.** No new authentication path, no
+   new permission, no branch in any request handler. This is what shipped.
+
+### The seed
+
+`scripts/seed_demo.py` converges the database on one workspace (slug
+`parcelpilot-demo`) holding the unclaimed dataset accounts, with three members
+at three roles. Idempotency rests on the schema's own uniqueness —
+`organizations.slug`, `users.email`, and the unique index on
+`organization_accounts.account_id` — rather than on anything the script
+assumes, so running it on every container boot converges rather than
+accumulating.
+
+It is deliberately *not* `bootstrap_workspace.py`. That script opens a new
+database for an operator and creates a workspace every time it runs
+(`_unique_slug` suffixes the second one `-2`), which is right for its job and
+would give a restarting container `parcelpilot-demo-7`. Both scripts call the
+same repository and service functions; only the idempotency contract differs.
+
+### Where the flag lives
+
+`DEMO_SEED_ENABLED` is read by `docker-entrypoint.sh` and by nothing else. The
+application has no demo concept at all, which is the point: a server that
+cannot tell a demo request from any other has nowhere for a bypass to grow.
+The flag is never implied by `APP_ENV` — a deployment does not inherit a demo
+tenant from calling itself production.
+
+### The credential
+
+A public demo means a published credential; there is no way around that and
+pretending otherwise would produce a worse design. What makes it safe is
+everything around it: the account is an ordinary member of one workspace over
+synthetic records, and RBAC, tenant scoping, the confirmation gate, the
+manager threshold and audit authorization all apply to it unchanged. The
+password is deployment configuration — absent from this repository, and a test
+scans every tracked file to keep it that way.
+
+### The policy that was breaking the deployment
+
+Phase 6 also found why nobody could use the hosted application even before
+authentication came into it. The frontend's Content-Security-Policy was a
+static header with `script-src 'self'` — correct, and enforcing on Next.js's
+own inline bootstrap scripts, which carry the React payload. In production the
+browser blocked them, hydration failed, and the app rendered its server markup
+and then did nothing. It had been that way since the security-hardening pass
+that introduced the header.
+
+`'unsafe-inline'` would have readmitted the attack the directive exists to
+stop. Instead `src/middleware.ts` issues a nonce per request and the policy
+admits those scripts by nonce, with `'strict-dynamic'` for the chunks they
+load. Pages render per request rather than being prerendered, which costs
+nothing here: every page is a client component that fetches its own data at
+runtime.
+
+One consequence worth knowing: `NEXT_PUBLIC_API_BASE_URL` is now needed at
+runtime as well as at build time, because the middleware reads it to pin
+`connect-src`. The frontend Dockerfile bakes the same build arg into its
+runtime stage so the bundle and the policy cannot disagree.
+
+### Limitations
+
+- **The demo workspace is shared.** One visitor's confirmed action is the next
+  visitor's history. Stated on the sign-in screen rather than engineered
+  around, because per-visitor tenancy over one dataset is impossible under the
+  account-uniqueness constraint that *is* the tenant boundary.
+- **Reset is by rebuilding.** There is no runtime reset endpoint, and the
+  audit chain is never selectively deleted.
+- **Self-registration still cannot complete on a hosted deployment.** Unchanged
+  and documented; the demo account is the answer, not a weakened verification
+  rule.
