@@ -115,3 +115,43 @@ export const ROLE_DESCRIPTIONS: Record<WorkspaceRole, string> = {
   admin: "Can manage members, invitations and workspace settings.",
   owner: "Full control, including ownership transfer.",
 };
+
+/**
+ * One entry in the workspace's security audit trail.
+ *
+ * Mirrors what `GET /api/auth/audit` returns. Every field here has already
+ * been through the backend's redaction pass — `details` cannot carry a
+ * credential, because `services/audit.py` drops any key that names one before
+ * the row is written. Nothing in this shape needs sanitising in the browser,
+ * and nothing in it should be treated as safe to widen: the entries a caller
+ * receives are the ones their own session's workspace produced.
+ */
+export interface AuditEntry {
+  seq: number;
+  event_id: string;
+  occurred_at_utc: string;
+  event_type: string;
+  outcome: string;
+  actor_user_id: string | null;
+  actor_role: string | null;
+  org_id: string | null;
+  target_type: string | null;
+  target_id: string | null;
+  request_id: string | null;
+  details: Record<string, unknown>;
+}
+
+export interface AuditListing {
+  org_id: string;
+  /**
+   * Whether the hash chain still verifies.
+   *
+   * The endpoint computes this; the browser only reports it. A reader has to
+   * be able to tell whether what they are looking at is intact, and a UI that
+   * quietly rendered a broken chain as an ordinary list would be worse than
+   * showing nothing.
+   */
+  chain_intact: boolean;
+  first_invalid_seq: number | null;
+  events: AuditEntry[];
+}

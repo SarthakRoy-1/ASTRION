@@ -142,13 +142,13 @@ A user reaches a workspace only through a membership. The same person can hold
 different roles in different workspaces, so "what is this user's role" is
 always a bug unless it names the workspace.
 
-| Role | workspace.read | members.read | agent | propose | execute | audit | rules | ws.update | invite | remove | change_role | ws.delete | ownership |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Owner | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ |
-| Admin | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | — | — |
-| Operations | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | — | — | — | — | — | — | — |
-| Support | ✔ | ✔ | ✔ | ✔ | **—** | — | — | — | — | — | — | — | — |
-| Viewer | ✔ | ✔ | ✔ | — | — | — | — | — | — | — | — | — | — |
+| Role | workspace.read | members.read | agent | propose | execute | approve high value | audit | rules | ws.update | invite | remove | change_role | ws.delete | ownership |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Owner | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ |
+| Admin | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | ✔ | — | — |
+| Operations | ✔ | ✔ | ✔ | ✔ | ✔ | **—** | ✔ | — | — | — | — | — | — | — |
+| Support | ✔ | ✔ | ✔ | ✔ | **—** | — | — | — | — | — | — | — | — | — |
+| Viewer | ✔ | ✔ | ✔ | — | — | — | — | — | — | — | — | — | — | — |
 
 Phase 3 added one permission, `operations.read`, granted to **every role
 including Viewer**. An operational signal is an *aggregation* of tickets and
@@ -157,7 +157,7 @@ underlying records would be security theatre while the data stayed reachable.
 What a viewer still cannot do is act on a signal — that needs `propose_action`
 and `execute_action`, unchanged.
 
-Three splits in that table are load-bearing:
+Four splits in that table are load-bearing:
 
 - **Propose and execute are separate.** A Support member drafts an escalation;
   someone with operational authority confirms it. Collapsing these would hand
@@ -165,6 +165,12 @@ Three splits in that table are load-bearing:
 - **Invite, remove and change-role are separate.** They were one coarse
   `manage_members` in Phase 0. Splitting them makes it possible to grant the
   ability to add people without also granting the ability to remove them.
+- **Executing and approving a large credit are separate.** Phase 5 added
+  `approve_high_value_action`, granted from Admin up. Operations runs the
+  workspace day to day and may execute routine actions; the service-credit SOP
+  asks for a second, more senior signature specifically on the ones that move
+  money. It is a permission rather than a role so the existing matrix stays the
+  only place authorization is decided.
 - **Ownership transfer is not a role change.** It is the one membership change
   that reduces the actor's own authority, so it has its own permission, its own
   endpoint, and its own audit event.
@@ -521,6 +527,15 @@ entry_hash = SHA256(prev_hash ‖ canonical-json(entry))
 `verify_audit_chain()` recomputes the chain and reports the **exact sequence
 number** where an alteration, deletion or reordering begins.
 
+The append is atomic. Reading the chain head and writing the entry that commits
+to it happen inside one `BEGIN IMMEDIATE` transaction, so two concurrent
+requests cannot both chain from the same predecessor. Under SQLite's default
+deferred transaction they could, and did: a load test of eighty concurrent
+registrations forked one live database's log twelve milliseconds wide, after
+which verification reported it broken for good. A trail that raises tampering
+because two people signed in at once is worse than none, because the one real
+alarm becomes indistinguishable from the noise.
+
 **Recorded:** login success/failure/lockout, logout, registration, email
 verification, password reset requested/completed, password change, MFA
 enrolment/enable/disable/challenge-failure, session revocation, organisation
@@ -780,7 +795,7 @@ and credit is offered unless you would rather not have it.
 | Deterministic engine | ✅ Persisted state machine, permission-gated, replay-proof, fingerprinted |
 | Action security | ✅ Single-use, re-validated, session-bound, conversation-owned, audited |
 | Infrastructure | ⚠️ Non-root container, no baked secrets, fail-closed config — but single-node, no WAF, no shared rate limiter |
-| Logging / audit | ✅ Hash-chained, redacting, denial-inclusive |
+| Logging / audit | ✅ Hash-chained, redacting, denial-inclusive, atomic under concurrent writers, readable at `/workspace/audit` by `read_audit_log` holders |
 | Dependencies | ✅ `pip-audit` and `npm audit` both clean |
 
 **Explicitly out of scope:** email deliverability and anti-phishing, DDoS

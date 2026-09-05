@@ -1105,36 +1105,30 @@ account-scoped `lookup_record` layer, and the tier/authority model in
 against on a schedule instead of on request — no new data path, just a new
 caller.
 
-### 4. A credit-issuing action, with the manager-approval threshold enforced
+### 4. A credit-issuing action, with the manager-approval threshold enforced — **built**
 
-**What:** A new state-changing action — `issue_service_credit` or similar —
-added through the same `prepare_*` → confirm pipeline as
-`prepare_escalation` and `prepare_ticket_note`, gated so that a credit above
-the SOP's INR 1,000 threshold requires the confirming identity to hold the
-`support_manager` role.
+**What shipped:** `issue_service_credit`, added through the same `prepare_*` →
+confirm pipeline as `prepare_escalation` and `prepare_ticket_note`. A credit
+above the SOP's threshold requires the *confirming* identity to hold
+`approve_high_value_action` (granted from `admin` up), and the requirement is
+re-derived from the policy engine at confirmation time rather than read from
+the action row — so a role change between preparing and confirming is
+respected, and a stale flag cannot buy a cheap approval.
 
-**Why it's fourth:** It's the item that makes the manager role's *existing*
-distinction from `support_agent` actually mean something, but it's a genuine
-net-new capability (money moves), so it belongs after the trust foundation
-(auth) and the usability foundation (memory), not ahead of them.
+The amount is never the caller's: `prepare_service_credit` refuses an `amount`
+or `currency` argument outright and fills the parameters from the policy
+engine's own decision.
 
-**What it solves:** Today `evaluate_service_credit` computes the
-manager-approval flag and the policy engine *reports* it on every decision
-that crosses INR 1,000, but nothing enforces it —
-`AgentContext.may_change_state` is the only role check the system currently
-makes, and it admits both internal staff roles identically. That's not an
-oversight; it's because neither action that exists today issues a credit, so
-there's nothing for the threshold to gate yet. See
-[docs/product.md — Roles and what each may do](docs/product.md#roles-and-what-each-may-do).
+It landed fourth for the reason given here — it is the item that makes the
+manager role's distinction mean something, but money moves, so it belongs
+after the trust foundation. See
+[docs/architecture.md §17](docs/architecture.md#17-phase-5--accountable-actions).
 
-**What already enables it:** The confirmation architecture this action would
-plug into is already built and already generalizes — two action types exist
-today specifically to prove the mechanism isn't type-specific. Adding a
-third means: a `prepare_issue_service_credit` tool that returns a preview and
-a token exactly like the other two, and one new branch in the confirm
-endpoint's role check for amounts over the threshold. The action state
-machine, expiry, re-validation-at-confirm-time and single-use execution all
-carry over unchanged.
+**What enabled it:** the confirmation architecture, unchanged. The third action
+type needed a `prepare_*` tool, one effect writer, and one authorization check
+in `confirm_action`; the state machine, expiry, fingerprinting,
+re-validation-at-confirm-time and single-use execution all carried over
+untouched, which is what the first two action types existed to prove.
 
 ### 5. Auditability alongside authentication and authorization
 

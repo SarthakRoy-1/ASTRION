@@ -36,6 +36,11 @@ class Intent(StrEnum):
     SERVICE_CREDIT = "service_credit"
     SLA = "sla"
     ESCALATION = "escalation"
+    #: An explicit instruction to *issue* a credit, as opposed to asking
+    #: whether one is due. Kept separate from SERVICE_CREDIT deliberately:
+    #: "is ORD-2002 eligible for a credit?" must evaluate and answer, not
+    #: propose a payment nobody asked to make.
+    ISSUE_CREDIT = "issue_credit"
     #: "What should operations look at right now?" — a question about the
     #: workspace as a whole rather than about one named record.
     OPERATIONS = "operations"
@@ -147,6 +152,25 @@ class PlanningProvider(Protocol):
     ) -> PlannerStep: ...
 
 
+#: An instruction to *issue* a credit, rather than a question about whether one
+#: is due.
+#:
+#: A pattern rather than a phrase list, because the words people put between
+#: the verb and the noun are unbounded — "issue the failed-pickup service
+#: credit", "apply that goodwill credit". Bounded to 40 characters so the two
+#: halves have to belong to the same clause.
+#:
+#: Deliberately verb-led. A bare "credit" is already `SERVICE_CREDIT`, which
+#: evaluates and answers; only these verbs turn the request into a proposal.
+#: "known issue" and "what is the issue" cannot match, because `issue` here is
+#: only ever followed by a credit within the same clause.
+_ISSUE_CREDIT_PATTERN = re.compile(
+    r"\b(issue|apply|grant|raise|process|prepare|award|pay out|payout)\b"
+    r"[^.?!]{0,40}?\bcredit\b",
+    re.IGNORECASE,
+)
+
+
 def detect_intents(message: str) -> set[Intent]:
     lowered = message.lower()
     found = {
@@ -154,6 +178,8 @@ def detect_intents(message: str) -> set[Intent]:
         for intent, keywords in _INTENT_KEYWORDS
         if any(keyword in lowered for keyword in keywords)
     }
+    if _ISSUE_CREDIT_PATTERN.search(message):
+        found.add(Intent.ISSUE_CREDIT)
     return found or {Intent.INVESTIGATION}
 
 
@@ -318,6 +344,21 @@ class DeterministicPlanner:
                 }
                 if ("prepare_escalation", _key(arguments)) not in called:
                     return PlannerStep([ToolCall("prepare_escalation", arguments)])
+
+        # A credit is only ever *prepared*, and only when the request asked for
+        # one to be issued rather than asked whether one was due. The amount is
+        # not passed: `prepare_service_credit` reads it from the policy engine
+        # and refuses an argument that tries to supply one.
+        if Intent.ISSUE_CREDIT in intents and resolved_orders:
+            for order_id in resolved_orders:
+                arguments = {
+                    "order_id": order_id,
+                    "evidence_chunk_ids": _evidence_ids(history),
+                }
+                if ("prepare_service_credit", _key(arguments)) not in called:
+                    return PlannerStep(
+                        [ToolCall("prepare_service_credit", arguments)]
+                    )
 
         return PlannerStep()
 

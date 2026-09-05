@@ -58,7 +58,7 @@ from app.backend.auth.permissions import Permission
 from app.backend.core.config import Settings
 from app.backend.core.errors import AuthorizationError, NotFoundError
 from app.backend.models.agent import AgentRequest
-from app.backend.services.actions import get_action_audit
+from app.backend.services.actions import ActionForbidden, get_action_audit
 from app.backend.services.audit import (
     AuditEvent,
     AuditOutcome,
@@ -344,10 +344,29 @@ def confirm_action(
             approve=approve,
             expected_fingerprint=payload.expected_fingerprint,
         )
+    except ActionForbidden as exc:
+        # An authorization refusal is recorded as one. It is the event a
+        # reviewer most wants — someone without manager authority trying to
+        # confirm a credit above the SOP threshold — and folding it in with
+        # expiry and fingerprint refusals would bury it. The message is the
+        # backend's own and names no secret.
+        audit_denial(
+            conn,
+            caller,
+            permission=Permission.APPROVE_HIGH_VALUE_ACTION,
+            request_id=request_id,
+            client_ip=client_address(request),
+            detail=f"confirm {action_id}: {exc}",
+        )
+        # Re-raised unchanged: `errors.py` already maps ActionForbidden to a
+        # 403 with the service's own wording, and translating it here would
+        # duplicate that mapping in a second place.
+        raise
     except Exception as exc:
-        # Every refusal is recorded, whatever its cause: an expired action, a
-        # fingerprint that no longer matches, a replayed confirmation. These are
-        # exactly the events that distinguish an attack from a slow user.
+        # Every other refusal is recorded too, whatever its cause: an expired
+        # action, a fingerprint that no longer matches, a replayed
+        # confirmation. These are exactly the events that distinguish an attack
+        # from a slow user.
         record_event(
             conn,
             AuditEvent.ACTION_CONFIRMATION_REFUSED,

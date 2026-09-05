@@ -33,12 +33,14 @@ export function Conversation({
   turns,
   sending,
   canConfirmActions,
+  canApproveHighValue,
   onExample,
   onRespondToAction,
 }: {
   turns: Turn[];
   sending: boolean;
   canConfirmActions: boolean;
+  canApproveHighValue: boolean;
   onExample: (prompt: string) => void;
   onRespondToAction: (turnId: string, decision: "approve" | "reject") => void;
 }) {
@@ -89,6 +91,7 @@ export function Conversation({
                 response={turn.response}
                 action={turn.action}
                 canConfirmActions={canConfirmActions}
+                canApproveHighValue={canApproveHighValue}
                 onRespondToAction={(decision) => onRespondToAction(turn.id, decision)}
               />
             )}

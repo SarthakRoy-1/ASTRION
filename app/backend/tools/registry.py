@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from app.backend.tools.action_tools import (
     PREPARE_ESCALATION_SPEC,
+    PREPARE_SERVICE_CREDIT_SPEC,
     PREPARE_TICKET_NOTE_SPEC,
 )
 from app.backend.tools.base import ToolRegistry
@@ -52,6 +53,7 @@ READ_ONLY_TOOL_SPECS = (
 STATE_CHANGING_TOOL_SPECS = (
     PREPARE_ESCALATION_SPEC,
     PREPARE_TICKET_NOTE_SPEC,
+    PREPARE_SERVICE_CREDIT_SPEC,
 )
 
 DEFAULT_TOOL_SPECS = (*READ_ONLY_TOOL_SPECS, *STATE_CHANGING_TOOL_SPECS)

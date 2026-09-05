@@ -39,6 +39,13 @@ export default function SupportPage() {
   const canConfirmActions = demo
     ? mayChangeState(chat.principal?.role ?? "customer")
     : session.can("execute_action");
+  // Narrower than `canConfirmActions`, and answered the same two ways: the
+  // SOP asks for a second, higher signature on a credit above its threshold.
+  // Rendering only — the confirmation endpoint re-derives the threshold from
+  // the policy engine under whoever is confirming.
+  const canApproveHighValue = demo
+    ? (chat.principal?.role ?? "customer") === "support_manager"
+    : session.can("approve_high_value_action");
 
   return (
     <main id="main" className={styles.page}>
@@ -83,6 +90,7 @@ export default function SupportPage() {
             turns={chat.turns}
             sending={chat.sending}
             canConfirmActions={canConfirmActions}
+            canApproveHighValue={canApproveHighValue}
             onExample={chat.send}
             onRespondToAction={chat.respondToAction}
           />

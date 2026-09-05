@@ -44,6 +44,7 @@ export function AgentMessage({
   response,
   action,
   canConfirmActions,
+  canApproveHighValue,
   onRespondToAction,
 }: {
   response: ChatResponse;
@@ -61,6 +62,8 @@ export function AgentMessage({
    * refuses independently of what this component drew.
    */
   canConfirmActions: boolean;
+  /** Whether this caller may confirm an action needing manager approval. */
+  canApproveHighValue: boolean;
   onRespondToAction: (decision: "approve" | "reject") => void;
 }) {
   const proposal = response.proposed_action;
@@ -130,6 +133,7 @@ export function AgentMessage({
           proposal={proposal}
           progress={action}
           canConfirm={canConfirmActions}
+          canApproveHighValue={canApproveHighValue}
           onRespond={onRespondToAction}
         />
       )}

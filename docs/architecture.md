@@ -1519,24 +1519,19 @@ Still open, to resolve when the relevant phase starts:
   not expressed as tiers alongside document evidence.
   `tickets.historical_resolution` is flagged as non-authoritative when
   returned, which covers the immediate hazard; a unified ranking is later work.
-- **Only two action types exist** (`create_escalation`, `add_ticket_note`),
-  which is the smallest set that demonstrates the confirmation mechanism
-  generalises. More types are additive.
+- **Three action types exist** (`create_escalation`, `add_ticket_note`,
+  `issue_service_credit`). The third was added in Phase 5 and needed no new
+  action machinery, which is what the first two were meant to demonstrate.
+  Further types remain additive.
 - **Monthly service-credit caps are surfaced, not enforced.** A decision
   reports the cap and advises checking credits already issued; aggregating
   spend across a month needs issuance history the dataset does not contain.
-- **The manager-approval threshold is computed, not enforced, and
-  `SUPPORT_MANAGER` therefore grants nothing `SUPPORT_AGENT` does not.** The
-  SOP's "any individual credit above INR 1,000 requires manager approval" is
-  evaluated by `policies/service_credit.py` and reported on the decision, but
-  no gate consumes it: `AgentContext.may_change_state` is the only role check
-  the system enforces, and it admits both internal staff roles. This is a
-  consequence of the action set, not an oversight — neither `create_escalation`
-  nor `add_ticket_note` issues a credit, so there is nothing for the threshold
-  to gate. The role is modelled so the capability has somewhere to attach; the
-  moment a credit-issuing action exists, that is where the gate belongs. Adding
-  the check now would mean enforcing a rule against an operation that cannot
-  occur, and testing it would require inventing that operation.
+- **The manager-approval threshold is enforced as of Phase 5.** It was
+  computed and reported but ungated until a credit-issuing action existed to
+  gate. `Permission.APPROVE_HIGH_VALUE_ACTION` (granted from ADMIN up) and
+  `Role.SUPPORT_MANAGER` now both answer `may_approve_high_value`, and
+  `AgentOrchestrator._authorize_high_value` re-derives the decision from the
+  policy engine at confirmation time under the confirming caller. See §17.
 - **Conversation memory is not implemented.** `POST /api/chat` issues and
   echoes a `session_id`, and prepared actions are bound to it, but no prior
   turn is replayed to the model: each request is investigated from scratch.
@@ -1976,3 +1971,87 @@ investigation touched.
   to compare against, so a trend claim would be fabricated.
 - **The corpus is small.** Six orders, seven tickets. The detectors are written
   to generalise, but they have only been exercised at this scale.
+
+## 17. Phase 5 — accountable actions
+
+Phase 4 left one capability claimed but unreachable and one policy computed but
+unenforced. This phase closes both, and adds the action that makes the second
+one mean something.
+
+### The third action type
+
+`ISSUE_SERVICE_CREDIT` follows the existing pipeline exactly — there is no
+second action architecture. `prepare_service_credit` is an inert tool that
+writes a `PENDING_CONFIRMATION` row; `confirm_action` is the only path to
+`execute_action`, and `execute_action` is the only function that writes the
+effect (a row in `service_credits`, with the amount stored as the policy
+engine's own decimal string rather than a float).
+
+**The amount is never the caller's.** `prepare_service_credit` refuses an
+`amount`, `credit_amount` or `currency` argument outright rather than ignoring
+one, and fills the parameters from `evaluate_service_credit`'s decision. A
+model that hallucinates a figure gets an error, not a credit.
+
+### Manager approval, at confirmation time
+
+The SOP's threshold is a property of the *decision*, so the gate re-derives the
+decision rather than trusting what was written at preparation time:
+
+    _authorize_high_value(action, context)
+        decision = evaluate_service_credit(conn, action.target_id, scope)
+        # fails closed on a policy lookup or data error
+        # refuses if the decision no longer qualifies
+        # refuses if the recomputed amount differs from the action's
+        # refuses if the decision needs manager approval and the *confirming*
+        #   caller does not hold it
+
+Four consequences, each with a test:
+
+- authority is read from the caller confirming, not the caller who prepared;
+- a role change between preparation and confirmation is respected in both
+  directions;
+- a stale `requires_manager_approval=false` on the action row cannot buy a
+  cheap confirmation, because the flag is not what is consulted;
+- a policy failure refuses rather than permits.
+
+`APPROVE_HIGH_VALUE_ACTION` is a permission in the existing matrix rather than
+a new role or a second matrix. It is granted from ADMIN up: OPERATIONS runs the
+workspace day to day, and the SOP asks for a second signature specifically on
+the ones that cost money.
+
+### The audit trail as a product surface
+
+No new log. `GET /api/auth/audit` was already workspace-scoped from the session
+and gated on `READ_AUDIT_LOG`; the UI consumes it unchanged, and there is
+deliberately no caller-supplied scope parameter to widen. `/workspace/audit`
+renders it with the states a reader needs — loading, empty, permission denied,
+API failure, and chain verification failure — and the navigation entry is
+offered on `read_audit_log` while the server stays authoritative for anyone who
+types the URL.
+
+### The chain, under concurrency
+
+Recording an entry reads the chain head and appends to it. Under SQLite's
+default *deferred* transaction that read holds no lock, so two concurrent
+requests could both chain from the same head and fork the log — after which
+`verify_audit_chain` reports that database broken forever. A load test of
+eighty concurrent registrations produced exactly one such fork, twelve
+milliseconds wide. `record_event` now opens `BEGIN IMMEDIATE` before reading
+the head, so the second writer waits and chains from what the first actually
+wrote; a caller who is already inside a transaction keeps it, because
+committing on their behalf would publish their unfinished work.
+
+### Limitations
+
+- **A prepared action is still bound to its conversation.** The confirmation
+  gate refuses a confirmation arriving from a different conversation, which
+  means manager approval works by the manager asking for the credit in their
+  own conversation, not by a support user handing a proposal to them. A
+  delegated approval queue is a product feature, not a relaxation of this
+  control, and is deliberately not built here.
+- **Filtering in the audit view applies to the page that was loaded**, not to
+  the whole trail, and says so on screen. Server-side filtering would need
+  query parameters the endpoint does not have.
+- **Credits are not aggregated against the monthly cap.** Unchanged from
+  Phase 4: `service_credits` now records issuance, but no decision consults the
+  history yet.

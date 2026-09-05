@@ -1,0 +1,111 @@
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.filter {
+  flex: 1 1 200px;
+  min-width: 0;
+}
+
+.count {
+  flex-basis: 100%;
+  font-size: var(--text-caption);
+  color: var(--text-muted);
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* One entry. A row rather than a table cell: an audit entry is a sentence
+   about something a person did, and a five-column table of them is unreadable
+   on anything narrower than a laptop. */
+.entry {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border-subtle);
+  border-left: 3px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+}
+
+.entry[data-outcome="denied"] {
+  border-left-color: var(--caution);
+}
+
+.entry[data-outcome="failure"] {
+  border-left-color: var(--fail);
+}
+
+.top {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.label {
+  font-size: var(--text-ui);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-2);
+  font-size: var(--text-caption);
+  color: var(--text-muted);
+}
+
+.actor {
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.mono {
+  font-family: var(--font-mono);
+}
+
+.divider {
+  color: var(--border-strong);
+}
+
+.details {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-4);
+  margin: var(--space-1) 0 0;
+}
+
+.detail {
+  display: flex;
+  gap: var(--space-1);
+  font-size: var(--text-caption);
+}
+
+.detail dt {
+  color: var(--text-muted);
+}
+
+.detail dd {
+  margin: 0;
+  color: var(--text-secondary);
+  overflow-wrap: anywhere;
+}
+
+.chain {
+  margin-bottom: var(--space-4);
+}

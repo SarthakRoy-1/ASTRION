@@ -31,13 +31,21 @@ from pydantic import BaseModel, ConfigDict
 class ActionType(StrEnum):
     """The state-changing operations available.
 
-    Deliberately small. Two types are enough to show the mechanism
-    generalises without inventing operations the supplied dataset cannot
-    support.
+    Deliberately small: every one is an operation the supplied dataset can
+    actually evidence, and each exists to prove the confirmation mechanism is
+    not type-specific rather than to pad a feature list.
+
+    `ISSUE_SERVICE_CREDIT` is the first that moves money, and it is the reason
+    the SOP's manager-approval threshold is now enforceable rather than merely
+    computed — see `AgentContext.may_approve_high_value`. Its amount is never
+    taken from the caller: `prepare_service_credit` reads it from
+    `policies/service_credit.py`, which is the only thing in this system
+    permitted to decide what a customer is owed.
     """
 
     CREATE_ESCALATION = "create_escalation"
     ADD_TICKET_NOTE = "add_ticket_note"
+    ISSUE_SERVICE_CREDIT = "issue_service_credit"
 
 
 class ActionStatus(StrEnum):

@@ -30,7 +30,7 @@ from app.backend.agent.provider import (
     StepRecord,
     detect_intents,
 )
-from app.backend.models.actions import ExecutedAction
+from app.backend.models.actions import ActionType, ExecutedAction
 from app.backend.models.agent import (
     AgentContext,
     AgentRequest,
@@ -39,7 +39,13 @@ from app.backend.models.agent import (
     ToolInvocation,
     ToolStatus,
 )
-from app.backend.policies.base import PolicyDataError, load_evaluation_context
+from app.backend.models.policy import PolicyOutcome
+from app.backend.policies.base import (
+    PolicyDataError,
+    PolicyLookupError,
+    load_evaluation_context,
+)
+from app.backend.policies.service_credit import evaluate_service_credit
 from app.backend.services.actions import (
     ActionForbidden,
     ActionNotFound,
@@ -246,6 +252,8 @@ class AgentOrchestrator:
                     f"re-read the action and confirm again"
                 )
 
+        self._authorize_high_value(action, context)
+
         # Re-validate the target under the *confirming* caller's scope: the
         # preview may have been produced by someone else, or minutes ago.
         target_exists = True
@@ -262,6 +270,64 @@ class AgentOrchestrator:
             allowed_account_ids=scope,
             target_exists=target_exists,
         )
+
+    def _authorize_high_value(self, action, context: AgentContext) -> None:
+        """Refuse a manager-level confirmation from a caller who is not one.
+
+        Four properties, each of which a simpler implementation gets wrong:
+
+        - **Decided at confirmation, not at preparation.** The threshold is
+          re-derived here from the policy engine, under the caller who is
+          confirming. A role changed after the proposal was written is
+          therefore respected — the stored row has no say in who may approve
+          it.
+        - **Re-evaluated, not trusted.** The stored `requires_manager_approval`
+          parameter is what the reviewer was shown; it is not the authority.
+          If the governing agreement or SOP has moved since, the fresh
+          decision governs, and a stale `false` cannot buy a large credit a
+          cheap approval.
+        - **The amount must still be the amount.** A proposal whose figure no
+          longer matches what the policy engine computes is refused outright
+          rather than executed at either number.
+        - **Fails closed.** A policy lookup that cannot be completed refuses
+          the confirmation; it does not fall through to "no approval needed".
+        """
+        if action.action_type is not ActionType.ISSUE_SERVICE_CREDIT:
+            return
+
+        try:
+            decision = evaluate_service_credit(
+                self._conn, action.target_id, allowed_account_ids=context.scope()
+            )
+        except (PolicyLookupError, PolicyDataError) as exc:
+            raise ActionStateError(
+                f"action {action.action_id!r} cannot be confirmed: the service-credit "
+                f"decision behind it could not be re-evaluated ({exc})"
+            ) from exc
+
+        if (
+            decision.outcome is PolicyOutcome.REQUIRES_VERIFICATION
+            or not decision.eligible
+            or decision.credit_amount is None
+        ):
+            raise ActionStateError(
+                f"action {action.action_id!r} cannot be confirmed: order "
+                f"{action.target_id} no longer qualifies for a service credit"
+            )
+
+        if str(decision.credit_amount) != action.parameters.get("amount"):
+            raise ActionStateError(
+                f"action {action.action_id!r} cannot be confirmed: the credit is now "
+                f"{decision.currency} {decision.credit_amount}, not what was reviewed; "
+                f"prepare it again"
+            )
+
+        if decision.requires_manager_approval and not context.may_approve_high_value:
+            raise ActionForbidden(
+                f"a service credit of {decision.currency} {decision.credit_amount} "
+                f"exceeds the threshold the current SOP sets for manager approval; "
+                f"role {context.role.value!r} may not confirm it"
+            )
 
     @staticmethod
     def _check_session(action, context: AgentContext, required: bool) -> None:

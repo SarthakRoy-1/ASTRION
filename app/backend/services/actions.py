@@ -45,6 +45,11 @@ DEFAULT_TTL_MINUTES = 30
 _REQUIRED_PARAMETERS: dict[ActionType, tuple[str, ...]] = {
     ActionType.CREATE_ESCALATION: ("reason",),
     ActionType.ADD_TICKET_NOTE: ("note",),
+    # `amount` and `currency` are written by `prepare_service_credit` from the
+    # policy engine's decision, never copied from a caller's arguments. They
+    # are required here so a proposal that somehow reached this function
+    # without them fails at preparation rather than at execution.
+    ActionType.ISSUE_SERVICE_CREDIT: ("amount", "currency"),
 }
 
 
@@ -141,6 +146,20 @@ def _build_preview(
         return (
             f"Create an escalation against ticket {target_id}{suffix}. "
             f"Reason: {parameters['reason']}"
+        )
+    if action_type is ActionType.ISSUE_SERVICE_CREDIT:
+        # The figure is stated first and in full, because it is the thing being
+        # approved. The manager requirement is stated on the preview itself so
+        # a reviewer learns it before clicking, not from a refusal afterwards.
+        amount = f"{parameters['currency']} {parameters['amount']}"
+        approval = (
+            " This exceeds the SOP threshold and requires manager approval."
+            if parameters.get("requires_manager_approval") == "true"
+            else ""
+        )
+        return (
+            f"Issue a service credit of {amount} against order {target_id}."
+            f"{approval}"
         )
     return f"Add an internal note to ticket {target_id}: {parameters['note']}"
 
@@ -433,6 +452,34 @@ def _apply_effect(
         )
         return {"escalation_id": escalation_id, "ticket_id": action.target_id}
 
+    if action.action_type is ActionType.ISSUE_SERVICE_CREDIT:
+        credit_id = f"CRD-{uuid.uuid4().hex[:10]}"
+        conn.execute(
+            """
+            INSERT INTO service_credits
+                (credit_id, action_id, order_id, account_id, amount, currency,
+                 required_manager_approval, approved_by, created_at_utc)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                credit_id,
+                action.action_id,
+                action.target_id,
+                action.account_id,
+                action.parameters["amount"],
+                action.parameters["currency"],
+                1 if action.parameters.get("requires_manager_approval") == "true" else 0,
+                confirmed_by,
+                now.isoformat(),
+            ),
+        )
+        return {
+            "credit_id": credit_id,
+            "order_id": action.target_id,
+            "amount": action.parameters["amount"],
+            "currency": action.parameters["currency"],
+        }
+
     note_id = f"NOTE-{uuid.uuid4().hex[:10]}"
     conn.execute(
         """
@@ -467,3 +514,11 @@ def get_ticket_notes(conn: sqlite3.Connection, ticket_id: str) -> list[dict]:
         (ticket_id,),
     ).fetchall()
     return [dict(r) for r in rows]
+
+
+def get_order_service_credits(conn: sqlite3.Connection, order_id: str) -> list[dict]:
+    rows = conn.execute(
+        "SELECT * FROM service_credits WHERE order_id = ? ORDER BY created_at_utc",
+        (order_id,),
+    ).fetchall()
+    return [dict(row) for row in rows]

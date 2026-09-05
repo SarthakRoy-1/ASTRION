@@ -78,3 +78,41 @@
     padding: var(--space-4) var(--space-4) var(--space-6);
   }
 }
+
+/* The trail back to the workspace from one of its sub-pages. Small and set
+   above the title, where a breadcrumb belongs, rather than as another button
+   competing with the page's own actions. */
+.breadcrumb {
+  margin-bottom: var(--space-1);
+  font-size: var(--text-small);
+}
+
+.breadcrumb a {
+  color: var(--text-muted);
+  text-decoration: none;
+}
+
+.breadcrumb a:hover {
+  color: var(--text-primary);
+  text-decoration: underline;
+}
+
+.auditLink {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--control-height-sm);
+  padding: var(--control-padding-sm);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+  color: var(--text-primary);
+  font-size: var(--text-small);
+  font-weight: 500;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.auditLink:hover {
+  background: var(--surface-sunken);
+  border-color: var(--border-strong);
+}

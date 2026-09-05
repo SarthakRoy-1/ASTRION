@@ -37,16 +37,33 @@ export function ActionCard({
   proposal,
   progress,
   canConfirm,
+  canApproveHighValue,
   onRespond,
 }: {
   proposal: ProposedActionView;
   progress: ActionProgress;
   canConfirm: boolean;
+  /**
+   * Whether this viewer holds manager authority.
+   *
+   * Only consulted for a proposal the *server* marked as needing it. A
+   * rendering decision and nothing more: the confirmation endpoint re-derives
+   * the threshold from the policy engine under the confirming caller, so a UI
+   * that got this wrong would produce a refusal, never an unauthorised
+   * payment.
+   */
+  canApproveHighValue: boolean;
   onRespond: (decision: "approve" | "reject") => void;
 }) {
   const headingId = useId();
   const pending = progress.state === "pending_confirmation";
   const submitting = progress.submitting !== null;
+
+  // Written by `prepare_service_credit` from the policy engine's own
+  // decision. The card reads it to explain the requirement; it never decides
+  // whether the requirement applies.
+  const needsManager = proposal.parameters?.requires_manager_approval === "true";
+  const blockedByAuthority = needsManager && !canApproveHighValue;
 
   // The backend writes its own plain-English statement of what the action
   // will do, and signs a fingerprint over the parameters behind it. That is
@@ -114,7 +131,16 @@ export function ActionCard({
             Nothing has been changed yet. This runs only when you confirm it.
           </p>
 
-          {canConfirm ? (
+          {needsManager && (
+            <p className={styles.approval}>
+              <StatusPill tone="caution">Manager approval</StatusPill>
+              This exceeds the amount the current SOP lets an operations user
+              approve alone, so it has to be confirmed by someone with manager
+              authority.
+            </p>
+          )}
+
+          {canConfirm && !blockedByAuthority ? (
             <div className={styles.actions}>
               <button
                 type="button"
@@ -135,6 +161,12 @@ export function ActionCard({
                 {progress.submitting === "reject" ? "Rejecting…" : "Reject"}
               </button>
             </div>
+          ) : blockedByAuthority ? (
+            <p className={styles.blocked}>
+              Your role can confirm ordinary actions, but not one above the
+              SOP&apos;s manager-approval threshold. Someone with manager
+              authority has to confirm this one.
+            </p>
           ) : (
             <p className={styles.blocked}>
               Your current context cannot approve state-changing actions. An
@@ -154,6 +186,11 @@ export function ActionCard({
           )}
           {progress.executed?.result?.note_id && (
             <span className={styles.receipt}>{progress.executed.result.note_id}</span>
+          )}
+          {progress.executed?.result?.credit_id && (
+            <span className={styles.receipt}>
+              {progress.executed.result.credit_id}
+            </span>
           )}
         </p>
       )}
@@ -194,6 +231,18 @@ function formatExpiry(iso: string): string {
   });
 }
 
+/**
+ * The noun the confirm button ends with, so the button says what it does.
+ *
+ * Keyed, not branched: the previous two-way ternary would have labelled a
+ * payment "Confirm note".
+ */
+const CONFIRM_NOUNS: Record<string, string> = {
+  create_escalation: "escalation",
+  add_ticket_note: "note",
+  issue_service_credit: "credit",
+};
+
 function confirmVerb(actionType: string): string {
-  return actionType === "create_escalation" ? "escalation" : "note";
+  return CONFIRM_NOUNS[actionType] ?? "action";
 }

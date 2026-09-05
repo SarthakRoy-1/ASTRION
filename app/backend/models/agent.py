@@ -28,15 +28,14 @@ class Role(StrEnum):
     customer is scoped to their own account ids and, like `READ_ONLY`, may not
     change state, so no existing behaviour shifts.
 
-    **`SUPPORT_MANAGER` grants nothing `SUPPORT_AGENT` does not.** The only
-    authorization distinction this enum currently drives is `may_change_state`
-    below, which admits both. The role is modelled and carried through the
-    system so that a manager-only capability has somewhere to attach, but no
-    such capability exists yet: the SOP's "any individual credit above
-    INR 1,000 requires manager approval" is computed and reported by
-    `policies/service_credit.py` rather than enforced here, because neither
-    state-changing action this system ships issues a credit. Enforcing it would
-    mean gating an action that does not exist. See docs/product.md.
+    **`SUPPORT_MANAGER` now grants something `SUPPORT_AGENT` does not.** Both
+    satisfy `may_change_state`, so either may confirm a routine action; only
+    the manager satisfies `may_approve_high_value`, which gates confirming a
+    service credit above the SOP's stated threshold. Until `issue_service_credit`
+    existed the distinction had nothing to attach to — the SOP's "any
+    individual credit above INR 1,000 requires manager approval" was computed
+    and reported by `policies/service_credit.py` but could not be enforced,
+    because no action this system shipped issued a credit. See docs/product.md.
     """
 
     SUPPORT_AGENT = "support_agent"
@@ -105,6 +104,28 @@ class AgentContext(BaseModel):
         if self.permissions is not None:
             return "execute_action" in self.permissions
         return self.role in (Role.SUPPORT_AGENT, Role.SUPPORT_MANAGER)
+
+    @property
+    def may_approve_high_value(self) -> bool:
+        """Whether this caller may confirm an action needing manager approval.
+
+        The SOP's "any individual credit above INR 1,000 requires manager
+        approval" is the rule this answers. It is deliberately *narrower* than
+        `may_change_state`: an OPERATIONS member confirms routine actions, and
+        the SOP asks for a second, higher signature on the ones that cost
+        money.
+
+        Same two-branch shape as `may_change_state`, and for the same reason.
+        Under real authentication the answer comes from the permission set the
+        server issued; the role fallback exists only for a context built
+        without one, where `SUPPORT_MANAGER` is what the role has always meant
+        and now, for the first time, is enforced rather than merely modelled.
+
+        Never read from a request body, a tool argument, or model output.
+        """
+        if self.permissions is not None:
+            return "approve_high_value_action" in self.permissions
+        return self.role is Role.SUPPORT_MANAGER
 
     @property
     def may_propose_action(self) -> bool:

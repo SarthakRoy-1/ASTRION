@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+
 import { MembersPanel } from "@/components/MembersPanel";
 import { StatusPill } from "@/components/StatusPill";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -54,7 +56,18 @@ export default function WorkspacePage() {
         </p>
       </header>
 
-      <Panel title="Your access">
+      <Panel
+        title="Your access"
+        actions={
+          // Offered, not enforced. The server refuses a caller without
+          // `read_audit_log` whether or not this link is drawn.
+          session.can("read_audit_log") ? (
+            <Link className={styles.auditLink} href="/workspace/audit">
+              View audit trail
+            </Link>
+          ) : null
+        }
+      >
         <dl className={styles.identity}>
           <div className={styles.fact}>
             <dt>Signed in as</dt>

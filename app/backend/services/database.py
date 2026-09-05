@@ -241,6 +241,26 @@ SCHEMA_STATEMENTS: tuple[str, ...] = (
     ) STRICT
     """,
     """
+    CREATE TABLE IF NOT EXISTS service_credits (
+        credit_id TEXT PRIMARY KEY,
+        action_id TEXT NOT NULL REFERENCES agent_actions (action_id),
+        order_id TEXT NOT NULL,
+        account_id TEXT,
+        -- Money is stored as the policy engine's own decimal string, never a
+        -- float. `policies/` works in Decimal precisely so a credit is not
+        -- subject to binary rounding, and persisting it as REAL here would
+        -- reintroduce exactly that.
+        amount TEXT NOT NULL,
+        currency TEXT NOT NULL,
+        -- Whether the SOP's manager threshold applied, and who signed it off.
+        -- Kept beside the credit so the approval is reconstructable from the
+        -- row itself rather than only from the audit log.
+        required_manager_approval INTEGER NOT NULL DEFAULT 0,
+        approved_by TEXT NOT NULL,
+        created_at_utc TEXT NOT NULL
+    ) STRICT
+    """,
+    """
     CREATE TABLE IF NOT EXISTS ticket_notes (
         note_id TEXT PRIMARY KEY,
         action_id TEXT NOT NULL REFERENCES agent_actions (action_id),

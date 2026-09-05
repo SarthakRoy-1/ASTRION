@@ -136,6 +136,16 @@ class Permission(StrEnum):
     # State-changing actions, split at the confirmation gate
     PROPOSE_ACTION = "propose_action"
     EXECUTE_ACTION = "execute_action"
+    #: Confirming an action the policy engine marked as needing manager
+    #: approval — today, a service credit above the SOP's stated threshold.
+    #:
+    #: A separate permission rather than a new role, because the authority it
+    #: represents is financial rather than operational: OPERATIONS runs the
+    #: workspace day to day and may execute routine actions, and the SOP asks
+    #: for a second, higher signature specifically on the ones that cost money.
+    #: Granted from ADMIN up, so the person who confirms a large credit is not
+    #: the same person who confirms every small one.
+    APPROVE_HIGH_VALUE_ACTION = "approve_high_value_action"
 
     # Configuration
     MANAGE_RULES = "manage_rules"
@@ -167,6 +177,7 @@ _OPERATIONS: frozenset[Permission] = _SUPPORT | {
 }
 
 _ADMIN: frozenset[Permission] = _OPERATIONS | {
+    Permission.APPROVE_HIGH_VALUE_ACTION,
     Permission.MANAGE_RULES,
     Permission.MEMBERS_INVITE,
     Permission.MEMBERS_REMOVE,

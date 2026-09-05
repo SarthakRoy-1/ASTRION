@@ -86,7 +86,8 @@ it to:
   monthly credits reports the cap and prompts a check of credits already issued
   — Northstar's agreement §3 caps them at INR 5,000.
 - **Manager-approval threshold.** A credit above INR 1,000 is flagged as
-  requiring manager sign-off, per the SOP §3. This is advisory — see
+  requiring manager sign-off, per the SOP §3, and — since the product issues
+  credits — enforced at confirmation time. See
   [Roles](#roles-and-what-each-may-do).
 - **Historical-resolution caution.** Any resolved ticket carrying a past
   resolution is surfaced with an explicit warning that it is context, not
@@ -111,28 +112,25 @@ unbounded proactivity that becomes noise.
 Five identities ship. Authentication is a **mock** — the caller names an
 identity and the server resolves its role and scope from a fixed directory.
 
-| Identity | Role | Account scope | May change state |
-| --- | --- | --- | --- |
-| `support.agent` | `support_agent` | all accounts | yes |
-| `support.manager` | `support_manager` | all accounts | yes |
-| `support.readonly` | `read_only` | all accounts | **no** |
-| `customer.northstar` | `customer` | ACCT-001 only | **no** |
-| `customer.lumenworks` | `customer` | ACCT-002 only | **no** |
+| Identity | Role | Account scope | May change state | May approve a large credit |
+| --- | --- | --- | --- | --- |
+| `support.agent` | `support_agent` | all accounts | yes | **no** |
+| `support.manager` | `support_manager` | all accounts | yes | yes |
+| `support.readonly` | `read_only` | all accounts | **no** | **no** |
+| `customer.northstar` | `customer` | ACCT-001 only | **no** | **no** |
+| `customer.lumenworks` | `customer` | ACCT-002 only | **no** | **no** |
 
-**Stated plainly: `support_manager` and `support_agent` have identical
-capabilities today.** The role exists and is carried through the system, but
-the only authorization distinction actually enforced is whether a role may
-change state at all — which separates the two internal staff roles from
-`read_only` and from customers.
+`support_manager` is now distinguishable from `support_agent`: the SOP's rule
+that "any individual credit above INR 1,000 requires manager approval" is
+computed by the policy engine *and enforced* when a credit is confirmed. Both
+internal staff roles may prepare one; only a manager may confirm one above the
+threshold, and the check is made against whoever is confirming, at the moment
+they confirm.
 
-The SOP's rule that "any individual credit above INR 1,000 requires manager
-approval" is **computed and displayed, not enforced**, and that is a deliberate
-consequence of scope rather than an oversight: the two state-changing actions
-this product ships are *create an escalation* and *add a ticket note*. Neither
-issues a service credit, so there is currently no action for the threshold to
-gate. The system surfaces the rule so a human applies it. Adding a
-credit-issuing action would make manager-only approval meaningful, and that is
-the point at which it should be built — see [Future work](#future-work).
+Under real authentication the same rule is expressed as a permission rather
+than a role: `approve_high_value_action`, granted from `admin` upwards, so the
+person who signs off a large credit is not the person who confirms every small
+one.
 
 ## What it does not do
 
@@ -202,8 +200,9 @@ Scoped out deliberately, in rough order of value:
 2. **Real authentication.** The identity-acceptance step is a mock. Everything
    downstream of it is real and was built to be independent of how identity is
    established — see [README](../README.md#before-deploying-this-publicly-authentication-is-still-a-mock).
-3. **A credit-issuing action**, which would make the INR 1,000 manager-approval
-   threshold enforceable rather than advisory.
+3. **Aggregating issued credits against the monthly cap.** Credits are now
+   issued and recorded, but a decision still reports the agreement's cap
+   without totalling what has already been paid against it.
 4. **A designed proactive detector** — matching ticket symptoms to known issues
    unprompted, and flagging other orders on an account affected by the same
    issue. The retrieval and record layers this needs already exist.

@@ -1163,15 +1163,14 @@ export interface components {
          *     customer is scoped to their own account ids and, like `READ_ONLY`, may not
          *     change state, so no existing behaviour shifts.
          *
-         *     **`SUPPORT_MANAGER` grants nothing `SUPPORT_AGENT` does not.** The only
-         *     authorization distinction this enum currently drives is `may_change_state`
-         *     below, which admits both. The role is modelled and carried through the
-         *     system so that a manager-only capability has somewhere to attach, but no
-         *     such capability exists yet: the SOP's "any individual credit above
-         *     INR 1,000 requires manager approval" is computed and reported by
-         *     `policies/service_credit.py` rather than enforced here, because neither
-         *     state-changing action this system ships issues a credit. Enforcing it would
-         *     mean gating an action that does not exist. See docs/product.md.
+         *     **`SUPPORT_MANAGER` now grants something `SUPPORT_AGENT` does not.** Both
+         *     satisfy `may_change_state`, so either may confirm a routine action; only
+         *     the manager satisfies `may_approve_high_value`, which gates confirming a
+         *     service credit above the SOP's stated threshold. Until `issue_service_credit`
+         *     existed the distinction had nothing to attach to — the SOP's "any
+         *     individual credit above INR 1,000 requires manager approval" was computed
+         *     and reported by `policies/service_credit.py` but could not be enforced,
+         *     because no action this system shipped issued a credit. See docs/product.md.
          * @enum {string}
          */
         Role: "support_agent" | "support_manager" | "read_only" | "customer";

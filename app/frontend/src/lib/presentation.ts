@@ -42,6 +42,10 @@ const TOOL_DESCRIPTORS: Record<string, ToolDescriptor> = {
   evaluate_service_credit: { label: "Service-credit policy", category: "policy_calculation" },
   prepare_escalation: { label: "Escalation prepared", category: "action_preparation" },
   prepare_ticket_note: { label: "Ticket note prepared", category: "action_preparation" },
+  prepare_service_credit: {
+    label: "Service credit prepared",
+    category: "action_preparation",
+  },
 };
 
 export const CATEGORY_LABELS: Record<ToolCategory, string> = {
@@ -92,6 +96,7 @@ const TOOL_ACTIVITY: Record<string, string> = {
   evaluate_service_credit: "Applied the service-credit rules",
   prepare_escalation: "Prepared an escalation for confirmation",
   prepare_ticket_note: "Prepared a ticket note for confirmation",
+  prepare_service_credit: "Prepared a service credit for confirmation",
   get_operational_signals: "Listed the operational signals in scope",
   investigate_signal: "Investigated the operational signal",
 };
@@ -407,6 +412,7 @@ export const ACTION_STATE_LABELS: Record<ActionState, string> = {
 const ACTION_TYPE_LABELS: Record<string, string> = {
   create_escalation: "Escalate ticket",
   add_ticket_note: "Add internal note to ticket",
+  issue_service_credit: "Issue service credit on order",
 };
 
 export function actionTypeLabel(actionType: string): string {
@@ -425,10 +431,21 @@ export function actionOutcomeMessage(
   if (state === "failed") return "The action could not be completed.";
   if (state === "expired") return "The proposal expired before it was confirmed.";
   if (state !== "executed") return ACTION_STATE_LABELS[state];
-  return actionType === "create_escalation"
-    ? "Escalation created."
-    : "Internal note added.";
+  return ACTION_EXECUTED_MESSAGES[actionType] ?? "The action was carried out.";
 }
+
+/**
+ * What actually happened, in the past tense.
+ *
+ * Keyed rather than branched: a two-way ternary silently mislabelled every
+ * action type that was not an escalation, so adding a third would have told
+ * the operator an internal note was added when a payment had been made.
+ */
+const ACTION_EXECUTED_MESSAGES: Record<string, string> = {
+  create_escalation: "Escalation created.",
+  add_ticket_note: "Internal note added.",
+  issue_service_credit: "Service credit issued.",
+};
 
 /** One labelled line the backend appended to its answer. */
 export interface AnswerNote {

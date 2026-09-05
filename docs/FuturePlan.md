@@ -162,9 +162,9 @@ would never surface.
 ## 4. Controlled Operational Actions
 
 **What would be built.** Additional state-changing actions beyond today's
-two (`create_escalation`, `add_ticket_note`) — issuing a service credit,
-updating a ticket, creating a follow-up task, and assigning or re-escalating
-ownership are the concrete candidates. Every one of them goes through the
+three (`create_escalation`, `add_ticket_note`, `issue_service_credit` — the
+third shipped in Phase 5) — updating a ticket, creating a follow-up task, and
+assigning or re-escalating ownership are the remaining candidates. Every one of them goes through the
 same `prepare_*` → confirm pipeline that exists today: a preview call that
 writes nothing, and a separate, explicit confirmation call that actually
 executes. For financially meaningful actions specifically — a credit above
@@ -200,11 +200,11 @@ and re-validated under the *confirming* caller at execution time — never a
 shortcut that lets a new action execute on the model's own confidence.
 
 **What foundation enables it.** The confirmation architecture this would
-plug into is already built and already generalises — two action types exist
-today specifically to prove the mechanism isn't type-specific. Adding a
-third is a new `prepare_*` tool plus one new role check in the confirm
-endpoint; the state machine, expiry, re-validation, and single-use
-execution all carry over unchanged.
+plug into is already built and already generalises — three action types exist
+today, and the third was added in Phase 5 without touching it. A fourth is a
+new `prepare_*` tool, one effect writer, and (only if it carries a financial
+threshold) one authorization check in the confirm endpoint; the state machine,
+expiry, re-validation, and single-use execution all carry over unchanged.
 
 **Risk reduced.** An unauthorised or unreviewed financial action; a support
 role distinction that exists in name but not in enforcement.
@@ -362,12 +362,15 @@ current submission.** Each is future work, in the priority order above.
 - **Full proactive issue detection.** No background scan, risk dashboard, or
   cross-ticket/cross-account pattern detector exists. Only request-triggered
   defensive surfaces exist today.
-- **Expanded operational actions.** Only two action types exist today:
-  `create_escalation` and `add_ticket_note`. No credit-issuing, ticket-update,
-  task-creation, or reassignment action exists.
-- **Production audit infrastructure.** Only a per-action lifecycle record
-  exists today (`GET /api/actions/{action_id}`); there is no durable,
-  cross-action, queryable audit trail.
+- **Expanded operational actions.** Three action types exist today:
+  `create_escalation`, `add_ticket_note` and `issue_service_credit`. No
+  ticket-update, task-creation, or reassignment action exists.
+- **Externally witnessed audit.** A durable, hash-chained, workspace-scoped
+  trail exists and is readable at `/workspace/audit`, but it is
+  tamper-*evident* rather than tamper-proof: anyone with write access to the
+  database could recompute the chain forward. Making that impossible needs a
+  witness outside the box — an append-only log service, or periodic
+  publication of the head hash — along with retention and export policy.
 - **Streaming investigation UX.** `POST /api/chat` answers in one blocking
   response today. No SSE/websocket transport or live-updating investigation
   view exists.

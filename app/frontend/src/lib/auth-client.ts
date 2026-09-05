@@ -18,6 +18,7 @@
 
 import { ApiError, apiBaseUrl } from "./client";
 import type {
+  AuditListing,
   CurrentUser,
   Invitation,
   LoginResult,
@@ -130,6 +131,18 @@ export async function fetchCurrentUser(): Promise<CurrentUser | null> {
 }
 
 /* -- workspaces ------------------------------------------------------------ */
+
+/**
+ * The audit trail for the caller's own workspace.
+ *
+ * There is deliberately no workspace parameter. The endpoint derives the scope
+ * from the session and offers nothing that could widen it, so this signature
+ * has nothing to widen it *with* — the absence is the control, not an
+ * oversight.
+ */
+export function fetchAuditLog(limit = 100): Promise<AuditListing> {
+  return request<AuditListing>(`/api/auth/audit?limit=${encodeURIComponent(limit)}`);
+}
 
 export function listWorkspaces(): Promise<WorkspaceListing> {
   return request<WorkspaceListing>("/api/workspaces");
