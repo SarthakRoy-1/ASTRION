@@ -1,258 +1,82 @@
-/*
- * Design tokens and base styles.
- *
- * The visual system is deliberately narrow: one neutral ramp, one accent, and
- * three semantic tones (ok / caution / fail) that carry the only colour with
- * meaning in the product. Everything that signals trust — evidence, authority,
- * uncertainty, action state — draws from those three, so a support agent
- * learns the vocabulary once.
- *
- * Colour is never the sole carrier of meaning. Every tone is paired with a
- * label, so the interface reads correctly in greyscale and to a screen reader.
- */
-
+/* ASTRION design system: editorial, restrained, premium. */
 :root {
   color-scheme: light;
 
-  --surface-page: #f6f7f9;
-  --surface-raised: #ffffff;
-  --surface-sunken: #eef0f4;
-  --surface-inverse: #1c2432;
+  --surface-page: #f4f2ee;
+  --surface-raised: #faf9f6;
+  --surface-sunken: #e9e6df;
+  --surface-inverse: #17212b;
 
-  --border-subtle: #e2e5ea;
-  --border-default: #cdd3db;
-  --border-strong: #a9b2bf;
+  --border-subtle: #e1ddd5;
+  --border-default: #cec8be;
+  --border-strong: #aaa296;
 
-  --text-primary: #131820;
-  --text-secondary: #4d5765;
-  /* Darkened from #6d7787, which cleared 4.5:1 on the page surface but fell to
-     4.1:1 on the tinted ones — an accent-soft signal row, a caution panel —
-     where captions and meta lines actually sit. This value clears 4.5:1 on
-     every surface in the light palette while staying visibly lighter than
-     `--text-secondary`. */
-  --text-muted: #5b6472;
-  --text-inverse: #f6f7f9;
+  --text-primary: #17212b;
+  --text-secondary: #59616a;
+  --text-muted: #777d82;
+  --text-inverse: #faf9f6;
 
-  --accent: #1f4d8f;
-  --accent-hover: #173d73;
-  /* Text drawn *on* the accent. Not a literal white: in dark mode the accent
-     lightens, and white on it falls to roughly 2.6:1. */
-  --on-accent: #ffffff;
-  --accent-soft: #e8eef8;
-  --accent-border: #b9cbe6;
+  --accent: #17212b;
+  --accent-hover: #263441;
+  --on-accent: #faf9f6;
+  --accent-soft: #ebe8e1;
+  --accent-border: #cec8be;
 
-  --ok: #1c6b45;
-  --ok-soft: #e5f2ec;
-  --ok-border: #b3d7c5;
+  --ok: #496653;
+  --ok-soft: #e9efe9;
+  --ok-border: #c4d4c7;
+  --caution: #866f4e;
+  --caution-soft: #f2ece2;
+  --caution-border: #ddcfba;
+  --fail: #8a4c49;
+  --fail-soft: #f4e8e7;
+  --fail-border: #ddc2c0;
+  --neutral: #59616a;
+  --neutral-soft: #e9e6df;
+  --neutral-border: #cec8be;
 
-  --caution: #8a5a10;
-  --caution-soft: #fbf1de;
-  --caution-border: #e6cf9f;
+  --brand-sand: #c7b79f;
 
-  --fail: #9a2d2d;
-  --fail-soft: #fbeaea;
-  --fail-border: #e6b7b7;
-
-  --space-1: 4px;
-  --space-2: 8px;
-  --space-3: 12px;
-  --space-4: 16px;
-  --space-5: 24px;
-  --space-6: 32px;
-  --space-7: 48px;
-
-  /* A six-step type scale. Before this the product used thirteen sizes,
-     including 16.5/14.5/13.5/12.5/11.5px half-steps that rendered unevenly
-     across platforms and gave every new element licence to invent its own
-     size. Named by role rather than by number so the intent survives. */
-  --text-caption: 12px;
-  --text-small: 13px;
-  --text-ui: 14px;
-  --text-body: 15px;
-  --text-lead: 16px;
-  --text-title: 20px;
-
-  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
-    "Helvetica Neue", Arial, sans-serif;
-  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
-    "Liberation Mono", monospace;
-
-  --shadow-sm: 0 1px 2px rgba(19, 24, 32, 0.06);
-  --shadow-md: 0 2px 8px rgba(19, 24, 32, 0.08);
-
-  /* A fourth, deliberately colourless tone. Trust has five states and the
-     three semantic colours cannot carry them all without two of them looking
-     alike; `neutral` is what "context only" and "not enough information" wear,
-     so they read as *absent* signal rather than as a mild warning. */
-  --neutral: #4d5765;
-  --neutral-soft: #eef0f4;
-  --neutral-border: #cdd3db;
-
-  --radius-sm: 4px;
-  --radius-md: 8px;
-  --radius-lg: 12px;
-  --radius-pill: 999px;
-
-  /* Control geometry, so a button, an input and a select line up on one row
-     without each component picking its own padding. */
-  --control-height-sm: 28px;
-  --control-height-md: 36px;
-  --control-padding-sm: 0 var(--space-3);
-  --control-padding-md: 0 var(--space-4);
-
-  --shadow-lg: 0 12px 32px rgba(19, 24, 32, 0.16);
-
-  /* The width of a reading column. `--content-width` stays what it was so the
-     transcript is unchanged; `--shell-width` is the wider frame the shell,
-     the operations inbox and the workspace screens lay out inside. */
-  --content-width: 880px;
-  --shell-width: 1320px;
-
-  --header-height: 56px;
-  --duration-fast: 120ms;
-  --duration-base: 200ms;
-  --ease-out: cubic-bezier(0.2, 0.8, 0.3, 1);
+  --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px;
+  --space-5: 24px; --space-6: 32px; --space-7: 48px;
+  --text-caption: 12px; --text-small: 13px; --text-ui: 14px; --text-body: 15px;
+  --text-lead: 16px; --text-title: 20px;
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  --shadow-sm: 0 1px 2px rgba(23,33,43,.05);
+  --shadow-md: 0 6px 20px rgba(23,33,43,.07);
+  --shadow-lg: 0 18px 50px rgba(23,33,43,.12);
+  --radius-sm: 5px; --radius-md: 8px; --radius-lg: 14px; --radius-pill: 999px;
+  --control-height-sm: 28px; --control-height-md: 38px;
+  --control-padding-sm: 0 var(--space-3); --control-padding-md: 0 var(--space-4);
+  --content-width: 880px; --shell-width: 1320px; --header-height: 64px;
+  --duration-fast: 120ms; --duration-base: 200ms; --ease-out: cubic-bezier(.2,.8,.3,1);
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
     color-scheme: dark;
-
-    --surface-page: #12161d;
-    --surface-raised: #1a1f28;
-    --surface-sunken: #212734;
-    --surface-inverse: #e9ecf1;
-
-    --border-subtle: #2a313d;
-    --border-default: #39414f;
-    --border-strong: #4d5765;
-
-    --text-primary: #e9ecf1;
-    --text-secondary: #b3bac6;
-    --text-muted: #8b94a3;
-    --text-inverse: #12161d;
-
-    --accent: #7aa5e0;
-    --accent-hover: #94b8ea;
-    --on-accent: #12161d;
-    --accent-soft: #1c2736;
-    --accent-border: #33496b;
-
-    --ok: #6cc79a;
-    --ok-soft: #16261f;
-    --ok-border: #2c4a3a;
-
-    --caution: #d9ab5e;
-    --caution-soft: #2a2317;
-    --caution-border: #4d3f24;
-
-    --fail: #e08c8c;
-    --fail-soft: #2b1a1a;
-    --fail-border: #4d2f2f;
-
-    --neutral: #b3bac6;
-    --neutral-soft: #212734;
-    --neutral-border: #39414f;
-
-    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35);
-    --shadow-md: 0 2px 10px rgba(0, 0, 0, 0.45);
-    --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.55);
+    --surface-page: #11171d; --surface-raised: #182129; --surface-sunken: #202b34; --surface-inverse: #f4f2ee;
+    --border-subtle: #2c3740; --border-default: #3d4a54; --border-strong: #5a6872;
+    --text-primary: #f1efeb; --text-secondary: #b9b9b4; --text-muted: #8d9294; --text-inverse: #11171d;
+    --accent: #e5e0d7; --accent-hover: #f1ede5; --on-accent: #11171d; --accent-soft: #29343d; --accent-border: #48555f;
+    --ok: #9ab6a2; --ok-soft: #1c2921; --ok-border: #3d5144;
+    --caution: #cbb897; --caution-soft: #2c281f; --caution-border: #514734;
+    --fail: #c99591; --fail-soft: #2d211f; --fail-border: #59403e;
+    --neutral: #b9b9b4; --neutral-soft: #202b34; --neutral-border: #3d4a54;
+    --brand-sand: #c7b79f;
+    --shadow-sm: 0 1px 2px rgba(0,0,0,.3); --shadow-md: 0 6px 20px rgba(0,0,0,.35); --shadow-lg: 0 18px 50px rgba(0,0,0,.45);
   }
 }
 
-*,
-*::before,
-*::after {
-  box-sizing: border-box;
-}
-
-html,
-body {
-  margin: 0;
-  padding: 0;
-  height: 100%;
-}
-
-body {
-  background: var(--surface-page);
-  color: var(--text-primary);
-  font-family: var(--font-sans);
-  font-size: var(--text-body);
-  line-height: 1.55;
-  -webkit-font-smoothing: antialiased;
-}
-
-h1,
-h2,
-h3,
-h4 {
-  margin: 0;
-  font-weight: 600;
-  line-height: 1.3;
-}
-
-p {
-  margin: 0;
-}
-
-button {
-  font: inherit;
-  color: inherit;
-}
-
-/* A single, unmistakable focus treatment everywhere. Keyboard users should
-   never have to hunt for where they are. */
-:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-  border-radius: var(--radius-sm);
-}
-
-::selection {
-  background: var(--accent-soft);
-}
-
-/* Visible to screen readers only — used for headings that give structure
-   without adding visual noise. */
-.visually-hidden {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
-  white-space: nowrap;
-  border: 0;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-  }
-}
-
-/* Keyboard users land here first, before the shell's navigation, so reaching
-   the transcript never costs a walk through every nav item. Visible only when
-   focused — it is a keyboard affordance, not a banner. */
-.skip-link {
-  position: absolute;
-  left: var(--space-3);
-  top: -100%;
-  z-index: 100;
-  padding: var(--space-2) var(--space-4);
-  background: var(--accent);
-  color: var(--on-accent);
-  border-radius: var(--radius-md);
-  font-size: var(--text-ui);
-  font-weight: 600;
-  text-decoration: none;
-}
-
-.skip-link:focus {
-  top: var(--space-3);
-}
+*, *::before, *::after { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; height: 100%; }
+body { background: var(--surface-page); color: var(--text-primary); font-family: var(--font-sans); font-size: var(--text-body); line-height: 1.55; -webkit-font-smoothing: antialiased; }
+h1,h2,h3,h4 { margin: 0; font-weight: 600; line-height: 1.3; }
+p { margin: 0; } button { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--brand-sand); outline-offset: 2px; border-radius: var(--radius-sm); }
+::selection { background: var(--accent-soft); }
+.visually-hidden { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; border:0; }
+@media (prefers-reduced-motion: reduce) { *,*::before,*::after { animation-duration:.01ms!important; animation-iteration-count:1!important; transition-duration:.01ms!important; } }
+.skip-link { position:absolute; left:var(--space-3); top:-100%; z-index:100; padding:var(--space-2) var(--space-4); background:var(--accent); color:var(--on-accent); border-radius:var(--radius-md); font-size:var(--text-ui); font-weight:600; text-decoration:none; }
+.skip-link:focus { top:var(--space-3); }
