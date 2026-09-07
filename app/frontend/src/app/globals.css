@@ -2,10 +2,10 @@
 :root {
   color-scheme: light;
 
-  --surface-page: #f4f2ee;
-  --surface-raised: #faf9f6;
-  --surface-sunken: #e9e6df;
-  --surface-inverse: #17212b;
+  --surface-page: #f7f5f1;
+  --surface-raised: #fffefb;
+  --surface-sunken: #eeece7;
+  --surface-inverse: #080f14;
 
   --border-subtle: #e1ddd5;
   --border-default: #cec8be;
@@ -16,8 +16,8 @@
   --text-muted: #777d82;
   --text-inverse: #faf9f6;
 
-  --accent: #17212b;
-  --accent-hover: #263441;
+  --accent: #101a23;
+  --accent-hover: #27333d;
   --on-accent: #faf9f6;
   --accent-soft: #ebe8e1;
   --accent-border: #cec8be;
@@ -43,37 +43,21 @@
   --text-lead: 16px; --text-title: 20px;
   --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
-  --shadow-sm: 0 1px 2px rgba(23,33,43,.05);
-  --shadow-md: 0 6px 20px rgba(23,33,43,.07);
-  --shadow-lg: 0 18px 50px rgba(23,33,43,.12);
+  --shadow-sm: 0 1px 2px rgba(14,23,30,.05);
+  --shadow-md: 0 12px 32px rgba(14,23,30,.07);
+  --shadow-lg: 0 24px 70px rgba(14,23,30,.12);
 
   /* Softer geometry across the product: compact controls are rounded without
      becoming pill-shaped, while cards and panels get a more premium radius. */
-  --radius-sm: 8px;
-  --radius-md: 12px;
-  --radius-lg: 18px;
+  --radius-sm: 10px;
+  --radius-md: 14px;
+  --radius-lg: 20px;
   --radius-pill: 999px;
 
   --control-height-sm: 30px; --control-height-md: 40px;
   --control-padding-sm: 0 var(--space-3); --control-padding-md: 0 var(--space-4);
   --content-width: 880px; --shell-width: 1320px; --header-height: 64px;
   --duration-fast: 120ms; --duration-base: 200ms; --ease-out: cubic-bezier(.2,.8,.3,1);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    color-scheme: dark;
-    --surface-page: #11171d; --surface-raised: #182129; --surface-sunken: #202b34; --surface-inverse: #f4f2ee;
-    --border-subtle: #2c3740; --border-default: #3d4a54; --border-strong: #5a6872;
-    --text-primary: #f1efeb; --text-secondary: #b9b9b4; --text-muted: #8d9294; --text-inverse: #11171d;
-    --accent: #e5e0d7; --accent-hover: #f1ede5; --on-accent: #11171d; --accent-soft: #29343d; --accent-border: #48555f;
-    --ok: #9ab6a2; --ok-soft: #1c2921; --ok-border: #3d5144;
-    --caution: #cbb897; --caution-soft: #2c281f; --caution-border: #514734;
-    --fail: #c99591; --fail-soft: #2d211f; --fail-border: #59403e;
-    --neutral: #b9b9b4; --neutral-soft: #202b34; --neutral-border: #3d4a54;
-    --brand-sand: #c7b79f;
-    --shadow-sm: 0 1px 2px rgba(0,0,0,.3); --shadow-md: 0 6px 20px rgba(0,0,0,.35); --shadow-lg: 0 18px 50px rgba(0,0,0,.45);
-  }
 }
 
 *, *::before, *::after { box-sizing: border-box; }

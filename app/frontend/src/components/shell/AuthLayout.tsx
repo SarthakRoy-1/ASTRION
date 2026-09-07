@@ -11,8 +11,16 @@ export function AuthLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className={styles.page}>
       <aside className={styles.pitch}>
-        <Image className={styles.pitchLogo} src="/astrion-wordmark.svg" alt="ASTRION" width={220} height={38} priority />
-        <p className={styles.lede}>AI-powered logistics support and operations.</p>
+        <header className={styles.pitchHeader}>
+          <Image className={styles.pitchLogo} src="/astrion-wordmark.svg" alt="ASTRION" width={220} height={38} priority />
+          <span className={styles.headerNote}>AI for real work</span>
+        </header>
+        <div className={styles.orbit} aria-hidden="true"><span /></div>
+        <div className={styles.pitchCopy}>
+          <p className={styles.eyebrow}>Grounded operations intelligence</p>
+          <h1 className={styles.lede}>Build what’s next with AI that understands.</h1>
+          <p className={styles.summary}>A composed workspace for teams who need clear answers, reliable context, and deliberate action.</p>
+        </div>
         <ul className={styles.points}>
           {POINTS.map((point) => <li key={point.title} className={styles.point}><span className={styles.pointMark} aria-hidden="true" /><span><span className={styles.pointTitle}>{point.title}</span>{" "}{point.body}</span></li>)}
         </ul>
