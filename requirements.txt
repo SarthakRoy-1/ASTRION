@@ -32,3 +32,9 @@ python-dotenv==1.2.3
 # entire test suite -- runs without it and without an API key; the SDK is
 # imported lazily inside app/backend/agent/factory.py.
 openai==2.14.0
+
+# --- Email verification (Resend) ---------------------------------------------
+# Needed only when RESEND_API_KEY is set. Imported lazily inside
+# app/backend/email/resend_provider.py so the entire test suite runs without
+# an API key or network access.
+resend==2.43.0
