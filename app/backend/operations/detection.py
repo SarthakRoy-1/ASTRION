@@ -97,7 +97,7 @@ _NOISE = frozenset(
         "but", "our", "their", "they", "this", "that", "from", "has", "have",
         "are", "was", "were", "get", "gets", "got", "customer", "customers",
         "user", "users", "please", "would", "could", "about", "after", "before",
-        "parcelpilot", "account",
+        "astrion", "account",
     }
 )
 

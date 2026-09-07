@@ -198,7 +198,7 @@ def _lookup_provenance(
 LOOKUP_RECORD_SPEC = ToolSpec(
     name=LOOKUP_RECORD,
     description=(
-        "Look up ParcelPilot operational records: an account, order or ticket by id, "
+        "Look up ASTRION operational records: an account, order or ticket by id, "
         "all orders or tickets for an account, or the dataset snapshot metadata. "
         "Returns only records the caller is permitted to see."
     ),

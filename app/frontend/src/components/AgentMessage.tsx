@@ -83,10 +83,10 @@ export function AgentMessage({
 
   return (
     <article className={styles.message} data-outcome={response.outcome}>
-      <h2 className="visually-hidden">ParcelPilot agent response</h2>
+      <h2 className="visually-hidden">ASTRION agent response</h2>
 
       <header className={styles.header}>
-        <span className={styles.author}>ParcelPilot agent</span>
+        <span className={styles.author}>ASTRION agent</span>
         {/* Reliability and what governed the answer sit in the byline, beside
             the timestamp, so both are on every answer without a bordered
             notice appearing on every answer. The explanation, when there is

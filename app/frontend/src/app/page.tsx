@@ -139,7 +139,7 @@ export default function SupportPage() {
  */
 function composerReason(connection: string): string | null {
   if (connection === "unavailable") {
-    return "The ParcelPilot API is not answering. Nothing can be sent until it does.";
+    return "The ASTRION API is not answering. Nothing can be sent until it does.";
   }
-  return "Connecting to the ParcelPilot API…";
+  return "Connecting to the ASTRION API…";
 }

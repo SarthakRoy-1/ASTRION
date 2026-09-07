@@ -28,7 +28,7 @@ from starlette.responses import JSONResponse, Response
 
 from app.backend.api.ratelimit import RateLimiter, client_identity
 
-logger = logging.getLogger("parcelpilot.security")
+logger = logging.getLogger("astrion.security")
 
 #: Methods that cannot change state and therefore need no CSRF defence.
 SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS", "TRACE"})

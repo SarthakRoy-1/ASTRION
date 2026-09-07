@@ -55,7 +55,7 @@ export function Composer({
         }}
       >
         <label className="visually-hidden" htmlFor="composer-input">
-          Ask the ParcelPilot support agent
+          Ask the ASTRION support agent
         </label>
         <textarea
           id="composer-input"

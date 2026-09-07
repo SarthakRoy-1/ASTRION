@@ -30,7 +30,7 @@ import type {
 import type { ApiErrorEnvelope } from "./types";
 
 const NETWORK_ERROR_MESSAGE =
-  "Could not reach the ParcelPilot API. Check that the backend is running.";
+  "Could not reach the ASTRION API. Check that the backend is running.";
 
 async function request<T>(
   path: string,
@@ -101,7 +101,12 @@ export function register(input: {
   email: string;
   password: string;
   displayName: string;
-}): Promise<{ status: string; message: string; verification_token?: string }> {
+}): Promise<{
+  status: string;
+  message: string;
+  email_sent: boolean;
+  verification_token?: string;
+}> {
   return post("/api/auth/register", {
     email: input.email,
     password: input.password,
@@ -111,6 +116,23 @@ export function register(input: {
 
 export function verifyEmail(token: string): Promise<{ status: string }> {
   return post("/api/auth/verify-email", { token });
+}
+
+export interface ResendState {
+  can_resend: boolean;
+  seconds_until_allowed: number;
+  sends_used: number;
+  in_cooldown: boolean;
+}
+
+export function resendVerification(email: string): Promise<{
+  status: string;
+  message: string;
+  email_sent: boolean;
+  verification_token?: string;
+  resend_state: ResendState;
+}> {
+  return post("/api/auth/resend-verification", { email });
 }
 
 export function signOut(): Promise<{ status: string }> {

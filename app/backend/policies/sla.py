@@ -221,7 +221,7 @@ def evaluate_sla(
         # to measure.
         verification.append(
             f"The applicable target is stated as {target.text!r}, in business hours. "
-            f"The supplied documents do not define ParcelPilot's business calendar, so "
+            f"The supplied documents do not define ASTRION's business calendar, so "
             f"elapsed business time — and therefore breach — cannot be computed here. "
             f"{elapsed} clock minutes have elapsed."
         )

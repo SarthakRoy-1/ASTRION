@@ -7,7 +7,7 @@ import pytest
 from scripts import inspect_sources as insp
 
 
-def _make_pdf(path, text="Hello ParcelPilot policy text.", pages=1):
+def _make_pdf(path, text="Hello ASTRION policy text.", pages=1):
     doc = pymupdf.open()
     for _ in range(pages):
         page = doc.new_page()

@@ -219,7 +219,7 @@ export function stubApi(
         url,
         method,
         body: init?.body ? JSON.parse(init.body as string) : null,
-        identity: headers["X-ParcelPilot-User"] ?? null,
+        identity: headers["X-Astrion-User"] ?? null,
       });
 
       if (asleep > 0) {

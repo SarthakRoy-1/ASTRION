@@ -230,7 +230,7 @@ describe("the registration form", () => {
  * asked for.
  */
 describe("the public demo panel", () => {
-  const DEMO_EMAIL = "support@demo.parcelpilot.example";
+  const DEMO_EMAIL = "support@demo.astrion.example";
   const DEMO_PASSWORD = "published-demo-password";
 
   function renderPanel() {

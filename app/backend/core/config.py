@@ -26,7 +26,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.backend.core.errors import ConfigurationError, ProviderConfigurationError
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-DEFAULT_DB_PATH = REPO_ROOT / "data" / "processed" / "parcelpilot.db"
+DEFAULT_DB_PATH = REPO_ROOT / "data" / "processed" / "astrion.db"
 
 
 class ProviderMode(StrEnum):
@@ -46,7 +46,7 @@ class AuthMode(StrEnum):
 
     `DEMO_HEADER` is the original assessment behaviour, kept because the demo
     and the agent test-suite depend on being able to act as a named persona
-    without a login. It trusts `X-ParcelPilot-User` completely, so it is
+    without a login. It trusts `X-Astrion-User` completely, so it is
     **authentication in name only** — anyone who can reach the port can claim
     any identity. `Settings.validate_auth` refuses to start in this mode when
     `APP_ENV` names a production environment, and `/health` reports the mode so
@@ -130,7 +130,7 @@ class Settings(BaseModel):
     #: Secure by default. A deployment must opt *down* to the demo header, and
     #: cannot opt down at all when APP_ENV names production.
     auth_mode: AuthMode = AuthMode.SESSION
-    session_cookie_name: str = "parcelpilot_session"
+    session_cookie_name: str = "astrion_session"
     #: `Secure` on the session cookie. True by default so the cookie is never
     #: sent over plaintext by accident; local http development sets it False
     #: explicitly, which is a decision someone has to make rather than inherit.
@@ -161,6 +161,20 @@ class Settings(BaseModel):
     #: HSTS from a plaintext origin pins a scheme the site cannot honour.
     hsts_enabled: bool = False
     hsts_max_age_seconds: int = 63_072_000
+
+    # --- email delivery (Resend) ---------------------------------------------
+    #: Never serialised into a response; `repr=False` keeps it out of logs.
+    resend_api_key: str | None = Field(default=None, repr=False)
+    #: RFC 5322 "Name <address>" form, or just an address.
+    email_from: str = "ASTRION <noreply@astrion.app>"
+    #: Base URL for verification links — must be the frontend origin.
+    #: Example: https://parcelpilot-taupe.vercel.app (Vercel legacy URL during transition)
+    email_verification_url: str = "http://localhost:3000"
+
+    @property
+    def has_email_provider(self) -> bool:
+        """True when Resend is configured and email can actually be sent."""
+        return bool(self.resend_api_key)
 
     @property
     def has_provider_credentials(self) -> bool:
@@ -209,7 +223,7 @@ class Settings(BaseModel):
         """
         if self.auth_mode is AuthMode.DEMO_HEADER and self.is_production:
             raise ConfigurationError(
-                "AUTH_MODE=demo_header trusts the X-ParcelPilot-User header "
+                "AUTH_MODE=demo_header trusts the X-Astrion-User header "
                 "without any credential and must never run in production. "
                 f"APP_ENV is {self.app_env!r}. Set AUTH_MODE=session."
             )
@@ -306,8 +320,8 @@ def load_settings(*, env_file: Path | str | None = None) -> Settings:
         cors_allow_origins=tuple(o.strip() for o in origins.split(",") if o.strip()),
         enable_state_changing_actions=_env_bool("ENABLE_STATE_CHANGING_ACTIONS", True),
         auth_mode=auth_mode,
-        session_cookie_name=_env("SESSION_COOKIE_NAME", "parcelpilot_session")
-        or "parcelpilot_session",
+        session_cookie_name=_env("SESSION_COOKIE_NAME", "astrion_session")
+        or "astrion_session",
         session_cookie_secure=_env_bool("SESSION_COOKIE_SECURE", True),
         session_cookie_samesite=(_env("SESSION_COOKIE_SAMESITE", "lax") or "lax").lower(),
         require_verified_email=_env_bool("REQUIRE_VERIFIED_EMAIL", True),
@@ -320,6 +334,9 @@ def load_settings(*, env_file: Path | str | None = None) -> Settings:
         security_headers_enabled=_env_bool("SECURITY_HEADERS_ENABLED", True),
         hsts_enabled=_env_bool("HSTS_ENABLED", False),
         hsts_max_age_seconds=_env_int("HSTS_MAX_AGE_SECONDS", 63_072_000),
+        resend_api_key=_env("RESEND_API_KEY"),
+        email_from=_env("EMAIL_FROM", "ASTRION <noreply@astrion.app>") or "ASTRION <noreply@astrion.app>",
+        email_verification_url=_env("EMAIL_VERIFICATION_URL", "http://localhost:3000") or "http://localhost:3000",
     )
 
 
@@ -335,3 +352,22 @@ def _load_env_file(path: Path) -> None:
 
 
 DEFAULT_ENV_FILE = REPO_ROOT / ".env"
+
+
+def email_provider_for(settings: Settings):
+    """Return the configured email provider (Resend or null).
+
+    Imported here to keep email-module imports out of the cold startup path
+    for deployments that do not configure email.
+    """
+    from app.backend.email.provider import NullEmailProvider
+
+    if not settings.resend_api_key:
+        return NullEmailProvider()
+
+    from app.backend.email.resend_provider import ResendEmailProvider
+
+    return ResendEmailProvider(
+        api_key=settings.resend_api_key,
+        from_address=settings.email_from,
+    )

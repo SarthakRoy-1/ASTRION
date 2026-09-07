@@ -47,7 +47,7 @@ export function WorkspaceOnboarding({
       <h1 className={styles.title}>Create your first workspace</h1>
 
       <p className={styles.lede}>
-        A workspace is where your operation lives in ParcelPilot. It holds:
+        A workspace is where your operation lives in ASTRION. It holds:
       </p>
 
       <ul className={styles.holds}>
@@ -60,7 +60,7 @@ export function WorkspaceOnboarding({
       </ul>
 
       <p className={styles.lede}>
-        Workspaces are how ParcelPilot keeps one operation&apos;s data separate
+        Workspaces are how ASTRION keeps one operation&apos;s data separate
         from another&apos;s. The separation is enforced on the server, not in
         this browser: the assistant can only ever see what your workspace owns.
       </p>

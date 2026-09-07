@@ -14,7 +14,7 @@ import type { OperationalSignal, SignalReport } from "./operations-types";
 import type { ApiErrorEnvelope } from "./types";
 
 const NETWORK_ERROR_MESSAGE =
-  "Could not reach the ParcelPilot API. Check that the backend is running.";
+  "Could not reach the ASTRION API. Check that the backend is running.";
 
 async function request<T>(path: string): Promise<T> {
   let response: Response;

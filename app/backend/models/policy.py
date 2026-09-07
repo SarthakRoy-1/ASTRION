@@ -189,7 +189,7 @@ class SlaDecision(BaseModel):
 
 
 class PickupConfirmationLag(BaseModel):
-    """A documented delay between a carrier collecting a parcel and ParcelPilot
+    """A documented delay between a carrier collecting a parcel and ASTRION
     recording the pickup.
 
     Carries the carrier it applies to and the bound the documentation states,

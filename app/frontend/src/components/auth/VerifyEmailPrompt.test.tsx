@@ -7,14 +7,14 @@ import { VerifyEmailPrompt } from "./VerifyEmailPrompt";
 /**
  * What a newly registered user is told.
  *
- * This application sends no email in any environment — there is no SMTP
- * client, no provider SDK and no mail setting in the codebase. The screen's
- * whole job is therefore to be truthful about that while still leaving the
- * user a way forward, and the two branches are decided by what the server
- * returned, never by a flag in the browser.
+ * Three honest branches:
+ * 1. Email was actually sent (Resend configured) — show inbox callout + resend.
+ * 2. No email sent, but token returned (non-production, no Resend) — show link.
+ * 3. No email sent, no token (misconfigured production) — show contact notice.
  */
 
-const MESSAGE = "If that address is available, an account was created and a verification link issued.";
+const MESSAGE = "Your account has been created. Check your inbox for a verification link.";
+const MESSAGE_NO_SEND = "If that address is available, an account was created and a verification link issued.";
 
 function stubVerify(reply: { ok: boolean; body?: unknown }) {
   const fetchMock = vi.fn(async () => ({
@@ -27,14 +27,55 @@ function stubVerify(reply: { ok: boolean; body?: unknown }) {
   return fetchMock;
 }
 
-describe("after registering, when the link was returned", () => {
-  function renderIssued() {
+describe("when email was sent (Resend configured)", () => {
+  function renderSent() {
     const user = userEvent.setup();
     const onDone = vi.fn();
     render(
       <VerifyEmailPrompt
         email="ada@example.com"
         message={MESSAGE}
+        emailSent={true}
+        onDone={onDone}
+      />,
+    );
+    return { user, onDone };
+  }
+
+  it("tells the user a verification email was sent", () => {
+    renderSent();
+    expect(screen.getByText(/verification email sent/i)).toBeInTheDocument();
+    expect(screen.getByText(/sent to/i)).toBeInTheDocument();
+  });
+
+  it("does not show a bare verification link", () => {
+    renderSent();
+    expect(screen.queryByRole("link", { name: /verify-email\?token=/i })).toBeNull();
+  });
+
+  it("shows a resend button (initially disabled during countdown)", () => {
+    renderSent();
+    const resendBtn = screen.getByRole("button", { name: /resend link/i });
+    // Button is present but disabled for the 30s countdown.
+    expect(resendBtn).toBeDisabled();
+  });
+
+  it("does not show the no-email-configured callout", () => {
+    renderSent();
+    expect(screen.queryByText(/email delivery not configured/i)).toBeNull();
+    expect(screen.queryByText(/no verification link was issued/i)).toBeNull();
+  });
+});
+
+describe("when no email sent but token returned (non-production, no Resend)", () => {
+  function renderIssued() {
+    const user = userEvent.setup();
+    const onDone = vi.fn();
+    render(
+      <VerifyEmailPrompt
+        email="ada@example.com"
+        message={MESSAGE_NO_SEND}
+        emailSent={false}
         verificationToken="tok-abc-123"
         onDone={onDone}
       />,
@@ -42,33 +83,30 @@ describe("after registering, when the link was returned", () => {
     return { user, onDone };
   }
 
-  it("says plainly that nothing was emailed", async () => {
+  it("says plainly that email delivery is not configured", () => {
     renderIssued();
     expect(
-      screen.getByText(/this deployment sends no email/i),
+      screen.getByText(/email delivery not configured/i),
     ).toBeInTheDocument();
-    // The wording it replaced. Telling someone to check an inbox nothing was
-    // sent to is the most misleading thing this screen could do.
     expect(screen.queryByText(/check your inbox/i)).toBeNull();
   });
 
-  it("shows the link, pointing at the route an emailed link would land on", async () => {
+  it("shows the link, pointing at the route an emailed link would land on", () => {
     renderIssued();
-
     const link = screen.getByRole("link", { name: /\/verify-email\?token=/ });
     expect(link).toHaveAttribute(
       "href",
       expect.stringContaining("/verify-email?token=tok-abc-123"),
     );
-    // Shown in full so it can be copied into another browser or a curl call.
     expect(link).toHaveTextContent("/verify-email?token=tok-abc-123");
   });
 
-  it("percent-encodes a token that would otherwise break the query", async () => {
+  it("percent-encodes a token that would otherwise break the query", () => {
     render(
       <VerifyEmailPrompt
         email="ada@example.com"
-        message={MESSAGE}
+        message={MESSAGE_NO_SEND}
+        emailSent={false}
         verificationToken="a+b/c=d&e"
         onDone={vi.fn()}
       />,
@@ -112,26 +150,23 @@ describe("after registering, when the link was returned", () => {
     expect(
       await screen.findByText("That verification link is invalid or has expired."),
     ).toBeInTheDocument();
-    // And it stays on this screen, so the link is still there to retry with.
     expect(screen.getByRole("link")).toBeInTheDocument();
   });
 });
 
-describe("after registering, when no link was returned", () => {
+describe("when no email sent and no token (misconfigured or production)", () => {
   function renderWithheld() {
     render(
       <VerifyEmailPrompt
         email="ada@example.com"
-        message={MESSAGE}
+        message={MESSAGE_NO_SEND}
+        emailSent={false}
         onDone={vi.fn()}
       />,
     );
   }
 
   it("never renders a token or a verification link", () => {
-    // Production withholds the token (`_may_disclose_link`), and the UI must
-    // not manufacture one — this is the assertion that a raw verification
-    // token cannot reach a production screen.
     renderWithheld();
     expect(screen.queryByRole("link")).toBeNull();
     expect(screen.queryByText(/verify-email\?token=/)).toBeNull();
@@ -145,7 +180,7 @@ describe("after registering, when no link was returned", () => {
     expect(screen.queryByText(/check your inbox/i)).toBeNull();
     expect(screen.queryByText(/link sent to/i)).toBeNull();
     expect(
-      screen.getByText(/no verification link was issued to you/i),
+      screen.getByText(/no verification link was issued/i),
     ).toBeInTheDocument();
     expect(screen.getByText(/nothing was sent to/i)).toBeInTheDocument();
   });
@@ -153,7 +188,7 @@ describe("after registering, when no link was returned", () => {
   it("says who can unblock the account", () => {
     renderWithheld();
     expect(
-      screen.getByText(/whoever operates this deployment has to issue the link/i),
+      screen.getByText(/contact whoever operates this deployment/i),
     ).toBeInTheDocument();
   });
 });

@@ -35,6 +35,14 @@ ABSOLUTE_TIMEOUT_HOURS = 12
 EMAIL_VERIFICATION_TTL_HOURS = 24
 PASSWORD_RESET_TTL_MINUTES = 30
 
+# --- resend rate-limiting constants -----------------------------------------
+#: Minimum gap between consecutive verification sends for the same address.
+RESEND_MIN_INTERVAL_SECONDS = 30
+#: After this many total sends (initial + resends), a 24-hour cooldown starts.
+RESEND_MAX_COUNT = 3
+#: How long the cooldown lasts after the maximum is reached.
+RESEND_COOLDOWN_HOURS = 24
+
 ACTIVE = "active"
 
 
@@ -201,6 +209,121 @@ def mark_email_verified(conn: sqlite3.Connection, user_id: str) -> None:
     with conn:
         conn.execute(
             "UPDATE users SET email_verified = 1 WHERE user_id = ?", (user_id,)
+        )
+
+
+# --- resend rate-limiting ---------------------------------------------------
+
+
+@dataclass(frozen=True)
+class ResendState:
+    """Current resend eligibility for one user's verification flow."""
+
+    can_send: bool
+    seconds_until_allowed: int
+    sends_used: int
+    in_cooldown: bool
+    cooldown_until_utc: datetime | None
+
+
+def get_resend_state(conn: sqlite3.Connection, user_id: str) -> ResendState:
+    """Return current resend eligibility. All-allowed if columns are absent."""
+    row = conn.execute(
+        "SELECT verification_sent_at_utc, verification_resend_count, "
+        "verification_cooldown_until_utc FROM users WHERE user_id = ?",
+        (user_id,),
+    ).fetchone()
+    if row is None:
+        return ResendState(
+            can_send=False, seconds_until_allowed=0, sends_used=0,
+            in_cooldown=False, cooldown_until_utc=None,
+        )
+
+    now = _now()
+    count = row["verification_resend_count"] or 0
+    sent_at = _parse_utc(row["verification_sent_at_utc"])
+    cooldown_until = _parse_utc(row["verification_cooldown_until_utc"])
+
+    # Cooldown wins over everything.
+    if cooldown_until is not None and now < cooldown_until:
+        return ResendState(
+            can_send=False,
+            seconds_until_allowed=int((cooldown_until - now).total_seconds()),
+            sends_used=count,
+            in_cooldown=True,
+            cooldown_until_utc=cooldown_until,
+        )
+
+    # Minimum interval check.
+    if sent_at is not None:
+        elapsed = (now - sent_at).total_seconds()
+        if elapsed < RESEND_MIN_INTERVAL_SECONDS:
+            return ResendState(
+                can_send=False,
+                seconds_until_allowed=int(RESEND_MIN_INTERVAL_SECONDS - elapsed) + 1,
+                sends_used=count,
+                in_cooldown=False,
+                cooldown_until_utc=None,
+            )
+
+    # Max-count check: already at limit but cooldown expired — allow one more
+    # only if we have not already exceeded; if count >= MAX, start a new one.
+    if count >= RESEND_MAX_COUNT:
+        return ResendState(
+            can_send=False,
+            seconds_until_allowed=0,
+            sends_used=count,
+            in_cooldown=True,
+            cooldown_until_utc=None,
+        )
+
+    return ResendState(
+        can_send=True,
+        seconds_until_allowed=0,
+        sends_used=count,
+        in_cooldown=False,
+        cooldown_until_utc=None,
+    )
+
+
+def _parse_utc(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value)
+    except ValueError:
+        return None
+
+
+def record_verification_sent(conn: sqlite3.Connection, user_id: str) -> None:
+    """Update resend tracking after a verification email is dispatched.
+
+    Increments the send count and, if the max is reached, sets the cooldown.
+    Called only after a successful send — never speculatively.
+    """
+    row = conn.execute(
+        "SELECT verification_resend_count FROM users WHERE user_id = ?",
+        (user_id,),
+    ).fetchone()
+    if row is None:
+        return
+
+    now = _now()
+    new_count = (row["verification_resend_count"] or 0) + 1
+    cooldown_until: str | None = None
+    if new_count >= RESEND_MAX_COUNT:
+        cooldown_until = (now + timedelta(hours=RESEND_COOLDOWN_HOURS)).isoformat()
+
+    with conn:
+        conn.execute(
+            """
+            UPDATE users
+               SET verification_sent_at_utc = ?,
+                   verification_resend_count = ?,
+                   verification_cooldown_until_utc = ?
+             WHERE user_id = ?
+            """,
+            (now.isoformat(), new_count, cooldown_until, user_id),
         )
 
 

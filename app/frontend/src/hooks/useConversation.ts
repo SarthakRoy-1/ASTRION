@@ -56,7 +56,7 @@ import type {
 } from "@/lib/types";
 
 /** Remembers the demo identity between visits. A preference, not a credential. */
-const IDENTITY_STORAGE_KEY = "parcelpilot.identity";
+const IDENTITY_STORAGE_KEY = "astrion.identity";
 
 /**
  * The bucket conversations live in when there is no demo persona to key them

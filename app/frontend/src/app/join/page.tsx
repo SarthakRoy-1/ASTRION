@@ -100,7 +100,7 @@ function Join() {
     <div className={styles.panel}>
       <h1 className={styles.title}>Accept your invitation</h1>
       <p className={styles.lede}>
-        You have been invited to a ParcelPilot workspace. Accepting adds you to
+        You have been invited to an ASTRION workspace. Accepting adds you to
         it with the role the invitation was issued for.
       </p>
 

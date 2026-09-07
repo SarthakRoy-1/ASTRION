@@ -445,7 +445,7 @@ def evaluation_conn(_full_db_template, tmp_path_factory):
     """
     import shutil
 
-    path = tmp_path_factory.mktemp("evaluation") / "parcelpilot.db"
+    path = tmp_path_factory.mktemp("evaluation") / "astrion.db"
     shutil.copy(_full_db_template, path)
     conn = get_connection(path)
     initialize_schema(conn)

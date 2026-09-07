@@ -44,7 +44,7 @@ def ops_conn(_full_db_template, tmp_path_factory):
     """One ingested database for the suite. Detection is read-only."""
     import shutil
 
-    path = tmp_path_factory.mktemp("operations") / "parcelpilot.db"
+    path = tmp_path_factory.mktemp("operations") / "astrion.db"
     shutil.copy(_full_db_template, path)
     conn = get_connection(path)
     initialize_schema(conn)

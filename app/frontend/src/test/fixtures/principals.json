@@ -8,7 +8,7 @@
         "ACCT-004"
       ],
       "description": "Internal support staff. May prepare and confirm actions.",
-      "display_name": "ParcelPilot support agent",
+      "display_name": "ASTRION support agent",
       "role": "support_agent",
       "user_id": "support.agent"
     },
@@ -20,7 +20,7 @@
         "ACCT-004"
       ],
       "description": "Internal support manager. Same capabilities as a support agent today: may prepare and confirm actions. The role is carried through the system but grants nothing extra yet.",
-      "display_name": "ParcelPilot support manager",
+      "display_name": "ASTRION support manager",
       "role": "support_manager",
       "user_id": "support.manager"
     },
@@ -32,7 +32,7 @@
         "ACCT-004"
       ],
       "description": "Internal read-only viewer. May not change any state.",
-      "display_name": "ParcelPilot support (read-only)",
+      "display_name": "ASTRION support (read-only)",
       "role": "read_only",
       "user_id": "support.readonly"
     },

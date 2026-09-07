@@ -31,11 +31,11 @@ export function ConnectionNotice({ state }: { state: ConnectionState }) {
 function messageFor(state: ConnectionState): string | null {
   switch (state) {
     case "connecting":
-      return "Connecting to the ParcelPilot API…";
+      return "Connecting to the ASTRION API…";
     case "waking":
       // Naming the cause and the cost: a wait you understand is a wait you can
       // sit through, and the number keeps anyone from reloading at 30 seconds.
-      return "Waking the ParcelPilot API… This can take up to a minute after a period of inactivity.";
+      return "Waking the ASTRION API… This can take up to a minute after a period of inactivity.";
     default:
       return null;
   }

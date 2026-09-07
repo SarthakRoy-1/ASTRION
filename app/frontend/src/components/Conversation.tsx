@@ -57,7 +57,7 @@ export function Conversation({
       <section className={styles.empty} aria-label="Conversation">
         <h2 className={styles.emptyTitle}>Ask about an order, ticket or policy</h2>
         <p className={styles.emptyBody}>
-          Answers are drawn from ParcelPilot&apos;s policies, SOPs, product
+          Answers are drawn from ASTRION&apos;s policies, SOPs, product
           documentation and signed customer agreements, with every source shown.
           Cancellation fees and service credits are calculated in code, not
           written by the model, and nothing is changed without your explicit

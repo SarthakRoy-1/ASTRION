@@ -32,14 +32,14 @@ from app.backend.api.routes import router
 from app.backend.api.workspace_routes import workspace_router
 from app.backend.core.config import DEFAULT_ENV_FILE, Settings, load_settings
 
-API_TITLE = "ParcelPilot Support & Operations Agent API"
+API_TITLE = "ASTRION Support & Operations Agent API"
 #: Tracks the implementation phase, and is kept in step with the frontend's
 #: package version so a deployed pair can be identified from `/health` and the
 #: OpenAPI document alone.
 API_VERSION = "0.8.0"
 
 API_DESCRIPTION = """\
-Natural-language support and operations assistant over ParcelPilot's policy
+Natural-language support and operations assistant over ASTRION's policy
 pack and operational records.
 
 The agent reasons; deterministic code decides. Account scoping, source
@@ -69,7 +69,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     settings.validate_auth()
     settings.validate_cors()
 
-    logging.getLogger("parcelpilot").setLevel(logging.INFO)
+    logging.getLogger("astrion").setLevel(logging.INFO)
 
     app = FastAPI(
         title=API_TITLE,
@@ -124,7 +124,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             allow_origins=list(settings.cors_allow_origins),
             allow_credentials=True,
             allow_methods=["GET", "POST", "DELETE"],
-            allow_headers=["Content-Type", "X-ParcelPilot-User"],
+            allow_headers=["Content-Type", "X-Astrion-User"],
         )
 
     if settings.security_headers_enabled:

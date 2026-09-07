@@ -1,6 +1,6 @@
 """Treating every ingested file as hostile.
 
-Today ParcelPilot ingests a fixed, checksummed source pack from `data/source/`
+Today ASTRION ingests a fixed, checksummed source pack from `data/source/`
 through two offline scripts — there is no upload endpoint, and no route
 anywhere accepts a file. That is a genuinely strong position and this module
 does not pretend otherwise. What it does is make the *validation* real and

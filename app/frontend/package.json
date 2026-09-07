@@ -1,8 +1,8 @@
 {
-  "name": "parcelpilot-frontend",
+  "name": "astrion-frontend",
   "version": "0.8.0",
   "private": true,
-  "description": "Chat interface for the ParcelPilot support and operations agent.",
+  "description": "Chat interface for the ASTRION AI logistics support and operations agent.",
   "scripts": {
     "dev": "next dev",
     "build": "next build",

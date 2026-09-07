@@ -10,7 +10,7 @@ import { NextResponse, type NextRequest } from "next/server";
  * those. In production the browser blocked them, React never received its
  * payload, hydration failed with error #412, and the deployed application
  * rendered its server markup and then did nothing at all: no session, no API
- * call, a permanent "Connecting to the ParcelPilot API…". The policy was
+ * call, a permanent "Connecting to the ASTRION API…". The policy was
  * enforcing correctly and breaking the product.
  *
  * The fix is not to weaken it. `'unsafe-inline'` would readmit exactly the

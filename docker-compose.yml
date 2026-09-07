@@ -1,5 +1,5 @@
 # Local production simulation and the minimum deployment configuration for
-# hosting ParcelPilot as two containers plus one persistent volume:
+# hosting ASTRION as two containers plus one persistent volume:
 #
 #   Next.js frontend  -->  FastAPI backend  -->  SQLite (named volume)
 #                                            -->  OpenAI API (LLM_PROVIDER=real)
@@ -41,12 +41,12 @@ services:
       # disagree about where the database lives. Must stay under the
       # /app/data/processed mount below if changed — anywhere else is not on
       # the persistent volume and will re-ingest on every container restart.
-      DATABASE_URL: ${DATABASE_URL:-sqlite:///./data/processed/parcelpilot.db}
+      DATABASE_URL: ${DATABASE_URL:-sqlite:///./data/processed/astrion.db}
     volumes:
       # Named volume, not a bind mount: the database is a build artifact
       # regenerated from data/source/ on first boot (docker-entrypoint.sh),
       # not something that should ever be read from the host filesystem.
-      - parcelpilot-data:/app/data/processed
+      - astrion-data:/app/data/processed
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
       interval: 30s
@@ -72,4 +72,4 @@ services:
         condition: service_healthy
 
 volumes:
-  parcelpilot-data:
+  astrion-data:

@@ -34,7 +34,7 @@ def test_recorded_ui_fixtures_match_real_api_responses(full_db):
 
     Recorded against this test's private database copy, so the check costs one
     extra pass over the already-ingested data rather than a fresh ingestion —
-    and so it can never touch `data/processed/parcelpilot.db`.
+    and so it can never touch `data/processed/astrion.db`.
     """
     recorded = export_ui_fixtures.record(full_db)
     stale: list[str] = []

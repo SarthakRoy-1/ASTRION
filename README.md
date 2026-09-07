@@ -1,4 +1,4 @@
-# ParcelPilot Support & Operations AI Agent
+# ASTRION — AI Logistics Support
 
 > **Status: publicly demonstrable.**
 > Source pack verified (Phase 1); SQLite structured-data layer (Phase 2);
@@ -49,9 +49,9 @@ something you can walk into rather than read about:
 
 | Address | Role | What it demonstrates |
 | --- | --- | --- |
-| `support@demo.parcelpilot.example` | Support | Investigates and *proposes*. Cannot execute an action, cannot read the audit trail. |
-| `operations@demo.parcelpilot.example` | Operations | Executes confirmed actions and reads the audit trail. Cannot approve a credit above the SOP threshold. |
-| `owner@demo.parcelpilot.example` | Owner | Everything, including manager approval and workspace administration. |
+| `support@demo.astrion.example` | Support | Investigates and *proposes*. Cannot execute an action, cannot read the audit trail. |
+| `operations@demo.astrion.example` | Operations | Executes confirmed actions and reads the audit trail. Cannot approve a credit above the SOP threshold. |
+| `owner@demo.astrion.example` | Owner | Everything, including manager approval and workspace administration. |
 
 The password is the same for all three and is set per deployment; the sign-in
 screen shows the one this deployment published. It is a deployment secret, not
@@ -62,8 +62,7 @@ a repository one — nothing in this repository contains it.
 - **The workspace is shared.** Everyone who visits uses the same one, so
   actions you confirm and audit entries you create are visible to whoever
   comes next — and some of what you find was left by whoever came before.
-- **The records are synthetic.** They are the supplied ParcelPilot assessment
-  pack: fictional accounts, orders, tickets, agreements and SOPs. There is no
+- **The records are synthetic.** They are the supplied assessment pack (originally created for the ParcelPilot logistics AI assessment): fictional accounts, orders, tickets, agreements and SOPs. There is no
   real customer data anywhere in this system.
 - **The actions are real inside it.** Confirming a service credit writes a
   service credit, records an audit entry, and cannot be undone from the UI. A
@@ -89,20 +88,20 @@ returned in the registration response, and the UI hands it to you.
 
 ## Purpose
 
-An internal assistant for authorised ParcelPilot support and operations staff.
+An internal assistant for authorised ASTRION support and operations staff.
 Given a natural-language question, it retrieves the relevant policy and
 agreement text, looks up the relevant account/order/ticket records, applies
-ParcelPilot's rules deterministically, and answers with its sources shown — or
+ASTRION's rules deterministically, and answers with its sources shown — or
 escalates when it cannot answer safely.
 
 It is explicitly **not** a "chat with your PDFs" wrapper. See
 [Architecture principle](#architecture-principle) below.
 
-**Documentation map.** This README is the entry point: what ParcelPilot is,
+**Documentation map.** This README is the entry point: what ASTRION is,
 how to run it, and how to read it. The full technical design — every module
 boundary, the retrieval and authority model, the agent loop, the deployment
 shape — lives in [docs/architecture.md](docs/architecture.md). The full
-product scope — who it's for, what it deliberately refuses to decide, the
+product scope — who it's for, what ASTRION deliberately refuses to decide, the
 roles, and the prioritised future-work list this README's
 [roadmap](#think-beyond-the-immediate-requirements) is drawn from — lives in
 [docs/product.md](docs/product.md). The expanded, standalone version of that
@@ -382,7 +381,7 @@ python scripts/verify_source_pack.py
 python scripts/inspect_sources.py
 
 # 5. Build the structured-data layer: creates/refreshes
-#    data/processed/parcelpilot.db from the workbook. Safe to re-run --
+#    data/processed/astrion.db from the workbook. Safe to re-run --
 #    each run wipes and reloads the data tables from the current workbook.
 python scripts/ingest_dataset.py
 
@@ -413,7 +412,7 @@ instead of `.venv\Scripts\Activate.ps1`) work the same way.
 > file output (JSON reports, the SQLite database) as UTF-8 regardless of this
 > setting.
 
-The generated database lives at `data/processed/parcelpilot.db`. It is
+The generated database lives at `data/processed/astrion.db`. It is
 git-ignored and fully regenerable — delete it and re-run steps 5 and 6 at any
 time; nothing outside `data/processed/` depends on its prior contents.
 
@@ -490,9 +489,9 @@ active role and the accounts that identity may reach.
 
 | Context | Role | Sees | Can confirm actions |
 | --- | --- | --- | --- |
-| ParcelPilot support agent | `support_agent` | all accounts | yes |
-| ParcelPilot support manager | `support_manager` | all accounts | yes |
-| ParcelPilot support (read-only) | `read_only` | all accounts | no |
+| ASTRION support agent | `support_agent` | all accounts | yes |
+| ASTRION support manager | `support_manager` | all accounts | yes |
+| ASTRION support (read-only) | `read_only` | all accounts | no |
 | Northstar Logistics (customer) | `customer` | ACCT-001 only | no |
 | LumenWorks (customer) | `customer` | ACCT-002 only | no |
 
@@ -578,7 +577,7 @@ This matters more once the API is reachable from outside your machine than it
 does in local development, so it is repeated here rather than left only in
 [Identity](#identity).
 
-ParcelPilot has two identity modes, and the default is the safe one.
+ASTRION has two identity modes, and the default is the safe one.
 
 **`AUTH_MODE=session` (the default).** Real authentication: accounts with
 scrypt-hashed passwords, email verification, opaque server-side sessions in an
@@ -592,7 +591,7 @@ suites are written against.
 assessment behaviour, kept so the persona contexts stay reachable locally
 without a login. The hosted deployment does **not** use it. A request identifies itself by putting a plain string
 — `support.agent`, `customer.northstar` — in `user_id` or the
-`X-ParcelPilot-User` header, and the server looks it up in a fixed in-code
+`X-Astrion-User` header, and the server looks it up in a fixed in-code
 directory. **There is no credential check: anyone who can reach the API can
 call it as any persona.** That is acceptable for a public demo over synthetic
 data and unacceptable for anything else, so `Settings.validate_auth` refuses to
@@ -741,7 +740,7 @@ workspace, not live monitoring.
 
 ## Workspaces and access control
 
-ParcelPilot is multi-tenant. A person signs in as a **user**, and reaches data
+ASTRION is multi-tenant. A person signs in as a **user**, and reaches data
 through a **membership** of a **workspace**:
 
 ```text
@@ -828,7 +827,7 @@ Six endpoints. Full schemas at `/docs` once the server is running.
 ### Identity
 
 Every request asserts an identity — `user_id` in the body, or the
-`X-ParcelPilot-User` header. The **server** resolves it to a role and an
+`X-Astrion-User` header. The **server** resolves it to a role and an
 account scope; the request never states its own permissions, and nothing in
 the message can widen them.
 
@@ -862,7 +861,7 @@ exist. See [docs/product.md](docs/product.md#roles-and-what-each-may-do).
 ```bash
 curl -X POST http://127.0.0.1:8000/api/chat \
   -H "Content-Type: application/json" \
-  -H "X-ParcelPilot-User: support.agent" \
+  -H "X-Astrion-User: support.agent" \
   -d '{"message": "Can Northstar cancel ORD-1001 without a cancellation fee?"}'
 ```
 
@@ -1052,7 +1051,7 @@ deferred decisions already recorded in
 [docs/architecture.md §13](docs/architecture.md#13-deferred-decisions) and
 [docs/product.md — Future work](docs/product.md#future-work), ordered by what
 actually blocks the next thing from being safe or useful to build, not by
-novelty. Each item names what existing ParcelPilot foundation it builds on,
+novelty. Each item names what existing ASTRION foundation it builds on,
 because none of this is a rewrite — the module boundaries Phase 4–5 drew were
 chosen so that this list could be additive.
 

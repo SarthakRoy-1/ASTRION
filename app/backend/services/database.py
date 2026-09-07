@@ -27,7 +27,7 @@ import sqlite3
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-DEFAULT_DB_PATH = REPO_ROOT / "data" / "processed" / "parcelpilot.db"
+DEFAULT_DB_PATH = REPO_ROOT / "data" / "processed" / "astrion.db"
 
 # Executed in order. Children (FK-bearing tables) after the parents they
 # reference; junction/audit tables last.
@@ -320,6 +320,12 @@ ADDED_COLUMNS: tuple[tuple[str, str, str], ...] = (
     # hold rows and SQLite cannot add a NOT NULL column without a default.
     ("users", "updated_at_utc", "TEXT"),
     ("organizations", "updated_at_utc", "TEXT"),
+    # Email verification resend rate-limiting (email-verification phase).
+    # All nullable so the migration is safe on databases that predate this
+    # column. NULL means "never sent" / "no cooldown".
+    ("users", "verification_sent_at_utc", "TEXT"),
+    ("users", "verification_resend_count", "INTEGER DEFAULT 0"),
+    ("users", "verification_cooldown_until_utc", "TEXT"),
 )
 
 

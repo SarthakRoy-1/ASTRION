@@ -159,7 +159,7 @@ def documents_db(tmp_path_factory) -> Path:
 
     Session-scoped because ingestion is deterministic and read-only from the
     tests' point of view. It writes to a pytest temp directory, never to
-    data/processed/parcelpilot.db — the real assessment database is never
+    data/processed/astrion.db — the real database is never
     touched by the suite.
     """
     from scripts import ingest_documents
@@ -196,7 +196,7 @@ def _full_db_template(tmp_path_factory) -> Path:
 
     Built once per session and copied per test, so tests that execute actions
     cannot see each other's writes. Never touches
-    data/processed/parcelpilot.db.
+    data/processed/astrion.db.
     """
     from scripts import ingest_dataset, ingest_documents
 
@@ -211,7 +211,7 @@ def full_db(_full_db_template, tmp_path) -> Path:
     """A private copy of the fully ingested database for one test."""
     import shutil
 
-    db_path = tmp_path / "parcelpilot.db"
+    db_path = tmp_path / "astrion.db"
     shutil.copy(_full_db_template, db_path)
     return db_path
 

@@ -468,7 +468,7 @@ def logout(
 
 
 def begin_mfa_enrolment(
-    conn: sqlite3.Connection, *, user_id: str, issuer: str = "ParcelPilot",
+    conn: sqlite3.Connection, *, user_id: str, issuer: str = "ASTRION",
     request_id: str | None = None,
 ) -> tuple[str, str]:
     """Generate a secret and its provisioning URI. Does not enable MFA.

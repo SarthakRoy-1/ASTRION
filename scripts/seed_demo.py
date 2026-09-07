@@ -7,14 +7,14 @@ nobody, and an unverified account cannot sign in. This script closes that gap
 the only way that does not weaken anything — by creating ordinary accounts that
 sign in through the ordinary endpoint.
 
-    python scripts/seed_demo.py --db data/processed/parcelpilot.db
+    python scripts/seed_demo.py --db data/processed/astrion.db
 
 with the account password supplied through the DEMO_SEED_PASSWORD
 environment variable (or --password).
 
 What it creates, once:
 
-- one workspace, slug ``parcelpilot-demo``, holding the ingested dataset
+- one workspace, slug ``astrion-demo``, holding the ingested dataset
   accounts that no other workspace has claimed;
 - three members at three different roles, so the authorization boundaries are
   something a visitor can *walk into* rather than read about.
@@ -23,7 +23,7 @@ What it creates, once:
 brand-new database for an operator, and it creates a workspace every time it
 runs — `_unique_slug` suffixes the second one `-2` rather than refusing. That
 is right for its job and wrong for this one: a container that restarts must
-converge on the same demo tenant, not accumulate `parcelpilot-demo-7`. The two
+converge on the same demo tenant, not accumulate `astrion-demo-7`. The two
 scripts share every function that touches the database; only the idempotency
 contract differs.
 
@@ -81,8 +81,8 @@ from app.backend.services.database import (  # noqa: E402
 #: here rather than derived at runtime — and `slugify(DEMO_WORKSPACE_NAME)`
 #: must equal it, which a test asserts so a renamed workspace cannot silently
 #: start creating a second tenant on every boot.
-DEMO_WORKSPACE_SLUG = "parcelpilot-demo"
-DEMO_WORKSPACE_NAME = "ParcelPilot Demo"
+DEMO_WORKSPACE_SLUG = "astrion-demo"
+DEMO_WORKSPACE_NAME = "ASTRION Demo"
 
 #: The demo members, and the roles whose boundaries they exist to demonstrate.
 #:
@@ -94,9 +94,9 @@ DEMO_WORKSPACE_NAME = "ParcelPilot Demo"
 #: The owner is first because the workspace's creator becomes its owner, and
 #: `create_workspace` refuses to make a workspace without one.
 DEMO_USERS: tuple[tuple[str, str, OrgRole], ...] = (
-    ("owner@demo.parcelpilot.example", "Demo owner", OrgRole.OWNER),
-    ("operations@demo.parcelpilot.example", "Demo operations", OrgRole.OPERATIONS),
-    ("support@demo.parcelpilot.example", "Demo support", OrgRole.SUPPORT),
+    ("owner@demo.astrion.example", "Demo owner", OrgRole.OWNER),
+    ("operations@demo.astrion.example", "Demo operations", OrgRole.OPERATIONS),
+    ("support@demo.astrion.example", "Demo support", OrgRole.SUPPORT),
 )
 
 

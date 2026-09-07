@@ -7,7 +7,7 @@ or invented.
 
 ## Who this is for
 
-An authorised **internal ParcelPilot support or operations employee**. The
+An authorised **internal ASTRION support or operations employee**. The
 system also ships two external customer contexts (scoped to one account each),
 but the product is designed around the internal user: competent at their job,
 under time pressure, and accountable for what they tell a customer.

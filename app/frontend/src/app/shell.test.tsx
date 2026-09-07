@@ -117,7 +117,7 @@ describe("the assistant under session authentication", () => {
     // no request, no error, nothing.
     const { user, stub } = await renderSupport();
 
-    const input = screen.getByLabelText(/ask the parcelpilot support agent/i);
+    const input = screen.getByLabelText(/ask the astrion support agent/i);
     await user.type(input, "Can ORD-1001 be cancelled?");
     await user.click(screen.getByRole("button", { name: /^send$/i }));
 
@@ -136,7 +136,7 @@ describe("the assistant under session authentication", () => {
       chat: [{ body: fixtures.pendingAction }],
     });
 
-    const input = screen.getByLabelText(/ask the parcelpilot support agent/i);
+    const input = screen.getByLabelText(/ask the astrion support agent/i);
     await user.type(input, "Investigate TKT-501 and escalate it.");
     await user.click(screen.getByRole("button", { name: /^send$/i }));
 
@@ -153,7 +153,7 @@ describe("the assistant under session authentication", () => {
       session: { permissions: ["run_agent"] },
     });
 
-    const input = screen.getByLabelText(/ask the parcelpilot support agent/i);
+    const input = screen.getByLabelText(/ask the astrion support agent/i);
     await user.type(input, "Investigate TKT-501 and escalate it.");
     await user.click(screen.getByRole("button", { name: /^send$/i }));
 
@@ -184,7 +184,7 @@ describe("a backend that is still waking", () => {
       stubApi({ session: {}, sleeping: 2 });
       renderApp(<SupportPage />);
 
-      await screen.findByText(/waking the parcelpilot api/i, undefined, {
+      await screen.findByText(/waking the astrion api/i, undefined, {
         timeout: 4000,
       });
       expect(screen.queryByRole("button", { name: /^sign in$/i })).toBeNull();
@@ -195,7 +195,7 @@ describe("a backend that is still waking", () => {
       });
       await waitFor(() =>
         expect(
-          screen.queryByText(/waking the parcelpilot api/i),
+          screen.queryByText(/waking the astrion api/i),
         ).not.toBeInTheDocument(),
       );
     },

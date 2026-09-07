@@ -76,7 +76,7 @@ MOCK_PRINCIPALS: dict[str, Principal] = {
     for p in (
         Principal(
             user_id="support.agent",
-            display_name="ParcelPilot support agent",
+            display_name="ASTRION support agent",
             role=Role.SUPPORT_AGENT,
             scope_kind=ScopeKind.ALL_ACCOUNTS,
             description="Internal support staff. May prepare and confirm actions.",
@@ -88,7 +88,7 @@ MOCK_PRINCIPALS: dict[str, Principal] = {
         # that no code checks — see the note above `Role.SUPPORT_MANAGER`.
         Principal(
             user_id="support.manager",
-            display_name="ParcelPilot support manager",
+            display_name="ASTRION support manager",
             role=Role.SUPPORT_MANAGER,
             scope_kind=ScopeKind.ALL_ACCOUNTS,
             description=(
@@ -99,7 +99,7 @@ MOCK_PRINCIPALS: dict[str, Principal] = {
         ),
         Principal(
             user_id="support.readonly",
-            display_name="ParcelPilot support (read-only)",
+            display_name="ASTRION support (read-only)",
             role=Role.READ_ONLY,
             scope_kind=ScopeKind.ALL_ACCOUNTS,
             description="Internal read-only viewer. May not change any state.",
@@ -135,7 +135,7 @@ def get_principal(user_id: str | None) -> Principal:
     if not user_id or not user_id.strip():
         raise AuthenticationError(
             "No user identity supplied. Provide `user_id` in the request body or "
-            "the X-ParcelPilot-User header.",
+            "the X-Astrion-User header.",
             details={"known_identities": sorted(MOCK_PRINCIPALS)},
         )
     principal = MOCK_PRINCIPALS.get(user_id.strip())

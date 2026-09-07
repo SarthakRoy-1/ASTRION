@@ -37,7 +37,7 @@ from typing import Any
 
 from app.backend.auth.tokens import new_id
 
-logger = logging.getLogger("parcelpilot.audit")
+logger = logging.getLogger("astrion.audit")
 
 #: The chain's anchor. The first entry commits to this constant, so an
 #: attacker cannot truncate the log to nothing and claim it was always empty:

@@ -257,7 +257,7 @@ def _authenticate_demo(
     without a login, and reachable only when `AUTH_MODE=demo_header` — which
     `Settings.validate_auth` refuses to accept in production.
     """
-    header = request.headers.get("x-parcelpilot-user")
+    header = request.headers.get("x-astrion-user")
     body_user = getattr(request.state, "body_user_id", None)
     principal = get_principal(header or body_user)
 

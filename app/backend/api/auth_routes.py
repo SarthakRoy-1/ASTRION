@@ -15,14 +15,15 @@ a style:
   password-reset-request answer identically whether or not the address exists.
   The route has nothing to branch on, because the service layer already
   refused to tell it.
-- **Delivery is out of scope, and says so.** This deployment has no mail
-  sender, in any environment. Verification and reset links are returned in the
-  response *only* when the deployment is not production, gated by
-  `_may_disclose_link`, because a reset link in an API response is a reset link
-  anyone who can call the endpoint can have. In production they are therefore
-  withheld and reach nobody: issuing them to a real user needs a mail transport
-  this application does not have, and an operator has to bridge that gap out of
-  band. The frontend says so rather than implying an email was sent.
+- **Email is best-effort; registration is not.** A delivery failure does not
+  roll back account creation: the user exists and can request a resend. In
+  production, if delivery fails and `_may_disclose_link` is False, the token is
+  not included in the response and the frontend says delivery is pending. In
+  non-production (developer laptop), the token is included so the flow is
+  testable without a mail provider.
+- **Resend rate-limiting is server-side only.** The frontend may request a
+  resend and show a countdown, but the server enforces the limits: 30-second
+  minimum interval, 3 sends maximum, 24-hour cooldown after the third.
 """
 
 from __future__ import annotations
@@ -39,13 +40,14 @@ from app.backend.api.ratelimit import client_address
 from app.backend.auth import repository as repo
 from app.backend.auth import service as auth_service
 from app.backend.auth.permissions import Permission
-from app.backend.core.config import AuthMode, Settings
+from app.backend.core.config import AuthMode, Settings, email_provider_for
 from app.backend.core.errors import (
     AuthenticationError,
     AuthorizationError,
     InvalidRequestError,
     NotFoundError,
 )
+from app.backend.email.provider import EmailDeliveryError
 from app.backend.services.audit import (
     AuditEvent,
     list_events,
@@ -55,7 +57,7 @@ from app.backend.services.audit import (
 
 #: Reserved for this module's own diagnostics. Deliberately never used to
 #: record a verification or reset token — see `_may_disclose_link`.
-logger = logging.getLogger("parcelpilot.auth")
+logger = logging.getLogger("astrion.auth")
 
 auth_router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -190,7 +192,51 @@ class PasswordChangeRequest(BaseModel):
     new_password: str = Field(min_length=1, max_length=MAX_PASSWORD)
 
 
+class ResendVerificationRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    email: str = Field(min_length=3, max_length=MAX_EMAIL)
+
+
 # --- registration and verification ------------------------------------------
+
+
+def _build_verification_url(settings: Settings, token: str) -> str:
+    """Construct the absolute URL a user clicks to verify their address."""
+    base = settings.email_verification_url.rstrip("/")
+    from urllib.parse import urlencode
+    return f"{base}/verify-email?{urlencode({'token': token})}"
+
+
+def _attempt_send_verification(
+    settings: Settings,
+    conn,
+    user_id: str,
+    email: str,
+    display_name: str,
+    token: str,
+) -> bool:
+    """Send a verification email. Returns True if delivered, False if not.
+
+    Never raises: delivery failure is absorbed here so registration/resend
+    callers can respond uniformly. The token is NOT disclosed in logs.
+
+    Rate-limiting state is recorded on every call, regardless of delivery
+    success: the limit applies to how often we'll issue a new token and attempt
+    a send, not to how often our mail provider succeeds.
+    """
+    repo.record_verification_sent(conn, user_id)
+    provider = email_provider_for(settings)
+    url = _build_verification_url(settings, token)
+    try:
+        provider.send_verification_email(
+            to_address=email,
+            display_name=display_name,
+            verification_url=url,
+        )
+        return True
+    except EmailDeliveryError:
+        return False
 
 
 @auth_router.post("/register")
@@ -199,17 +245,22 @@ def register(
     payload: RegisterRequest,
     conn: sqlite3.Connection = DbDep,
 ) -> dict:
-    """Create an account and issue an email-verification link.
+    """Create an account and send a verification email.
 
     The response is identical whether or not the address was already
     registered, so this endpoint cannot be used to test which addresses have
     accounts.
+
+    Email delivery is attempted but does not gate account creation: if Resend
+    is not configured (or fails), registration still succeeds and the frontend
+    receives `email_sent: false` along with the token — but only in non-
+    production, where returning the token is acceptable for developer testing.
     """
     settings = _settings(request)
     _reject_in_demo_mode(settings)
 
     try:
-        _user_id, token = auth_service.register_user(
+        user_id, token = auth_service.register_user(
             conn,
             email=payload.email,
             password=payload.password,
@@ -222,18 +273,27 @@ def register(
         # refused simply tries another one that fails the same way.
         raise InvalidRequestError(str(exc)) from exc
 
+    email_sent = False
+    if token:
+        email_sent = _attempt_send_verification(
+            settings, conn, user_id, payload.email, payload.display_name, token
+        )
+
     body: dict = {
         "status": "registration_received",
+        "email_sent": email_sent,
         "message": (
-            "If that address is available, an account was created and a "
+            "Your account has been created. Check your inbox for a verification link."
+            if email_sent
+            else "If that address is available, an account was created and a "
             "verification link issued."
         ),
     }
-    if token and _may_disclose_link(settings):
+    if token and not email_sent and _may_disclose_link(settings):
         body["verification_token"] = token
         body["note"] = (
-            "This deployment has no mail transport, so the link is returned "
-            "here. It is withheld when APP_ENV is production."
+            "Email delivery is not configured, so the link is returned here. "
+            "It is withheld when APP_ENV is production."
         )
     return body
 
@@ -246,6 +306,97 @@ def verify_email(
     if not auth_service.verify_email(conn, token=payload.token):
         raise InvalidRequestError("That verification link is invalid or has expired.")
     return {"status": "verified"}
+
+
+@auth_router.post("/resend-verification")
+def resend_verification(
+    request: Request,
+    payload: ResendVerificationRequest,
+    conn: sqlite3.Connection = DbDep,
+) -> dict:
+    """Re-send a verification email to an unverified address.
+
+    Rate-limited server-side: 30-second minimum interval between sends, at
+    most 3 total sends per address, then a 24-hour cooldown. The response is
+    identical whether or not the address is registered, so this endpoint cannot
+    be used to discover which addresses have accounts.
+
+    Returns current resend state so the frontend can update its countdown
+    without a separate status call.
+    """
+    settings = _settings(request)
+    _reject_in_demo_mode(settings)
+
+    normalized = repo.normalize_email(payload.email)
+    user = repo.get_user_by_email(conn, normalized)
+
+    # Always respond with the same shape. If the user does not exist or is
+    # already verified, the response is indistinguishable from a rate-limit.
+    if user is None or user.email_verified:
+        return {
+            "status": "resend_requested",
+            "email_sent": False,
+            "message": (
+                "If that address is registered and unverified, a new link will "
+                "be sent shortly."
+            ),
+            "resend_state": {
+                "can_resend": False,
+                "seconds_until_allowed": 0,
+                "sends_used": 0,
+                "in_cooldown": False,
+            },
+        }
+
+    state = repo.get_resend_state(conn, user.user_id)
+
+    if not state.can_send:
+        if state.in_cooldown:
+            raise InvalidRequestError(
+                "Too many verification emails have been sent to this address. "
+                f"Please wait before requesting another."
+            )
+        raise InvalidRequestError(
+            f"Please wait {state.seconds_until_allowed} seconds before "
+            "requesting another verification email."
+        )
+
+    # Mint a fresh token (the old one is not invalidated — it may still work
+    # if the user finds the first email, which is fine).
+    token = repo.issue_auth_token(
+        conn,
+        user_id=user.user_id,
+        purpose=auth_service.VERIFICATION_PURPOSE,
+        ttl_minutes=repo.EMAIL_VERIFICATION_TTL_HOURS * 60,
+    )
+
+    email_sent = _attempt_send_verification(
+        settings, conn, user.user_id, normalized, user.display_name, token
+    )
+
+    body: dict = {
+        "status": "resend_requested",
+        "email_sent": email_sent,
+        "message": (
+            "A new verification link has been sent to your inbox."
+            if email_sent
+            else "If that address is registered and unverified, a new link will "
+            "be sent shortly."
+        ),
+        "resend_state": {
+            "can_resend": False,
+            "seconds_until_allowed": repo.RESEND_MIN_INTERVAL_SECONDS,
+            "sends_used": state.sends_used + (1 if email_sent else 0),
+            "in_cooldown": False,
+        },
+    }
+    if token and not email_sent and _may_disclose_link(settings):
+        body["verification_token"] = token
+        body["note"] = (
+            "Email delivery is not configured, so the link is returned here. "
+            "It is withheld when APP_ENV is production."
+        )
+    return body
 
 
 # --- login ------------------------------------------------------------------

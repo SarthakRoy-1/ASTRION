@@ -80,7 +80,7 @@ class ChatRequest(BaseModel):
 
     message: str = Field(min_length=1, max_length=MAX_MESSAGE_CHARS)
 
-    #: Mock identity. May also be supplied as the `X-ParcelPilot-User` header,
+    #: Mock identity. May also be supplied as the `X-Astrion-User` header,
     #: which takes precedence when both are present.
     user_id: str | None = None
 

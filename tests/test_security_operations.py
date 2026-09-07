@@ -125,7 +125,7 @@ def test_operations_is_refused_in_demo_mode(full_db):
     )
     with TestClient(create_app(settings)) as client:
         response = client.get(
-            "/api/operations/signals", headers={"X-ParcelPilot-User": "support.agent"}
+            "/api/operations/signals", headers={"X-Astrion-User": "support.agent"}
         )
         assert response.status_code == 403
 

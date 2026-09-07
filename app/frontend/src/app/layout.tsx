@@ -6,9 +6,9 @@ import { AppProviders } from "./providers";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "ParcelPilot Support Agent",
+  title: "ASTRION — AI Logistics Support",
   description:
-    "Evidence-backed support and operations assistant for ParcelPilot staff and customers.",
+    "ASTRION is an AI-powered logistics support and operations platform. Ask. Track. Solve. Ship.",
 };
 
 export const viewport: Viewport = {

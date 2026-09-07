@@ -1,7 +1,7 @@
-"""Load ParcelPilot_Assessment_Data.xlsx into the SQLite structured-data layer.
+"""Load the assessment workbook into the SQLite structured-data layer.
 
 Reads the workbook, validates its shape (sheets, columns, timestamp formats,
-account references), and loads it into data/processed/parcelpilot.db. This
+account references), and loads it into data/processed/astrion.db. This
 script only reads data/source/ — it never writes to it.
 
 Validation happens entirely in memory before any database write: the whole

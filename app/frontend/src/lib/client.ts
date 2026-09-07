@@ -34,7 +34,7 @@ import type {
 export const DEFAULT_API_BASE_URL = "http://127.0.0.1:8000";
 
 /** Header the backend reads the caller's asserted identity from. */
-const IDENTITY_HEADER = "X-ParcelPilot-User";
+const IDENTITY_HEADER = "X-Astrion-User";
 
 export function apiBaseUrl(): string {
   const configured = process.env.NEXT_PUBLIC_API_BASE_URL?.trim();
@@ -96,7 +96,7 @@ export class ApiError extends Error {
 }
 
 const NETWORK_ERROR_MESSAGE =
-  "Could not reach the ParcelPilot API. Check that the backend is running.";
+  "Could not reach the ASTRION API. Check that the backend is running.";
 
 /* -- cold starts ------------------------------------------------------------
  *

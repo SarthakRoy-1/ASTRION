@@ -36,9 +36,9 @@ from scripts.seed_demo import (
 #: here uses a fixture password.
 DEMO_PASSWORD = "demo-password-for-tests"
 
-SUPPORT = "support@demo.parcelpilot.example"
-OPERATIONS = "operations@demo.parcelpilot.example"
-OWNER = "owner@demo.parcelpilot.example"
+SUPPORT = "support@demo.astrion.example"
+OPERATIONS = "operations@demo.astrion.example"
+OWNER = "owner@demo.astrion.example"
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
 
@@ -110,7 +110,7 @@ def test_the_workspace_name_still_produces_the_slug_the_seed_looks_for(db):
 
     `create_workspace` suffixes a colliding slug rather than refusing. If the
     name stopped slugifying to the constant, the first boot would make
-    `parcelpilot-demo` and every later one would look for a slug it never
+    `astrion-demo` and every later one would look for a slug it never
     created — a new tenant per restart.
     """
     assert slugify(DEMO_WORKSPACE_NAME) == DEMO_WORKSPACE_SLUG
@@ -352,7 +352,7 @@ def test_a_demo_user_signs_in_through_the_ordinary_endpoint(settings, seeded):
             "/api/auth/login", json={"email": SUPPORT, "password": DEMO_PASSWORD}
         )
         assert response.status_code == 200
-        assert client.cookies.get("parcelpilot_session")
+        assert client.cookies.get("astrion_session")
         assert client.get("/api/auth/me").status_code == 200
 
 
@@ -385,10 +385,10 @@ def test_there_is_no_endpoint_that_mints_a_session_for_a_named_user(settings, se
 
 
 def test_the_identity_header_cannot_impersonate_under_session_auth(settings, seeded):
-    """`X-ParcelPilot-User` is inert outside demo_header mode."""
+    """`X-Astrion-User` is inert outside demo_header mode."""
     with client_for(settings, SUPPORT) as client:
         response = client.get(
-            "/api/auth/me", headers={"X-ParcelPilot-User": "support.manager"}
+            "/api/auth/me", headers={"X-Astrion-User": "support.manager"}
         )
         assert response.status_code == 200
         assert response.json()["role"] == OrgRole.SUPPORT.value

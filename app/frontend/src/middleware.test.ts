@@ -11,7 +11,7 @@ import { middleware } from "./middleware";
  * bootstrap scripts, which carry the React payload. In production the browser
  * blocked them, hydration failed, and the deployed application rendered its
  * server markup and then did nothing: no session request, no API call, a
- * permanent "Connecting to the ParcelPilot API…".
+ * permanent "Connecting to the ASTRION API…".
  *
  * These tests hold the fix to two promises: the policy is not weakened, and
  * the nonce actually varies. A policy that quietly grew `'unsafe-inline'`, or
@@ -19,7 +19,7 @@ import { middleware } from "./middleware";
  * thing the directive is for.
  */
 
-function requestFor(url = "https://parcelpilot.example/") {
+function requestFor(url = "https://astrion.example/") {
   return new NextRequest(new Request(url));
 }
 
@@ -114,9 +114,9 @@ describe("the content security policy", () => {
   it("pins connect-src to the configured API origin", () => {
     // Exfiltration to a third party fails at the browser even if something did
     // manage to run.
-    vi.stubEnv("NEXT_PUBLIC_API_BASE_URL", "https://api.parcelpilot.example/v1");
+    vi.stubEnv("NEXT_PUBLIC_API_BASE_URL", "https://api.astrion.example/v1");
     expect(directive(cspOf(), "connect-src")).toBe(
-      "connect-src 'self' https://api.parcelpilot.example",
+      "connect-src 'self' https://api.astrion.example",
     );
   });
 

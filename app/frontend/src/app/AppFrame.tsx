@@ -43,6 +43,7 @@ interface Registration {
   email: string;
   message: string;
   token?: string;
+  emailSent: boolean;
 }
 
 export function AppFrame({ children }: { children: React.ReactNode }) {
@@ -81,6 +82,7 @@ export function AppFrame({ children }: { children: React.ReactNode }) {
           <VerifyEmailPrompt
             email={registration.email}
             message={registration.message}
+            emailSent={registration.emailSent}
             verificationToken={registration.token}
             onDone={() => setRegistration(null)}
           />
@@ -96,8 +98,8 @@ export function AppFrame({ children }: { children: React.ReactNode }) {
           error={session.error}
           onSignIn={session.signIn}
           onSubmitMfaCode={session.submitMfaCode}
-          onRegistered={(message, token, email) =>
-            setRegistration({ message, token, email: email ?? "" })
+          onRegistered={(message, token, email, emailSent) =>
+            setRegistration({ message, token, email: email ?? "", emailSent: emailSent ?? false })
           }
           onDismissError={session.clearError}
         />

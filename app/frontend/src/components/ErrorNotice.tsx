@@ -43,9 +43,9 @@ function headingFor(error: ApiError): string {
     case "provider_error":
       return "Unable to complete the investigation";
     case "data_unavailable":
-      return "The ParcelPilot dataset is not available";
+      return "The ASTRION dataset is not available";
     case "network_error":
-      return "Cannot reach the ParcelPilot API";
+      return "Cannot reach the ASTRION API";
     case "validation_error":
     case "invalid_request":
       return "That request could not be sent";

@@ -1,6 +1,6 @@
 # Security
 
-How ParcelPilot is defended, what it is defended against, and — the part that
+How ASTRION is defended, what it is defended against, and — the part that
 matters most — what it is **not** defended against.
 
 This document makes no claim that the system is secure in an absolute sense.
@@ -135,7 +135,7 @@ ordinary accounts, not by relaxing anything.
 | Decision | Why |
 | --- | --- |
 | Seeded accounts sign in at `POST /api/auth/login` | No second authentication path exists. There is no endpoint that mints a session for a named user, and a test asserts the obvious spellings of one are unroutable. |
-| One workspace, slug `parcelpilot-demo` | `uq_organization_accounts_account` gives an account exactly one workspace, so per-visitor tenants over one dataset are impossible. One shared tenant is the honest shape, and it is labelled as shared in the UI. |
+| One workspace, slug `astrion-demo` | `uq_organization_accounts_account` gives an account exactly one workspace, so per-visitor tenants over one dataset are impossible. One shared tenant is the honest shape, and it is labelled as shared in the UI. |
 | Three roles: support, operations, owner | The authorization boundaries become something a visitor walks into. There is **no demo-only permission** — roles resolve through `ROLE_PERMISSIONS` like any other. |
 | Seeded accounts are marked verified by the seed | Same justification as `bootstrap_workspace.py`: the operator running it on the server is the out-of-band proof. `REQUIRE_VERIFIED_EMAIL` is untouched and every other account still has to verify. |
 | `DEMO_SEED_ENABLED` is read by `docker-entrypoint.sh`, not by the application | The running server has no concept of a demo, so there is nowhere for a demo bypass to grow. The flag controls one thing: whether the seed script runs at boot. It is never implied by `APP_ENV`. |
@@ -419,7 +419,7 @@ caller's scope before it reaches the model.
 
 ## 7. File and document security
 
-ParcelPilot has **no upload endpoint**. Ingestion is two offline scripts over a
+ASTRION has **no upload endpoint**. Ingestion is two offline scripts over a
 fixed, checksummed source pack. `app/backend/ingestion/safety.py` implements
 the validation anyway, so the day an upload route exists it is a call to
 `validate_upload` rather than a pipeline written under time pressure.
@@ -516,7 +516,7 @@ Next.js's own inline bootstrap scripts, which carry the React payload into the
 document. In production the browser blocked them, hydration failed with React
 error #412, and the deployed application rendered its server-side markup and
 then did nothing at all: no session request, no API call, a permanent
-"Connecting to the ParcelPilot API…". It had been broken since the header
+"Connecting to the ASTRION API…". It had been broken since the header
 shipped.
 
 The fix was not to add `'unsafe-inline'`, which would readmit precisely the
@@ -709,10 +709,19 @@ marketing.
    across two adjacent windows. Sliding windows avoid this at the cost of
    storing every timestamp.
 
-4. **No email transport.** Verification, reset **and invitation** links are
-   returned in the API response when `APP_ENV` is not production, and withheld
-   when it is. Until a mail sender exists, those three flows are not operable
-   end to end in production: an operator must convey the link out of band.
+4. **Email verification uses Resend.** Set `RESEND_API_KEY`, `EMAIL_FROM`,
+   and `EMAIL_VERIFICATION_URL` on the backend host to enable delivery.
+   Registration sends the link via Resend when configured; if delivery fails or
+   the key is absent, the token is returned in the response body only in
+   non-production (`APP_ENV != production`). Resend rate-limiting is
+   server-side: 30-second minimum interval, 3 sends maximum per address, 24-
+   hour cooldown after the third. Password-reset and invitation links are
+   still returned out-of-band when no mail sender is configured.
+
+   **DNS deliverability:** before going live, add SPF, DKIM, and DMARC records
+   for the domain used in `EMAIL_FROM`. Resend's dashboard → Domains → Add
+   domain shows the required records. Without them, verification emails will
+   land in spam or be rejected.
 
 4a. **Workspace deletion is not implemented.** `workspace.delete` exists in the
    permission matrix and is granted to owners, but no endpoint consumes it. A
@@ -819,7 +828,7 @@ marketing.
 
 ## 15. Responsible disclosure
 
-ParcelPilot is a personal project and operates no bug-bounty programme.
+ASTRION is a personal project and operates no bug-bounty programme.
 
 If you find a vulnerability, please report it **privately** — open a GitHub
 security advisory on the repository, or contact the maintainer directly. Please
@@ -844,7 +853,8 @@ and credit is offered unless you would rather not have it.
 | Authorization | ✅ Five roles, granular permission matrix, server-side only, propose/execute and invite/remove/re-role splits, monotonicity asserted |
 | Tenant isolation | ✅ Session-derived scope, path ids re-resolved to membership per request, SQL-level enforcement, one-account-one-workspace constraint, absence-not-forbidden refusals |
 | Workspaces & membership | ✅ Create, list, rename, switch, leave; last-owner protection atomic under concurrency; audited ownership transfer |
-| Invitations | ✅ Hashed tokens, address-bound, single-use, expiring, revocable, privilege-capped, audited — ⚠️ delivered out of band, no mail transport |
+| Email verification | ✅ Resend integration — hashed tokens, 24h TTL, single-use, server-side rate limiting (30s/3 sends/24h cooldown); falls back to token-in-response in non-production when unconfigured |
+| Invitations | ✅ Hashed tokens, address-bound, single-use, expiring, revocable, privilege-capped, audited — ⚠️ delivered out of band (password-reset and invitation still; verification now via Resend) |
 | Database security | ⚠️ Parameterized, FK-enforced, STRICT tables, tenancy in SQL — but no RLS, no least-privilege, no encryption at rest |
 | Vector security | ➖ Not applicable — no vector DB; BM25 over pre-scoped candidates |
 | File upload security | ✅ Validator implemented and wired into ingestion — but no upload endpoint exists yet |

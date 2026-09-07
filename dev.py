@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Run the whole ParcelPilot stack with one command.
+"""Run the whole ASTRION stack with one command.
 
     python dev.py
 
@@ -275,7 +275,7 @@ def wait_until_healthy(timeout: float = 45.0) -> bool:
 
 def banner() -> None:
     print()
-    print(_paint("  ParcelPilot - local development", "1"))
+    print(_paint("  ASTRION — AI Logistics Support", "1"))
     print(f"  {_paint('backend ', '36')} {BACKEND_ORIGIN}      (health at {BACKEND_URL}/health)")
     print(f"  {_paint('frontend', '35')} {FRONTEND_URL}")
     print()

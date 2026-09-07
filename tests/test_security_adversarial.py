@@ -169,7 +169,7 @@ def test_an_identity_header_cannot_override_a_session(secure_settings, tenants):
     response = client.post(
         "/api/chat",
         json={"message": "hello"},
-        headers={"X-ParcelPilot-User": "support.agent"},
+        headers={"X-Astrion-User": "support.agent"},
     )
     assert response.status_code == 200
     assert response.json()["account_scope"] == ["ACCT-001"]

@@ -1,7 +1,7 @@
 """Load the six supplied PDFs into the document/evidence layer.
 
 Reads data/source/*.pdf, extracts metadata and section-aware chunks, and
-writes them into data/processed/parcelpilot.db. Only reads data/source/ —
+writes them into data/processed/astrion.db. Only reads data/source/ —
 never writes to it.
 
 Like scripts/ingest_dataset.py, this validates everything in memory first and

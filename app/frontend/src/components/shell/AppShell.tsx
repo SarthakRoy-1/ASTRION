@@ -51,7 +51,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <header className={styles.top}>
         <div className={styles.topInner}>
           <div className={styles.brand}>
-            <span className={styles.brandName}>ParcelPilot</span>
+            <span className={styles.brandName}>ASTRION</span>
             <span className={styles.brandRole}>Support &amp; Operations</span>
           </div>
 

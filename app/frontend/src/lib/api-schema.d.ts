@@ -1318,7 +1318,7 @@ export interface operations {
                 user_id?: string | null;
             };
             header?: {
-                "x-parcelpilot-user"?: string | null;
+                "x-astrion-user"?: string | null;
             };
             path?: never;
             cookie?: never;
@@ -1351,7 +1351,7 @@ export interface operations {
                 user_id?: string | null;
             };
             header?: {
-                "x-parcelpilot-user"?: string | null;
+                "x-astrion-user"?: string | null;
             };
             path: {
                 action_id: string;
@@ -1384,7 +1384,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-parcelpilot-user"?: string | null;
+                "x-astrion-user"?: string | null;
             };
             path: {
                 action_id: string;
@@ -1879,7 +1879,7 @@ export interface operations {
         parameters: {
             query?: never;
             header?: {
-                "x-parcelpilot-user"?: string | null;
+                "x-astrion-user"?: string | null;
             };
             path?: never;
             cookie?: never;

@@ -57,7 +57,7 @@ describe("sendChat", () => {
     await sendChat({ message: "hi", identity: "support.agent", sessionId: null });
 
     const init = vi.mocked(fetch).mock.calls[0]![1] as RequestInit;
-    expect((init.headers as Record<string, string>)["X-ParcelPilot-User"]).toBe(
+    expect((init.headers as Record<string, string>)["X-Astrion-User"]).toBe(
       "support.agent",
     );
   });

@@ -57,7 +57,7 @@ export function SignInPanel({
   error: string | null;
   onSignIn(email: string, password: string): void;
   onSubmitMfaCode(code: string): void;
-  onRegistered(message: string, verificationToken: string | undefined, email: string): void;
+  onRegistered(message: string, verificationToken: string | undefined, email: string, emailSent?: boolean): void;
   onDismissError(): void;
 }) {
   const [mode, setMode] = useState<"signin" | "register">("signin");
@@ -108,7 +108,7 @@ export function SignInPanel({
       // Neither copy of the password outlives the request that used it.
       setPassword("");
       setConfirmPassword("");
-      onRegistered(result.message, result.verification_token, email);
+      onRegistered(result.message, result.verification_token, email, result.email_sent);
     } catch {
       // The hook surfaces the error; nothing useful to add here, and inventing
       // a message would risk contradicting the backend's careful wording.
@@ -322,7 +322,7 @@ export function SignInPanel({
  *
  * - the workspace is **shared**, so what they do is visible to the next
  *   person, and what they find may have been done by the last one;
- * - the records are **synthetic** — the supplied ParcelPilot pack, no real
+ * - the records are **synthetic** — the supplied assessment pack, no real
  *   customer anywhere in it;
  * - actions are **real inside it**, because a demo that faked the
  *   confirmation gate would be demonstrating nothing.
@@ -346,7 +346,7 @@ function DemoAccess({
     <Callout tone="info" title="Public demo" className={styles.demo}>
       <p>
         This deployment has a shared demo workspace holding the sample
-        ParcelPilot dataset — synthetic accounts, orders, tickets and policy
+        ASTRION dataset — synthetic accounts, orders, tickets and policy
         documents. There is no real customer data in it.
       </p>
       <p>

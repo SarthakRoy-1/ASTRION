@@ -70,7 +70,7 @@ def test_health_never_reveals_credentials_or_paths(api_settings):
         raw = client.get("/health").text
 
     assert "sk-secret-value" not in raw
-    assert "parcelpilot.db" not in raw
+    assert "astrion.db" not in raw
 
 
 def test_health_is_degraded_without_a_database(tmp_path):
@@ -143,7 +143,7 @@ def test_identity_may_be_supplied_as_a_header(client):
     response = client.post(
         "/api/chat",
         json={"message": "Can ORD-1001 be cancelled?"},
-        headers={"X-ParcelPilot-User": SUPPORT_AGENT},
+        headers={"X-Astrion-User": SUPPORT_AGENT},
     )
 
     assert response.status_code == 200
@@ -154,7 +154,7 @@ def test_the_header_wins_over_the_body(client):
     response = client.post(
         "/api/chat",
         json={"message": "Can ORD-1001 be cancelled?", "user_id": CUSTOMER_LUMENWORKS},
-        headers={"X-ParcelPilot-User": CUSTOMER_NORTHSTAR},
+        headers={"X-Astrion-User": CUSTOMER_NORTHSTAR},
     )
 
     assert response.json()["user_id"] == CUSTOMER_NORTHSTAR

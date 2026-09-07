@@ -59,7 +59,7 @@ def get_db(request: Request) -> Iterator[sqlite3.Connection]:
     settings: Settings = request.app.state.settings
     if not settings.database_path.exists():
         raise DataUnavailableError(
-            "The ParcelPilot database has not been built. Run "
+            "The ASTRION database has not been built. Run "
             "`python scripts/ingest_dataset.py` and "
             "`python scripts/ingest_documents.py`, then retry."
         )
@@ -132,10 +132,10 @@ def build_orchestrator(
 
 
 def user_header(
-    x_parcelpilot_user: str | None = Header(default=None),
+    x_astrion_user: str | None = Header(default=None),
 ) -> str | None:
     """The mock identity header, declared once so it appears in the OpenAPI docs."""
-    return x_parcelpilot_user
+    return x_astrion_user
 
 
 SettingsDep = Depends(get_settings)

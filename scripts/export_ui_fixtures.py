@@ -96,7 +96,7 @@ CHAT_SCENARIOS: tuple[tuple[str, str, str], ...] = (
 def _build_database(workspace: Path) -> Path:
     """Ingest both source layers into a throwaway database.
 
-    Never `data/processed/parcelpilot.db`: recording fixtures must not touch
+    Never `data/processed/astrion.db`: recording fixtures must not touch
     the working database, and an executed escalation would be a real write.
     """
     from scripts import ingest_dataset, ingest_documents
@@ -156,7 +156,7 @@ def record(db_path: Path | None = None) -> dict[str, dict]:
     from app.backend.api.app import create_app
     from app.backend.core.config import AuthMode, Settings
 
-    workspace = Path(tempfile.mkdtemp(prefix="parcelpilot-fixtures-"))
+    workspace = Path(tempfile.mkdtemp(prefix="astrion-fixtures-"))
     try:
         # The recorded fixtures describe the demo personas the UI ships with,
         # so this exporter runs the app in demo identity mode deliberately.

@@ -146,7 +146,7 @@ scripts/ingest_documents.py     scripts/ingest_dataset.py
       │                                       │  source_provenance
       └──────────────┬────────────────────────┘
                      ▼
-       data/processed/parcelpilot.db (SQLite)
+       data/processed/astrion.db (SQLite)
        data/processed/source_inspection.json
                      │
    ┌─────────────────┴──────────────────┐
@@ -179,7 +179,7 @@ rather than from a separate index artifact (section 8.5).
 
 ## 7. Structured-data layer (Phase 2)
 
-The structured-data layer turns `ParcelPilot_Assessment_Data.xlsx` into a
+The structured-data layer turns `ParcelPilot_Assessment_Data.xlsx` (the original assessment source pack) into a
 queryable SQLite database. It is a facts layer only — see "Facts vs. policy"
 below — built by `scripts/ingest_dataset.py` and read through
 `app/backend/services/records.py`.
@@ -354,7 +354,7 @@ one row per attempt by design — it is an audit trail, not application data.
 The workbook itself is opened read-only and never written to.
 
 Run it with `python scripts/ingest_dataset.py` (writes
-`data/processed/parcelpilot.db`, git-ignored and fully regenerable — see
+`data/processed/astrion.db`, git-ignored and fully regenerable — see
 [README.md](../README.md)).
 
 ### 7.8 Structured-data access
@@ -778,7 +778,7 @@ The critical property: **the API establishes the authorization context, and
 the message cannot expand it.**
 
 The client asserts an identity — `user_id` in the body or the
-`X-ParcelPilot-User` header — and the server resolves that identity against a
+`X-Astrion-User` header — and the server resolves that identity against a
 fixed directory (`app/backend/auth/principals.py`) to get a role and an
 account scope. The request never states its own permissions. There is no
 anonymous path: an absent or unrecognised identity is a 401.
@@ -1009,7 +1009,7 @@ resolutions are not authority, use the customer agreement where it applies,
 never compute a policy figure yourself, prepare rather than execute, and say
 when you are uncertain.
 
-It deliberately contains no ParcelPilot rule, threshold, fee, customer name or
+It deliberately contains no ASTRION rule, threshold, fee, customer name or
 known-issue id. A prompt that repeated the policy would be a second policy
 engine that nobody tests and that drifts the moment a document is revised. A
 test asserts the system prompt contains none of the corpus's actual answers.
@@ -1362,7 +1362,7 @@ Next.js frontend  --->  FastAPI backend  --->  SQLite (named volume)
 `app/frontend/Dockerfile` is self-contained, building from `app/frontend/`
 alone. `docker-compose.yml` wires both together with one named volume mounted
 at `/app/data/processed` on the backend container — matching
-`REPO_ROOT / "data" / "processed" / "parcelpilot.db"` (§7.2), so no path
+`REPO_ROOT / "data" / "processed" / "astrion.db"` (§7.2), so no path
 configuration is needed beyond the existing default.
 
 **The database is never baked into the image.** `docker-entrypoint.sh` runs
@@ -2078,7 +2078,7 @@ Three ways to close that, and why this is the one:
 ### The seed
 
 `scripts/seed_demo.py` converges the database on one workspace (slug
-`parcelpilot-demo`) holding the unclaimed dataset accounts, with three members
+`astrion-demo`) holding the unclaimed dataset accounts, with three members
 at three roles. Idempotency rests on the schema's own uniqueness —
 `organizations.slug`, `users.email`, and the unique index on
 `organization_accounts.account_id` — rather than on anything the script
@@ -2088,7 +2088,7 @@ accumulating.
 It is deliberately *not* `bootstrap_workspace.py`. That script opens a new
 database for an operator and creates a workspace every time it runs
 (`_unique_slug` suffixes the second one `-2`), which is right for its job and
-would give a restarting container `parcelpilot-demo-7`. Both scripts call the
+would give a restarting container `astrion-demo-7`. Both scripts call the
 same repository and service functions; only the idempotency contract differs.
 
 ### Where the flag lives

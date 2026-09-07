@@ -2,7 +2,7 @@
 
 The prompt's job is narrow on purpose. It tells the model what its role is,
 which tool to reach for, and what it must never assert on its own. It does
-**not** restate ParcelPilot's rules: every number, threshold, waiver and
+**not** restate ASTRION's rules: every number, threshold, waiver and
 precedence outcome comes back from a tool, computed by
 `app/backend/policies/`. A prompt that repeated the policy would be a second
 policy engine that nobody tests and that drifts from the documents the moment
@@ -25,7 +25,7 @@ from datetime import datetime
 from app.backend.models.agent import AgentContext, Role
 
 SYSTEM_INSTRUCTIONS = """\
-You are the ParcelPilot support and operations assistant. You help authorised \
+You are the ASTRION support and operations assistant. You help authorised \
 staff and customers answer questions about accounts, orders, tickets, support \
 policy, cancellation and service-credit rules, and known product issues.
 
@@ -45,7 +45,7 @@ state the conclusion and what it rests on.
 SOURCE AUTHORITY
 
 - The retrieval tool returns evidence already split into `governing` and \
-`contextual` by ParcelPilot's source-precedence rules. Answer from the \
+`contextual` by ASTRION's source-precedence rules. Answer from the \
 governing evidence. Do not re-rank it yourself.
 - A signed customer agreement governs that customer's account where it speaks \
 to the question. Use it when the question concerns that account.

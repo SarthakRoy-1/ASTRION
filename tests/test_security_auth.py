@@ -400,7 +400,10 @@ def test_production_never_returns_a_verification_token(full_db):
 
     assert body["status"] == "registration_received"
     # The whole response, so a token cannot reappear later under another name.
-    assert set(body) == {"status", "message"}
+    # email_sent is always present (False in production when Resend is unconfigured).
+    assert set(body) == {"status", "message", "email_sent"}
+    assert body["email_sent"] is False
+    assert "verification_token" not in body
 
 
 def test_production_never_returns_a_password_reset_token(full_db, db):
@@ -436,7 +439,7 @@ def test_the_session_token_is_never_returned_in_a_response_body(secure_client, d
 
     assert response.status_code == 200
     body = response.text
-    cookie_value = response.cookies.get("parcelpilot_session")
+    cookie_value = response.cookies.get("astrion_session")
     assert cookie_value
     assert cookie_value not in body
 
@@ -453,7 +456,7 @@ def test_the_session_cookie_is_httponly_and_samesite(secure_client, db):
 
 def test_only_a_digest_of_the_session_token_is_stored(secure_client, db):
     make_user(db, "digest@example.com")
-    token = sign_in(secure_client, "digest@example.com").cookies["parcelpilot_session"]
+    token = sign_in(secure_client, "digest@example.com").cookies["astrion_session"]
 
     stored = [row["token_hash"] for row in db.execute("SELECT token_hash FROM sessions")]
     assert stored
@@ -471,7 +474,7 @@ def test_an_unauthenticated_caller_reaches_nothing(secure_client):
 
 
 def test_a_forged_session_cookie_is_refused(secure_client):
-    secure_client.cookies.set("parcelpilot_session", "not-a-real-token")
+    secure_client.cookies.set("astrion_session", "not-a-real-token")
     response = secure_client.get("/api/auth/me")
     assert response.status_code == 401
 
@@ -501,10 +504,10 @@ def test_an_expired_session_is_refused(db):
 def test_login_issues_a_brand_new_session_id(secure_client, db):
     """Session fixation: a pre-set cookie is never elevated, only replaced."""
     make_user(db, "fixation@example.com")
-    secure_client.cookies.set("parcelpilot_session", "attacker-planted-value")
+    secure_client.cookies.set("astrion_session", "attacker-planted-value")
 
     response = sign_in(secure_client, "fixation@example.com")
-    issued = response.cookies["parcelpilot_session"]
+    issued = response.cookies["astrion_session"]
     assert issued != "attacker-planted-value"
 
 
@@ -704,3 +707,218 @@ def test_the_demo_directory_is_not_published_under_session_auth(secure_client):
     response = secure_client.get("/api/principals")
     assert response.status_code == 200
     assert response.json()["principals"] == []
+"""Tests to append to test_security_auth.py"""
+
+# --- resend verification ----------------------------------------------------
+
+
+def test_resend_verification_sends_a_new_token(secure_client, db):
+    """Resend mints a fresh token and returns the expected shape."""
+    make_user(db, "resend@example.com", verified=False)
+
+    response = secure_client.post(
+        "/api/auth/resend-verification",
+        json={"email": "resend@example.com"},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "resend_requested"
+    assert "resend_state" in body
+    assert "email_sent" in body
+    assert "message" in body
+
+
+def test_resend_verification_unknown_email_returns_same_shape(secure_client):
+    """Unknown addresses must be indistinguishable from valid ones."""
+    response = secure_client.post(
+        "/api/auth/resend-verification",
+        json={"email": "nobody@example.com"},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "resend_requested"
+    assert "resend_state" in body
+    assert "verification_token" not in body
+
+
+def test_resend_verification_already_verified_returns_same_shape(secure_client, db):
+    """Already-verified addresses return the same shape as unknown ones."""
+    make_user(db, "verified-resend@example.com", verified=True)
+
+    response = secure_client.post(
+        "/api/auth/resend-verification",
+        json={"email": "verified-resend@example.com"},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "resend_requested"
+    assert body["resend_state"]["can_resend"] is False
+
+
+def test_resend_verification_30s_minimum_interval_enforced(secure_client, db):
+    """A second resend within 30 seconds is refused."""
+    make_user(db, "ratelimit@example.com", verified=False)
+
+    r1 = secure_client.post(
+        "/api/auth/resend-verification",
+        json={"email": "ratelimit@example.com"},
+    )
+    assert r1.status_code == 200
+
+    r2 = secure_client.post(
+        "/api/auth/resend-verification",
+        json={"email": "ratelimit@example.com"},
+    )
+    assert r2.status_code == 400
+
+
+def test_resend_verification_max_count_cooldown_enforced(secure_client, db, full_db):
+    """After RESEND_MAX_COUNT sends, a cooldown is imposed."""
+    from datetime import datetime, timedelta, timezone
+    from app.backend.auth.repository import RESEND_MAX_COUNT, RESEND_COOLDOWN_HOURS
+    from app.backend.services.database import get_connection, initialize_schema
+
+    make_user(db, "cooldown@example.com", verified=False)
+
+    conn = get_connection(full_db)
+    initialize_schema(conn)
+    try:
+        conn.execute(
+            """
+            UPDATE users
+               SET verification_sent_at_utc = ?,
+                   verification_resend_count = ?,
+                   verification_cooldown_until_utc = ?
+             WHERE email = ?
+            """,
+            (
+                datetime.now(timezone.utc).isoformat(),
+                RESEND_MAX_COUNT,
+                (datetime.now(timezone.utc) + timedelta(hours=RESEND_COOLDOWN_HOURS)).isoformat(),
+                "cooldown@example.com",
+            ),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    response = secure_client.post(
+        "/api/auth/resend-verification",
+        json={"email": "cooldown@example.com"},
+    )
+    assert response.status_code == 400
+
+
+def test_resend_verification_token_not_in_production_response(full_db):
+    """In production, no token is returned even if email delivery fails."""
+    from app.backend.api.app import create_app
+
+    settings = Settings(
+        database_path=full_db,
+        app_env="production",
+        auth_mode=AuthMode.SESSION,
+        cors_allow_origins=("https://app.example.com",),
+        session_cookie_secure=True,
+        rate_limit_enabled=False,
+    )
+
+    with TestClient(create_app(settings)) as client:
+        client.post(
+            "/api/auth/register",
+            json={
+                "email": "prod-resend@example.com",
+                "password": GOOD_PASSWORD,
+                "display_name": "ProdResend",
+            },
+        )
+        response = client.post(
+            "/api/auth/resend-verification",
+            json={"email": "prod-resend@example.com"},
+        )
+
+    assert response.status_code in (200, 400)
+    body = response.json()
+    assert "verification_token" not in body
+
+
+# --- email provider ---------------------------------------------------------
+
+
+def test_null_provider_raises_email_delivery_error():
+    """The null provider never silently succeeds."""
+    from app.backend.email.provider import EmailDeliveryError, NullEmailProvider
+
+    provider = NullEmailProvider()
+    with pytest.raises(EmailDeliveryError):
+        provider.send_verification_email(
+            to_address="test@example.com",
+            display_name="Test",
+            verification_url="http://localhost:3000/verify-email?token=abc",
+        )
+
+
+def test_email_provider_factory_returns_null_when_no_api_key():
+    """With no RESEND_API_KEY the factory returns a NullEmailProvider."""
+    from app.backend.core.config import email_provider_for
+    from app.backend.email.provider import NullEmailProvider
+
+    provider = email_provider_for(Settings())
+    assert isinstance(provider, NullEmailProvider)
+
+
+def test_verification_email_html_escapes_display_name():
+    """A malicious display name cannot inject HTML into the email body."""
+    from app.backend.email.templates import verification_email_html
+
+    html = verification_email_html(
+        display_name='<script>alert("xss")</script>',
+        verification_url="http://localhost:3000/verify-email?token=safe",
+    )
+    assert "<script>" not in html
+    assert "&lt;script&gt;" in html
+
+
+def test_verification_url_is_built_from_config():
+    """_build_verification_url uses the configured EMAIL_VERIFICATION_URL."""
+    from app.backend.api.auth_routes import _build_verification_url
+
+    settings = Settings(email_verification_url="https://app.example.com")
+    url = _build_verification_url(settings, "my-token-123")
+    assert url.startswith("https://app.example.com/verify-email")
+    assert "token=my-token-123" in url
+
+
+def test_resend_state_get_and_record():
+    """get_resend_state and record_verification_sent work end-to-end in memory."""
+    import sqlite3 as _sqlite3
+    from app.backend.auth.repository import get_resend_state, record_verification_sent
+    from app.backend.auth.schema import SECURITY_SCHEMA_STATEMENTS
+    from app.backend.auth.passwords import hash_password
+    from app.backend.services.database import _apply_added_columns
+    import app.backend.auth.repository as r
+
+    conn = _sqlite3.connect(":memory:")
+    conn.row_factory = _sqlite3.Row
+    conn.execute("PRAGMA foreign_keys = ON")
+
+    for stmt in SECURITY_SCHEMA_STATEMENTS:
+        conn.execute(stmt)
+    _apply_added_columns(conn)
+
+    user = r.create_user(
+        conn,
+        email="state@example.com",
+        display_name="State",
+        password_hash=hash_password(GOOD_PASSWORD),
+    )
+    uid = user.user_id
+
+    state = get_resend_state(conn, uid)
+    assert state.can_send is True
+    assert state.sends_used == 0
+
+    record_verification_sent(conn, uid)
+    state = get_resend_state(conn, uid)
+    assert state.can_send is False
+    assert state.sends_used == 1
+    assert state.seconds_until_allowed > 0

@@ -419,7 +419,7 @@ def test_unscoped_search_can_see_all_agreements(doc_conn):
 
 def test_no_cross_account_leakage_across_the_whole_corpus(doc_conn):
     """Sweep every chunk with a broad query under each account scope."""
-    broad = "parcelpilot policy agreement cancellation credit pickup support shipment"
+    broad = "astrion policy agreement cancellation credit pickup support shipment"
 
     for scope, forbidden in ((NORTHSTAR, LUMENWORKS_PDF), (LUMENWORKS, NORTHSTAR_PDF)):
         results = search_documents(doc_conn, broad, account_id=scope, limit=100)

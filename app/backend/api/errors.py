@@ -43,7 +43,7 @@ from app.backend.services.actions import (
     ActionStateError,
 )
 
-logger = logging.getLogger("parcelpilot.api")
+logger = logging.getLogger("astrion.api")
 
 
 def _request_id(request: Request) -> str | None:

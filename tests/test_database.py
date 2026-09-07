@@ -161,7 +161,7 @@ def test_dataset_metadata_rejects_second_row(tmp_path):
 
 def test_default_db_path_is_under_data_processed():
     assert db.DEFAULT_DB_PATH.parent.name == "processed"
-    assert db.DEFAULT_DB_PATH.name == "parcelpilot.db"
+    assert db.DEFAULT_DB_PATH.name == "astrion.db"
 
 
 def test_a_connection_survives_being_handed_between_threads(tmp_path):

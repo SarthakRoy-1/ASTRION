@@ -45,7 +45,7 @@ function transcriptScope() {
 }
 
 async function ask(user: ReturnType<typeof userEvent.setup>, message: string) {
-  const input = screen.getByLabelText(/ask the parcelpilot support agent/i);
+  const input = screen.getByLabelText(/ask the astrion support agent/i);
   await user.type(input, message);
   await user.click(screen.getByRole("button", { name: /^send$/i }));
 }
@@ -56,7 +56,7 @@ describe("chat page", () => {
     await renderPage();
 
     expect(
-      screen.getByLabelText(/ask the parcelpilot support agent/i),
+      screen.getByLabelText(/ask the astrion support agent/i),
     ).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: /try one of these/i })).toBeInTheDocument();
     expect(
@@ -459,7 +459,7 @@ describe("authorization", () => {
     await ask(user, "Anything");
 
     const alert = await screen.findByRole("alert");
-    expect(within(alert).getByText(/cannot reach the parcelpilot api/i)).toBeInTheDocument();
+    expect(within(alert).getByText(/cannot reach the astrion api/i)).toBeInTheDocument();
   });
 });
 
@@ -952,7 +952,7 @@ describe("cold start", () => {
       renderApp(<SupportPage />);
 
       // The first thing on screen is a wait, not a failure.
-      await screen.findByText(/waking the parcelpilot api/i, undefined, {
+      await screen.findByText(/waking the astrion api/i, undefined, {
         timeout: 4000,
       });
       expect(screen.queryByRole("alert")).not.toBeInTheDocument();
@@ -960,9 +960,9 @@ describe("cold start", () => {
       // And the instance coming up needs no reload and no second thought.
       await screen.findByRole("combobox", { name: /context/i }, { timeout: 6000 });
       await waitFor(() =>
-        expect(screen.queryByText(/waking the parcelpilot api/i)).not.toBeInTheDocument(),
+        expect(screen.queryByText(/waking the astrion api/i)).not.toBeInTheDocument(),
       );
-      expect(screen.queryByText(/cannot reach the parcelpilot api/i)).not.toBeInTheDocument();
+      expect(screen.queryByText(/cannot reach the astrion api/i)).not.toBeInTheDocument();
       expect(stub.refused).toBe(2);
     },
     15_000,
@@ -974,8 +974,8 @@ describe("cold start", () => {
 
     // Scenario A: a warm backend must cost the user no delay and no status
     // text they have to read past.
-    expect(screen.queryByText(/waking the parcelpilot api/i)).not.toBeInTheDocument();
-    expect(screen.queryByText(/connecting to the parcelpilot api/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/waking the astrion api/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/connecting to the astrion api/i)).not.toBeInTheDocument();
   });
 
   it("reports a backend that is answering badly rather than waiting on it", async () => {
@@ -991,7 +991,7 @@ describe("cold start", () => {
 
     const alert = await screen.findByRole("alert");
     expect(within(alert).getByText(/something went wrong/i)).toBeInTheDocument();
-    expect(screen.queryByText(/waking the parcelpilot api/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/waking the astrion api/i)).not.toBeInTheDocument();
   });
 
   it("sends one chat message, and only one, when the request fails", async () => {

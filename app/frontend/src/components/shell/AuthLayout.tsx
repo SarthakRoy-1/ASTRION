@@ -10,7 +10,7 @@ import styles from "./AuthLayout.module.css";
  * The three points on the left are claims this product can actually back up in
  * the next screen — evidence on every answer, deterministic policy arithmetic,
  * a confirmation gate before anything changes. They are here because "sign in
- * to ParcelPilot" tells a first-time visitor nothing about what ParcelPilot
+ * to ASTRION" tells a first-time visitor nothing about what ASTRION
  * does, and because each one is verifiable a minute later.
  */
 const POINTS: { title: string; body: string }[] = [
@@ -33,12 +33,12 @@ export function AuthLayout({ children }: { children: React.ReactNode }) {
     <div className={styles.page}>
       <aside className={styles.pitch}>
         <div className={styles.brand}>
-          <span className={styles.brandName}>ParcelPilot</span>
+          <span className={styles.brandName}>ASTRION</span>
           <span className={styles.brandRole}>Support &amp; Operations</span>
         </div>
 
         <p className={styles.lede}>
-          Deterministic AI for logistics operations.
+          AI-powered logistics support and operations.
         </p>
 
         <ul className={styles.points}>
@@ -57,7 +57,7 @@ export function AuthLayout({ children }: { children: React.ReactNode }) {
       <main className={styles.stage}>
         <div className={styles.card}>
           <div className={styles.compactBrand}>
-            <span className={styles.brandName}>ParcelPilot</span>
+            <span className={styles.brandName}>ASTRION</span>
             <span className={styles.brandRole}>Support &amp; Operations</span>
           </div>
           {children}

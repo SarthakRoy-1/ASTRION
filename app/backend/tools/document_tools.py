@@ -137,7 +137,7 @@ def _get_document_evidence(
 SEARCH_DOCUMENTS_SPEC = ToolSpec(
     name=SEARCH_DOCUMENTS,
     description=(
-        "Search ParcelPilot policies, SOPs, product documentation and customer "
+        "Search ASTRION policies, SOPs, product documentation and customer "
         "agreements. Returns evidence with source file, page, section and authority "
         "metadata, already split into governing versus contextual by source "
         "precedence. Pass account_id when the question concerns a specific customer "
