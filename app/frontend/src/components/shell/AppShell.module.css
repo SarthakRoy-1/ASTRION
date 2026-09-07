@@ -1,221 +1,32 @@
-.app {
-  display: flex;
-  flex-direction: column;
-  height: 100dvh;
-}
-
-/* --- identity band -------------------------------------------------------- */
-
-.top {
-  flex: none;
-  background: var(--surface-raised);
-  border-bottom: 1px solid var(--border-subtle);
-}
-
-.topInner {
-  display: flex;
-  align-items: center;
-  gap: var(--space-4);
-  max-width: var(--shell-width);
-  margin: 0 auto;
-  padding: var(--space-2) var(--space-5);
-  min-height: var(--header-height);
-}
-
-.brand {
-  display: flex;
-  align-items: baseline;
-  gap: var(--space-2);
-  flex: none;
-}
-
-.brandName {
-  font-size: var(--text-lead);
-  font-weight: 650;
-  letter-spacing: -0.02em;
-}
-
-.brandRole {
-  font-size: var(--text-caption);
-  color: var(--text-muted);
-  white-space: nowrap;
-}
-
-/* The divider that separates "which product" from "which workspace". Without
-   it the two names run together into one long title. */
-.brandDivider {
-  flex: none;
-  width: 1px;
-  height: 22px;
-  background: var(--border-subtle);
-}
-
-.workspace {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  min-width: 0;
-}
-
-.spacer {
-  flex: 1;
-}
-
-.account {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  flex: none;
-}
-
-.accountName {
-  font-size: var(--text-small);
-  color: var(--text-secondary);
-  max-width: 22ch;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* --- navigation ----------------------------------------------------------- */
-
-.nav {
-  flex: none;
-  background: var(--surface-raised);
-  border-bottom: 1px solid var(--border-subtle);
-}
-
-.navInner {
-  display: flex;
-  align-items: stretch;
-  gap: var(--space-1);
-  max-width: var(--shell-width);
-  margin: 0 auto;
-  padding: 0 var(--space-5);
-  overflow-x: auto;
-  scrollbar-width: none;
-}
-
-.navInner::-webkit-scrollbar {
-  display: none;
-}
-
-.navItem {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-3) var(--space-3);
-  border: 0;
-  color: var(--text-secondary);
-  font-size: var(--text-ui);
-  font-weight: 500;
-  text-decoration: none;
-  white-space: nowrap;
-  transition: color var(--duration-fast) var(--ease-out);
-}
-
-.navItem::after {
-  content: "";
-  position: absolute;
-  left: var(--space-3);
-  right: var(--space-3);
-  bottom: -1px;
-  height: 2px;
-  border-radius: 2px 2px 0 0;
-  background: transparent;
-}
-
-.navItem:hover {
-  color: var(--text-primary);
-}
-
-/* The active area is marked twice over: the underline for a glance, and
-   `aria-current` for anything that is not looking. */
-.navItemActive {
-  color: var(--text-primary);
-  font-weight: 600;
-}
-
-.navItemActive::after {
-  background: var(--accent);
-}
-
-/* A count that earns its place: unresolved signals waiting in Operations. It
-   is the number the server returned, never a decoration. */
-.navCount {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 20px;
-  height: 18px;
-  padding: 0 6px;
-  border-radius: var(--radius-pill);
-  background: var(--surface-sunken);
-  color: var(--text-secondary);
-  font-size: var(--text-caption);
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-}
-
-.navCountUrgent {
-  background: var(--fail-soft);
-  color: var(--fail);
-}
-
-/* --- body ----------------------------------------------------------------- */
-
-.body {
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
-}
-
-.notices {
-  flex: none;
-  max-width: var(--shell-width);
-  width: 100%;
-  margin: 0 auto;
-  padding: var(--space-3) var(--space-5) 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-}
-
-.notices:empty {
-  display: none;
-}
-
-@media (max-width: 720px) {
-  .topInner {
-    flex-wrap: wrap;
-    gap: var(--space-2) var(--space-3);
-    padding: var(--space-2) var(--space-4);
-  }
-
-  .brandRole,
-  .brandDivider {
-    display: none;
-  }
-
-  /* The workspace identity takes its own line rather than fighting the brand
-     and the account controls for a 375px row — which is exactly what the old
-     workspace bar did, overlapping all five of its children. */
-  .workspace {
-    order: 3;
-    flex-basis: 100%;
-  }
-
-  .accountName {
-    max-width: 14ch;
-  }
-
-  .navInner {
-    padding: 0 var(--space-4);
-  }
-
-  .notices {
-    padding: var(--space-3) var(--space-4) 0;
-  }
+.app { display:flex; flex-direction:column; height:100dvh; }
+.top { flex:none; background:var(--surface-raised); border-bottom:1px solid var(--border-subtle); }
+.topInner { display:flex; align-items:center; gap:var(--space-4); max-width:var(--shell-width); margin:0 auto; padding:10px var(--space-5); min-height:var(--header-height); }
+.brand { display:flex; align-items:center; flex:none; line-height:0; }
+.brand img { display:block; width:176px; height:auto; }
+.brandDivider { flex:none; width:1px; height:24px; background:var(--border-subtle); }
+.workspace { display:flex; align-items:center; min-width:0; }
+.spacer { flex:1; }
+.account { display:flex; align-items:center; gap:var(--space-3); flex:none; }
+.accountName { font-size:var(--text-small); color:var(--text-secondary); max-width:22ch; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.nav { flex:none; background:var(--surface-raised); border-bottom:1px solid var(--border-subtle); }
+.navInner { display:flex; align-items:stretch; gap:2px; max-width:var(--shell-width); margin:0 auto; padding:0 var(--space-5); overflow-x:auto; scrollbar-width:none; }
+.navInner::-webkit-scrollbar { display:none; }
+.navItem { position:relative; display:inline-flex; align-items:center; padding:13px 14px; border:0; color:var(--text-secondary); font-size:var(--text-ui); font-weight:500; text-decoration:none; white-space:nowrap; transition:color var(--duration-fast) var(--ease-out); }
+.navItem::after { content:""; position:absolute; left:14px; right:14px; bottom:-1px; height:2px; border-radius:2px 2px 0 0; background:transparent; }
+.navItem:hover { color:var(--text-primary); }
+.navItemActive { color:var(--text-primary); font-weight:600; }
+.navItemActive::after { background:var(--brand-sand); }
+.navCount { display:inline-flex; align-items:center; justify-content:center; min-width:20px; height:18px; padding:0 6px; border-radius:var(--radius-pill); background:var(--surface-sunken); color:var(--text-secondary); font-size:var(--text-caption); font-weight:600; font-variant-numeric:tabular-nums; }
+.navCountUrgent { background:var(--fail-soft); color:var(--fail); }
+.body { flex:1; min-height:0; display:flex; flex-direction:column; }
+.notices { flex:none; max-width:var(--shell-width); width:100%; margin:0 auto; padding:var(--space-3) var(--space-5) 0; display:flex; flex-direction:column; gap:var(--space-2); }
+.notices:empty { display:none; }
+@media (max-width:720px) {
+  .topInner { flex-wrap:wrap; gap:var(--space-2) var(--space-3); padding:10px var(--space-4); }
+  .brand img { width:150px; }
+  .brandDivider { display:none; }
+  .workspace { order:3; flex-basis:100%; }
+  .accountName { max-width:14ch; }
+  .navInner { padding:0 var(--space-4); }
+  .notices { padding:var(--space-3) var(--space-4) 0; }
 }
