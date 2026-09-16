@@ -446,7 +446,8 @@ Within its own accounts a workspace *can* upload a customer agreement, and
 that agreement is tier 1 for those accounts — which is the feature. On the
 public demo this means anyone signed in as the demo **owner** can change what
 the shared demo workspace's agent treats as a signed agreement, until the next
-rebuild; the one-click demo identity (support) cannot upload.
+rebuild; the one-click demo identity (operations) cannot upload, because
+`manage_documents` is granted from admin up.
 
 ```
 bytes ──> size ──> magic-byte type ──> extension cross-check ──> content-type

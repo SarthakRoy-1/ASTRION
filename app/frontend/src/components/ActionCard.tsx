@@ -169,8 +169,9 @@ export function ActionCard({
             </p>
           ) : (
             <p className={styles.blocked}>
-              Your current context cannot approve state-changing actions. An
-              internal support agent or manager must confirm this.
+              Your role can prepare actions but not execute them. A proposal is
+              confirmed by whoever prepared it, so it has to be prepared by
+              someone whose role grants execution.
             </p>
           )}
         </>

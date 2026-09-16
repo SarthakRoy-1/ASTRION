@@ -14,10 +14,15 @@
   white-space: nowrap;
 }
 
+/* The switcher lives only in the application header, which is always dark.
+   `--text-primary` is the dark-on-light body token, and against the header it
+   rendered at roughly 1.1:1 — the active workspace name was present in the
+   DOM and invisible on screen. The header's own active navigation uses
+   `--text-inverse`; the workspace it is acting in deserves the same. */
 .name {
   font-size: var(--text-ui);
   font-weight: 600;
-  color: var(--text-primary);
+  color: var(--text-inverse);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

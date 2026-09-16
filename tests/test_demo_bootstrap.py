@@ -894,3 +894,199 @@ def test_the_source_pack_the_bootstrap_depends_on_is_in_the_repository():
     expected = {path.name for path in SOURCE_DIR.iterdir() if path.suffix in {".pdf", ".xlsx"}}
     assert expected
     assert expected <= {pathlib.PurePosixPath(p).name for p in tracked}
+
+
+# ===========================================================================
+# The one-click visitor can walk the whole confirmation gate
+#
+# A support visitor could watch an action being prepared and never see it
+# confirmed: support may only propose, and a proposal is confirmed only by the
+# person who prepared it. The one-click identity is therefore the operations
+# member, which is exactly support plus execution and the audit trail. These
+# tests are the proof that nothing *else* moved with it.
+# ===========================================================================
+
+
+def demo_visitor(db_path):
+    client = cold_client(settings_for(db_path))
+    assert client.post("/api/auth/demo-login").status_code == 200
+    return client
+
+
+def prepare(client, message):
+    body = client.post("/api/chat", json={"message": message}).json()
+    assert body["action_status"] == "pending_confirmation", body["answer"]
+    return body, body["proposed_action"]
+
+
+def confirm(client, body, proposal, **overrides):
+    payload = {
+        "decision": "approve",
+        "session_id": body["session_id"],
+        "expected_fingerprint": proposal["parameter_fingerprint"],
+        **overrides,
+    }
+    return client.post(f"/api/actions/{proposal['action_id']}/confirm", json=payload)
+
+
+def action_status(db_path, action_id):
+    conn = get_connection(db_path)
+    try:
+        return conn.execute(
+            "SELECT status FROM agent_actions WHERE action_id = ?", (action_id,)
+        ).fetchone()["status"]
+    finally:
+        conn.close()
+
+
+ESCALATE = "Investigate TKT-501 and escalate it if the outage warrants it."
+CREDIT = "ORD-2002 missed its pickup window. Prepare a service credit for it."
+
+
+def test_the_one_click_identity_is_the_operations_member_and_nothing_more(db_path):
+    from app.backend.auth.permissions import OrgRole, Permission, permissions_for
+
+    workspace = demo_visitor(db_path).get("/api/workspaces").json()["workspaces"][0]
+
+    assert workspace["role"] == OrgRole.OPERATIONS.value
+    granted = set(workspace["permissions"])
+    assert granted == {p.value for p in permissions_for(OrgRole.OPERATIONS)}
+    assert Permission.EXECUTE_ACTION.value in granted
+    assert Permission.READ_AUDIT_LOG.value in granted
+    for withheld in (
+        Permission.APPROVE_HIGH_VALUE_ACTION,
+        Permission.MANAGE_DOCUMENTS,
+        Permission.MEMBERS_INVITE,
+        Permission.MEMBERS_REMOVE,
+        Permission.MEMBERS_CHANGE_ROLE,
+        Permission.WORKSPACE_UPDATE,
+        Permission.WORKSPACE_DELETE,
+    ):
+        assert withheld.value not in granted, withheld
+
+
+def test_a_demo_visitor_prepares_then_confirms_an_escalation(db_path):
+    visitor = demo_visitor(db_path)
+    body, proposal = prepare(visitor, ESCALATE)
+    assert proposal["action_type"] == "create_escalation"
+    # Prepared is not performed: the chat turn changed nothing.
+    assert action_status(db_path, proposal["action_id"]) == "pending_confirmation"
+
+    response = confirm(visitor, body, proposal)
+
+    assert response.status_code == 200, response.text
+    assert response.json()["action_status"] == "executed"
+    assert action_status(db_path, proposal["action_id"]) == "executed"
+
+
+def test_a_demo_visitor_prepares_then_confirms_a_service_credit(db_path):
+    visitor = demo_visitor(db_path)
+    body, proposal = prepare(visitor, CREDIT)
+    assert proposal["action_type"] == "issue_service_credit"
+    # The amount is the policy engine's, from the LumenWorks agreement.
+    assert proposal["parameters"]["amount"] == "300.00"
+    assert proposal["parameters"]["requires_manager_approval"] == "false"
+
+    response = confirm(visitor, body, proposal)
+
+    assert response.status_code == 200, response.text
+    assert response.json()["action_status"] == "executed"
+
+
+def test_a_confirmed_action_cannot_be_replayed(db_path):
+    visitor = demo_visitor(db_path)
+    body, proposal = prepare(visitor, ESCALATE)
+    assert confirm(visitor, body, proposal).status_code == 200
+
+    assert confirm(visitor, body, proposal).status_code == 409
+
+
+def test_a_changed_fingerprint_is_not_executed(db_path):
+    visitor = demo_visitor(db_path)
+    body, proposal = prepare(visitor, ESCALATE)
+
+    response = confirm(visitor, body, proposal, expected_fingerprint="0" * 32)
+
+    assert response.status_code >= 400
+    assert action_status(db_path, proposal["action_id"]) == "pending_confirmation"
+
+
+def test_the_manager_threshold_still_refuses_the_demo_identity(db_path, monkeypatch):
+    """Operations executes ordinary actions. A credit over the SOP threshold
+    still needs manager authority, which the demo identity does not have."""
+    from test_service_credit_actions import raise_credit_above_threshold
+
+    raise_credit_above_threshold(monkeypatch)
+    visitor = demo_visitor(db_path)
+    body, proposal = prepare(visitor, CREDIT)
+    assert proposal["parameters"]["requires_manager_approval"] == "true"
+
+    response = confirm(visitor, body, proposal)
+
+    assert response.status_code == 403
+    assert action_status(db_path, proposal["action_id"]) == "pending_confirmation"
+
+
+def test_a_support_member_still_cannot_confirm(db_path):
+    """Support lost the one-click button and nothing else, and gained nothing."""
+    settings = settings_for(db_path)
+    ensure_demo_environment(settings)
+    support = cold_client(settings)
+    assert support.post(
+        "/api/auth/login",
+        json={"email": "support@demo.astrion.example", "password": settings.demo_password},
+    ).status_code == 200
+    body, proposal = prepare(support, ESCALATE)
+
+    response = confirm(support, body, proposal)
+
+    assert response.status_code == 403
+    assert action_status(db_path, proposal["action_id"]) == "pending_confirmation"
+
+
+def test_another_workspace_cannot_confirm_a_demo_action(db_path):
+    from app.backend.auth import repository as repo
+    from app.backend.auth import workspaces as workspace_service
+    from app.backend.auth.passwords import hash_password
+
+    visitor = demo_visitor(db_path)
+    body, proposal = prepare(visitor, ESCALATE)
+
+    conn = get_connection(db_path)
+    try:
+        outsider = repo.create_user(
+            conn,
+            email="owner@elsewhere.example",
+            display_name="Elsewhere",
+            password_hash=hash_password("elsewhere-password"),
+            email_verified=True,
+        )
+        workspace_service.create_workspace(
+            conn, owner_user_id=outsider.user_id, name="Elsewhere", account_ids=[]
+        )
+    finally:
+        conn.close()
+    other = cold_client(settings_for(db_path))
+    assert other.post(
+        "/api/auth/login",
+        json={"email": "owner@elsewhere.example", "password": "elsewhere-password"},
+    ).status_code == 200
+
+    response = confirm(other, body, proposal)
+
+    # Not 403: another workspace's action does not exist, for this caller.
+    assert response.status_code == 404
+    assert action_status(db_path, proposal["action_id"]) == "pending_confirmation"
+
+
+def test_the_confirmation_lands_in_the_audit_trail_the_visitor_can_read(db_path):
+    visitor = demo_visitor(db_path)
+    body, proposal = prepare(visitor, ESCALATE)
+    assert confirm(visitor, body, proposal).status_code == 200
+
+    audit = visitor.get("/api/auth/audit")
+
+    assert audit.status_code == 200
+    trail = audit.json()
+    assert trail["chain_intact"] is True
+    assert any(event["event_type"] == "action.executed" for event in trail["events"])

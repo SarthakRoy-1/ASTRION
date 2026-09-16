@@ -158,7 +158,7 @@ describe("the assistant under session authentication", () => {
     await user.click(screen.getByRole("button", { name: /^send$/i }));
 
     expect(
-      await screen.findByText(/cannot approve state-changing actions/i),
+      await screen.findByText(/can prepare actions but not execute them/i),
     ).toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: /confirm escalation/i }),

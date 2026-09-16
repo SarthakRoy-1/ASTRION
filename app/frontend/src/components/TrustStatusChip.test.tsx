@@ -8,6 +8,7 @@ import knownIssue from "@/test/fixtures/chat-known-issue.json";
 import provisionalCredit from "@/test/fixtures/chat-service-credit-provisional.json";
 import slaBreach from "@/test/fixtures/chat-sla-breach.json";
 import uncertain from "@/test/fixtures/chat-uncertain.json";
+import unsupported from "@/test/fixtures/chat-unsupported.json";
 
 import type { ChatResponse } from "@/lib/types";
 
@@ -43,6 +44,15 @@ describe("TrustStatusChip", () => {
       expect(screen.getByText(label)).toBeInTheDocument();
       unmount();
     }
+  });
+
+  it("never calls an unanswerable question confident", () => {
+    // Recorded from the backend for a question the source pack cannot answer.
+    // The chip once read "Confident" directly above "unable to determine";
+    // the backend now reports the gap, and this is what a reader sees.
+    render(<TrustStatusChip trust={trustOf(unsupported)} />);
+    expect(screen.getByText("Not enough information")).toBeInTheDocument();
+    expect(screen.queryByText("Confident")).toBeNull();
   });
 
   it("says which authority decided the answer", () => {

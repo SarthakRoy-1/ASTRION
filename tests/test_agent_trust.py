@@ -271,3 +271,78 @@ def test_reasons_are_deduplicated_but_ordered():
     ]
     reasons = assess(history).reasons
     assert reasons == ("ORD-1 was not found", "ORD-2 was not found")
+
+
+# --- an investigation that found nothing -------------------------------------
+#
+# Regression for a trust chip reading "Confident" directly above an answer that
+# said it could not determine anything. No assessor fired, because nothing came
+# back to assess, and `worst([])` is CONFIDENT by definition. The reducer is
+# right; the assessment was missing the observation that there was no support.
+
+
+def test_a_search_that_matched_nothing_is_insufficient_data():
+    assessment = assess([step(status=ToolStatus.NO_EVIDENCE, message="no match")])
+    assert assessment.status is TrustStatus.INSUFFICIENT_DATA
+    assert "no applicable records or document evidence were found" in assessment.reasons
+
+
+def test_an_investigation_with_no_steps_is_insufficient_data():
+    assert assess([]).status is TrustStatus.INSUFFICIENT_DATA
+
+
+def test_a_found_record_without_documents_is_still_confident():
+    """A lookup that answers the question needs no citation to be supported."""
+    assessment = assess(
+        [
+            step("lookup_record", status=ToolStatus.OK, data={"ticket_id": "TKT-501"}),
+            step(status=ToolStatus.NO_EVIDENCE),
+        ]
+    )
+    assert assessment.status is TrustStatus.CONFIDENT
+
+
+def test_the_no_support_reason_is_not_added_when_something_was_found():
+    assessment = assess([step(status=ToolStatus.OK)])
+    assert assessment.reasons == ()
+
+
+# --- the same, end to end over the real source pack --------------------------
+
+
+def _trust(client, message):
+    from conftest import post_chat
+
+    response = post_chat(client, message)
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+def test_an_unsupported_question_is_never_reported_as_confident(client):
+    body = _trust(client, "What is the weather in Mumbai today?")
+    assert body["outcome"] == "uncertain"
+    assert body["trust"]["status"] == "insufficient_data"
+
+
+def test_a_missing_record_is_insufficient_data(client):
+    body = _trust(client, "What is the status of ORD-9999?")
+    assert body["trust"]["status"] == "insufficient_data"
+
+
+def test_a_question_no_document_answers_is_insufficient_data(client):
+    body = _trust(client, "Zyqorth brelvax quindle?")
+    assert body["sources"] == []
+    assert body["trust"]["status"] != "confident"
+
+
+def test_a_settled_evidence_backed_answer_stays_confident(client):
+    body = _trust(client, "Can Northstar cancel ORD-1001 without a cancellation fee? Explain why.")
+    assert body["outcome"] == "answered"
+    assert body["trust"]["status"] == "confident"
+
+
+def test_an_evidence_backed_but_unsettled_answer_keeps_its_own_uncertainty(client):
+    """TKT-501 has evidence and a computed elapsed time, but no severity."""
+    body = _trust(client, "Has TKT-501 breached its first response SLA, and what target applies?")
+    assert body["sources"]
+    assert body["trust"]["status"] == "conditional"

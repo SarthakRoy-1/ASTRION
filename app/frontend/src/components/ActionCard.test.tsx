@@ -154,7 +154,7 @@ describe("the confirmation gate itself", () => {
     expect(screen.queryByRole("button", { name: /confirm/i })).toBeNull();
     expect(screen.queryByRole("button", { name: /^reject$/i })).toBeNull();
     expect(
-      screen.getByText(/cannot approve state-changing actions/i),
+      screen.getByText(/can prepare actions but not execute them/i),
     ).toBeInTheDocument();
   });
 });

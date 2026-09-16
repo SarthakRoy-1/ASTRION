@@ -263,6 +263,45 @@ def _assess_tool_failures(history, findings: _Findings) -> None:
             )
 
 
+#: Reported when an investigation produced nothing to stand on. Worded as the
+#: composer words the same situation, so the trust reason and the answer text
+#: cannot describe one gap two ways.
+NO_SUPPORT_REASON = "no applicable records or document evidence were found"
+
+
+def _assess_support(history, findings: _Findings) -> None:
+    """An investigation that found nothing cannot be confident about anything.
+
+    Every other assessor reads a *signal* out of what came back: a provisional
+    decision, a conflict, a refusal. None of them fires when nothing came back
+    at all — a search with no matching evidence is `NO_EVIDENCE`, not a failure
+    — so an unanswerable question used to fall through `worst([])` to
+    CONFIDENT, directly above an answer saying it could not determine anything.
+
+    "Something usable" is deliberately broad: a successful call of any kind (a
+    record found, a search that matched), or any decision, evidence or proposal
+    attached to a result. A record lookup that answers the question with no
+    document citations is still supported and stays CONFIDENT; this only fires
+    when the whole investigation came back empty and nothing else has already
+    said why.
+    """
+    if findings.statuses:
+        # Something already explained the gap — a record not found, a tool
+        # that reported uncertainty. Adding a second, vaguer reason would only
+        # blur the specific one.
+        return
+    for step in history:
+        result = step.result
+        if (
+            result.status is ToolStatus.OK
+            or result.evidence
+            or result.decisions
+            or result.proposed_action is not None
+        ):
+            return
+    findings.note(TrustStatus.INSUFFICIENT_DATA, NO_SUPPORT_REASON)
+
+
 def assess(
     history,
     *,
@@ -285,6 +324,7 @@ def assess(
     _assess_decisions(history, findings)
     _assess_retrieval(history, findings)
     _assess_tool_failures(history, findings)
+    _assess_support(history, findings)
 
     for requirement in unmet_requirements or []:
         findings.note(TrustStatus.INSUFFICIENT_DATA, requirement)

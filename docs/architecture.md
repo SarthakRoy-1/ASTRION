@@ -2159,6 +2159,13 @@ across a password change), the first refused demo sign-in repairs that one
 account's hash and retries once. The repair has no address parameter; it can
 only touch `Settings.demo_email`. Lockout is never cleared.
 
+The one-click identity is the demo **operations** member. Support can only
+propose, and a proposal is confirmed by whoever prepared it — its conversation
+is bound to that user — so a support visitor could watch an action being
+prepared and never see it confirmed. Operations adds exactly `execute_action`
+and `read_audit_log` to support: no member or document management and no
+manager approval, so the SOP's high-value threshold still refuses it.
+
 ### The policy that was breaking the deployment
 
 Phase 6 also found why nobody could use the hosted application even before

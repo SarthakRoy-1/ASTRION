@@ -49,7 +49,16 @@ DEFAULT_UPLOADS_DIR = REPO_ROOT / "data" / "uploads"
 #: never written to a log. A deployment may override it (`DEMO_PASSWORD`, or the
 #: `DEMO_SEED_PASSWORD` that `docker-entrypoint.sh` already reads, so a Docker
 #: boot and an in-process bootstrap cannot disagree about it).
-DEFAULT_DEMO_EMAIL = "support@demo.astrion.example"
+#:
+#: The one-click identity is the **operations** member, not support. Support
+#: may only *propose*; and a proposal is bound to the conversation it was made
+#: in, so no second person can confirm it either. A support visitor could
+#: therefore watch an action be prepared and never see the confirmation gate,
+#: the audit entry or the result — the part of the product most worth showing.
+#: Operations adds exactly `execute_action` and `read_audit_log` to support: no
+#: member management, no document management, and no manager approval, so the
+#: SOP's high-value threshold still refuses it.
+DEFAULT_DEMO_EMAIL = "operations@demo.astrion.example"
 DEFAULT_DEMO_PASSWORD = "astrion-public-demo"
 
 

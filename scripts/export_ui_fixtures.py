@@ -90,6 +90,14 @@ CHAT_SCENARIOS: tuple[tuple[str, str, str], ...] = (
         SUPPORT_AGENT,
         "What is the P1 first response target and has it changed?",
     ),
+    # A question the source pack cannot answer at all. Recorded because the
+    # trust chip once read "Confident" above "unable to determine" here, and
+    # the UI has to be tested against the state the backend now produces.
+    (
+        "chat-unsupported",
+        SUPPORT_AGENT,
+        "What is the weather in Mumbai today?",
+    ),
 )
 
 

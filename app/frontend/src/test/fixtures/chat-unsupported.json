@@ -1,0 +1,48 @@
+{
+  "account_scope": [
+    "ACCT-001",
+    "ACCT-002",
+    "ACCT-003",
+    "ACCT-004"
+  ],
+  "action_status": "none",
+  "answer": "I could not find enough information in the supplied sources to answer that.\nThis cannot be answered definitively from the available data \u2014 verify the points listed before committing to an outcome.",
+  "escalation_recommended": true,
+  "outcome": "uncertain",
+  "policy_decisions": [],
+  "proposed_action": null,
+  "reference_time": "2026-08-16T11:00:00+05:30",
+  "request_id": "REQ-fixture0001",
+  "responded_at_utc": "2026-08-16T05:30:00+00:00",
+  "role": "support_agent",
+  "session_id": "SES-fixture0001",
+  "sources": [],
+  "step_budget_exhausted": false,
+  "tools_used": [
+    {
+      "message": "no document evidence matched 'What is the weather in Mumbai today?' within the caller's scope",
+      "status": "no_evidence",
+      "step": 1,
+      "summary": null,
+      "tool_name": "search_documents"
+    }
+  ],
+  "trust": {
+    "conflicts": [],
+    "customer_agreement_applied": false,
+    "escalation_reason": null,
+    "governing_authority_tier": null,
+    "intents": [
+      "investigation"
+    ],
+    "overrides": [],
+    "reasons": [
+      "no applicable records or document evidence were found"
+    ],
+    "status": "insufficient_data"
+  },
+  "uncertainties": [
+    "no applicable records or document evidence were found"
+  ],
+  "user_id": "support.agent"
+}

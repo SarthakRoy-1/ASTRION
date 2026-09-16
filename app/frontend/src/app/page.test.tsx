@@ -619,7 +619,7 @@ describe("action confirmation", () => {
 
     const card = await screen.findByRole("region", { name: /action/i });
     expect(
-      within(card).getByText(/cannot approve state-changing actions/i),
+      within(card).getByText(/can prepare actions but not execute them/i),
     ).toBeInTheDocument();
     expect(
       within(card).queryByRole("button", { name: /confirm/i }),
