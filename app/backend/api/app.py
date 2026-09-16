@@ -14,6 +14,8 @@ in `dependencies.py`, because all of it is request-scoped by nature.
 from __future__ import annotations
 
 import logging
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -31,6 +33,9 @@ from app.backend.api.operations_routes import operations_router
 from app.backend.api.routes import router
 from app.backend.api.workspace_routes import workspace_router
 from app.backend.core.config import DEFAULT_ENV_FILE, Settings, load_settings
+from app.backend.services.bootstrap import ensure_demo_environment
+
+logger = logging.getLogger("astrion.app")
 
 API_TITLE = "ASTRION Support & Operations Agent API"
 #: Tracks the implementation phase, and is kept in step with the frontend's
@@ -51,6 +56,43 @@ State-changing actions are prepared by `POST /api/chat` and executed only by
 `POST /api/actions/{action_id}/confirm`. Nothing in a chat message can perform
 one.
 """
+
+
+def _demo_lifespan(settings: Settings):
+    """Prepare the public demo environment as the process comes up.
+
+    An optimisation, not a guarantee, and the difference matters. The
+    guarantee lives in `POST /api/auth/demo-login`, which checks the database
+    itself on every call; this hook exists so the *sign-in page* is right
+    before anyone clicks anything — without it, the first request after a cold
+    start finds no database, and a page whose whole job is to let you in
+    instead greets you with an error about a missing one.
+
+    Failure is logged and survived. A deployment whose source pack is
+    unreadable should still serve `/health` so an operator can see what is
+    wrong, rather than crash-looping where nobody can read the reason.
+    """
+
+    @asynccontextmanager
+    async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+        if settings.demo_login_enabled:
+            try:
+                report = ensure_demo_environment(settings)
+                if report.changed:
+                    logger.info(
+                        "demo environment prepared at startup in %.2fs",
+                        report.duration_seconds,
+                    )
+            except Exception:
+                # Broad on purpose: nothing about preparing a demo justifies
+                # refusing to start. The endpoint retries on the first click.
+                logger.exception(
+                    "demo environment could not be prepared at startup; "
+                    "it will be retried on the first demo sign-in"
+                )
+        yield
+
+    return lifespan
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -75,6 +117,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         title=API_TITLE,
         version=API_VERSION,
         description=API_DESCRIPTION,
+        lifespan=_demo_lifespan(settings),
     )
     app.state.settings = settings
     app.state.rate_limiter = RateLimiter()

@@ -562,6 +562,11 @@
             ],
             "title": "Dataset Snapshot"
           },
+          "demo_login_enabled": {
+            "default": false,
+            "title": "Demo Login Enabled",
+            "type": "boolean"
+          },
           "documents_indexed": {
             "title": "Documents Indexed",
             "type": "integer"
@@ -1754,6 +1759,30 @@
           }
         },
         "summary": "Audit",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/demo-login": {
+      "post": {
+        "description": "One click into the public demo, with no credential in the browser.\n\nThree things make this safe to expose to anyone who can reach the port:\n\n- **The credential lives on the server.** This endpoint takes no body at\n  all, so there is no address and no password a caller could substitute \u2014\n  the demo identity comes from `Settings` and from nowhere else. A visitor\n  cannot ask to be signed in as somebody else, because the request has no\n  field in which to ask.\n- **It is an ordinary sign-in.** `sign_in_demo_user` calls the same\n  `auth.service.login` the typed form reaches, so the session that comes\n  back passed the same password verification, is subject to the same\n  lockout and the same rate limit, wrote the same audit entry, and is\n  scoped to its workspace by the same membership lookup.\n- **It builds only what is missing.** `ensure_demo_environment` reads the\n  database and does the absent part, so the first visitor after a cold\n  start gets an environment and the ten thousandth gets three `COUNT(*)`\n  queries. It is deliberately not guarded by a process-memory flag: the\n  process may be new and the database old, or the reverse.\n\nNotably absent: `DbDep`. This is the one endpoint that must work when there\nis no database yet, and a dependency whose job is to refuse in exactly that\ncase would make it the one endpoint that could not.",
+        "operationId": "demo_login_api_auth_demo_login_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Demo Login Api Auth Demo Login Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Demo Login",
         "tags": [
           "auth"
         ]

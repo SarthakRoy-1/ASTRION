@@ -38,24 +38,49 @@ this README, configured the way a real one would be.
 
 ### Getting in
 
-Open the app and sign in with the published demo account shown on the sign-in
-screen. There is no separate demo mode: that account is an ordinary member of
-an ordinary workspace, signing in at `POST /api/auth/login` like anyone else,
-and every control — RBAC, tenant scoping, the confirmation gate, the manager
-threshold, audit authorization — applies to it unchanged.
+Open the app and press **Sign in to the demo**. There is nothing to type and
+no credential to copy.
 
-Three accounts are seeded, at three roles, so the authorization boundaries are
-something you can walk into rather than read about:
+The button posts to `POST /api/auth/demo-login`, which takes no body. The demo
+account's address and password live in the backend's configuration, and the
+server signs *itself* in through the same `auth.service.login` the typed form
+reaches — same password verification, same lockout, same audit entry, same
+HttpOnly session cookie. There is still no separate demo mode: every control —
+RBAC, tenant scoping, the confirmation gate, the manager threshold, audit
+authorization — applies to that session unchanged.
+
+The one-click identity is the **support** account. Three accounts are seeded,
+at three roles, so the authorization boundaries are something you can walk
+into rather than read about:
 
 | Address | Role | What it demonstrates |
 | --- | --- | --- |
-| `support@demo.astrion.example` | Support | Investigates and *proposes*. Cannot execute an action, cannot read the audit trail. |
+| `support@demo.astrion.example` | Support | Investigates and *proposes*. Cannot execute an action, cannot read the audit trail. **This is the one-click demo identity.** |
 | `operations@demo.astrion.example` | Operations | Executes confirmed actions and reads the audit trail. Cannot approve a credit above the SOP threshold. |
 | `owner@demo.astrion.example` | Owner | Everything, including manager approval and workspace administration. |
 
-The password is the same for all three and is set per deployment; the sign-in
-screen shows the one this deployment published. It is a deployment secret, not
-a repository one — nothing in this repository contains it.
+### The demo rebuilds itself
+
+The Render free tier sleeps when idle and wakes with an empty disk, so the
+database — a build artifact, never committed — disappears with it. Nobody runs
+an ingestion script to bring it back. With `DEMO_LOGIN_ENABLED` on (the
+default), the backend converges on a usable demo environment by itself
+(`app/backend/services/bootstrap.py`):
+
+1. apply the schema (idempotent `initialize_schema`);
+2. ingest the workbook if the dataset rows are missing;
+3. index the PDFs if the documents or chunks are missing;
+4. seed the demo workspace, users and memberships (`scripts/seed_demo.py`);
+5. verify the demo user can actually reach a workspace with data.
+
+It runs on startup and again on any demo sign-in that finds something missing.
+Readiness is always read from the database, never remembered in process
+memory, so a process whose disk was replaced underneath it rebuilds rather
+than trusting a stale flag. When everything is present it is a handful of
+`COUNT(*)` queries; a full rebuild of the supplied pack takes well under a
+second. Concurrent first visits are serialised (a thread lock plus a
+cross-process lock file) and the schema's unique constraints guarantee one
+workspace, one set of users and one grant per account regardless.
 
 ### What to expect
 
@@ -81,7 +106,7 @@ application has no mail transport, and the verification link is withheld
 outside development rather than being returned in an API response. So a
 self-registered account can be created and not used. That is the honest
 behaviour of a system with no mail provider, stated here rather than papered
-over with a "check your inbox" that would be false. Use the demo account.
+over with a "check your inbox" that would be false. Use the demo button.
 
 Locally there is no such gap: outside production the verification link is
 returned in the registration response, and the UI hands it to you.

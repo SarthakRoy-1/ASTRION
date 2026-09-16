@@ -30,6 +30,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   activateWorkspace as apiActivate,
   createWorkspace as apiCreate,
+  demoSignIn as apiDemoSignIn,
   fetchCurrentUser,
   listWorkspaces,
   signIn as apiSignIn,
@@ -54,10 +55,20 @@ export interface WorkspaceSession {
   workspaces: Workspace[];
   activeWorkspace: Workspace | null;
   authMode: AuthMode | null;
+  /**
+   * Whether this deployment offers one-click demo access.
+   *
+   * Answered by the server on `/health`, never by a build flag — a frontend
+   * that decided this for itself could offer a button no backend would honour,
+   * which is exactly the failure the credential used to be published to avoid.
+   */
+  demoAvailable: boolean;
   error: string | null;
   busy: boolean;
 
   signIn(email: string, password: string): Promise<void>;
+  /** Enter the public demo. Sends no credential; the server holds its own. */
+  signInToDemo(): Promise<void>;
   submitMfaCode(code: string): Promise<void>;
   signOut(): Promise<void>;
   createWorkspace(name: string): Promise<void>;
@@ -68,8 +79,23 @@ export interface WorkspaceSession {
   can(permission: string): boolean;
 }
 
+/**
+ * What a visitor is told when the *first* load fails.
+ *
+ * `data_unavailable` is the one code this cannot render verbatim. It means the
+ * backend is awake but its data is not there yet — a cold start on a
+ * deployment whose disk is rebuilt — and the honest thing to say about that is
+ * "wait a moment", not whatever the API said. This is not a general policy of
+ * rewriting backend messages: every other code is rendered as the server wrote
+ * it, because the server worded it carefully.
+ */
+const INITIALISING_MESSAGE =
+  "The ASTRION environment is still starting up. Please retry in a moment.";
+
 function messageFor(error: unknown): string {
-  if (error instanceof ApiError) return error.message;
+  if (error instanceof ApiError) {
+    return error.code === "data_unavailable" ? INITIALISING_MESSAGE : error.message;
+  }
   return error instanceof Error ? error.message : String(error);
 }
 
@@ -172,6 +198,24 @@ export function useWorkspaceSession(
     [],
   );
 
+  const signInToDemo = useCallback(
+    () =>
+      run(async () => {
+        // No arguments, and none to forget: the credential is the server's.
+        // A demo sign-in that came back needing a second factor would mean the
+        // demo account had enrolled one, which `load` handles the same way it
+        // handles anyone else's.
+        const result = await apiDemoSignIn();
+        if (!alive.current) return;
+        if (result.mfa_required) {
+          setStage("mfa-required");
+          return;
+        }
+        await load("session");
+      }),
+    [load, run],
+  );
+
   const signIn = useCallback(
     (email: string, password: string) =>
       run(async () => {
@@ -250,9 +294,11 @@ export function useWorkspaceSession(
     workspaces,
     activeWorkspace,
     authMode,
+    demoAvailable: health?.demo_login_enabled ?? false,
     error,
     busy,
     signIn,
+    signInToDemo,
     submitMfaCode,
     signOut,
     createWorkspace,

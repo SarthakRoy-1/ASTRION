@@ -31,9 +31,9 @@ from scripts.seed_demo import (
     seed,
 )
 
-#: Not the deployed password. The real one is a deployment secret and lives
-#: nowhere in this repository — this is a fixture, the way every other suite
-#: here uses a fixture password.
+#: Not the deployed password, and not the application's built-in demo default
+#: either — this is a fixture, the way every other suite here uses one. What
+#: `seed()` does with a password is the subject; which password it is, is not.
 DEMO_PASSWORD = "demo-password-for-tests"
 
 SUPPORT = "support@demo.astrion.example"
@@ -303,18 +303,22 @@ def test_the_container_seeds_only_when_explicitly_enabled():
     assert "APP_ENV" not in seed_block
 
 
-def test_the_repository_assigns_no_demo_password():
-    """The published credential is deployment configuration, never a file here.
+def test_no_tracked_file_assigns_a_demo_password_to_a_deployment_variable():
+    """The override variables stay placeholders; nothing here ships a value.
 
-    Every tracked mention of the password variables must be a reference, a
-    comment, or the documented placeholder — never an assignment carrying a
-    value somebody could sign in with.
+    The application does hold a default demo password — `DEFAULT_DEMO_PASSWORD`
+    in `app/backend/core/config.py`, which is deliberate and documented, and is
+    a published credential for a synthetic workspace rather than a secret. What
+    must stay empty is the *deployment* configuration: a real password
+    committed to `.env.example` or a compose file would be a secret living in
+    the repository, whatever it was called.
     """
     import re
 
     placeholder = "replace-me-in-the-deployment"
     assignment = re.compile(
-        r"^\s*(?:#\s*)?(DEMO_SEED_PASSWORD|NEXT_PUBLIC_DEMO_PASSWORD)=(.*)$"
+        r"^\s*(?:#\s*)?(DEMO_SEED_PASSWORD|DEMO_PASSWORD|NEXT_PUBLIC_DEMO_PASSWORD)"
+        r"=(.*)$"
     )
 
     for path in sorted(REPO_ROOT.glob("**/*")):
@@ -336,6 +340,25 @@ def test_the_repository_assigns_no_demo_password():
                 f"{path.relative_to(REPO_ROOT)} assigns "
                 f"{match.group(1)}={value!r}"
             )
+
+
+def test_the_browser_is_never_handed_a_demo_credential():
+    """The published-credential design is gone, not merely unused.
+
+    It published the address and the password through `NEXT_PUBLIC_*`, which
+    Next.js inlines into the client bundle at build time. Both now sit behind
+    `POST /api/auth/demo-login`, which takes no body — so the way this would
+    regress is somebody reintroducing a public variable, which is what this
+    looks for rather than at any one call site.
+    """
+    frontend = REPO_ROOT / "app" / "frontend" / "src"
+    for path in sorted(frontend.rglob("*")):
+        if not path.is_file() or path.suffix not in {".ts", ".tsx"}:
+            continue
+        text = path.read_text(encoding="utf-8")
+        # Reading one is what puts it in the bundle. Naming one in a comment
+        # that explains why it is gone is the opposite, and must stay allowed.
+        assert "process.env.NEXT_PUBLIC_DEMO" not in text, path
 
 
 # ===========================================================================

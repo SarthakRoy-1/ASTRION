@@ -96,7 +96,9 @@ export function AppFrame({ children }: { children: React.ReactNode }) {
           stage={session.stage}
           busy={session.busy}
           error={session.error}
+          demoAvailable={session.demoAvailable}
           onSignIn={session.signIn}
+          onDemoSignIn={session.signInToDemo}
           onSubmitMfaCode={session.submitMfaCode}
           onRegistered={(message, token, email, emailSent) =>
             setRegistration({ message, token, email: email ?? "", emailSent: emailSent ?? false })

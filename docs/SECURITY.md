@@ -138,8 +138,9 @@ ordinary accounts, not by relaxing anything.
 | One workspace, slug `astrion-demo` | `uq_organization_accounts_account` gives an account exactly one workspace, so per-visitor tenants over one dataset are impossible. One shared tenant is the honest shape, and it is labelled as shared in the UI. |
 | Three roles: support, operations, owner | The authorization boundaries become something a visitor walks into. There is **no demo-only permission** — roles resolve through `ROLE_PERMISSIONS` like any other. |
 | Seeded accounts are marked verified by the seed | Same justification as `bootstrap_workspace.py`: the operator running it on the server is the out-of-band proof. `REQUIRE_VERIFIED_EMAIL` is untouched and every other account still has to verify. |
-| `DEMO_SEED_ENABLED` is read by `docker-entrypoint.sh`, not by the application | The running server has no concept of a demo, so there is nowhere for a demo bypass to grow. The flag controls one thing: whether the seed script runs at boot. It is never implied by `APP_ENV`. |
-| The demo password is a deployment secret | Published to visitors by the deployment, never present in this repository. A test scans every tracked file for an assignment carrying a value. |
+| The application builds the demo environment itself (`DEMO_LOGIN_ENABLED`) | The hosted backend never ran `docker-entrypoint.sh`, so the database was never built and visitors were told to run ingestion scripts. `ensure_demo_environment` checks the database and builds only what is missing, on startup and on demo sign-in. It grants nothing: roles come from `ROLE_PERMISSIONS`, and accounts another workspace owns are never moved. |
+| `POST /api/auth/demo-login` takes no body | A caller cannot name a user, role or workspace. The server calls the ordinary `auth.service.login` with its own configured credential, so password verification, lockout, rate limiting (auth tier) and audit all apply. |
+| The demo password is backend configuration, never sent to the browser | A published credential for a synthetic workspace, with a backend default overridable per deployment. No response, log line or frontend source file contains it — each is asserted in `tests/test_demo_bootstrap.py`. `NEXT_PUBLIC_DEMO_*` no longer exists. |
 | The seed never modifies an existing account | It cannot distinguish an address it created from one somebody registered, so it declines to touch either. Rotating the password means rebuilding the database, which is also the documented reset. |
 
 **What a demo visitor still cannot do:** reach another workspace, read audit
@@ -639,11 +640,16 @@ login into a 500 or, far worse, abort the transaction a security check runs in.
   absent by `load_settings`, so a placeholder can never read as a credential.
 - `Settings.openai_api_key` is `repr=False` and never serialised.
   `/health` reports the provider *mode*, never its configuration.
-- Only `NEXT_PUBLIC_*` variables reach the browser bundle. Two of the three
-  are the API base URL and the demo address; the third,
-  `NEXT_PUBLIC_DEMO_PASSWORD`, is a *published* demo credential by design (a
-  public demo means anyone may sign in) and is deployment configuration, never
-  repository content. Unset, the sign-in page shows no demo panel at all.
+- Only `NEXT_PUBLIC_*` variables reach the browser bundle, and the only one
+  left is the API base URL. The demo address and password used to be published
+  there; both now live in backend configuration behind a no-body endpoint.
+- The one hard-coded credential is `DEFAULT_DEMO_PASSWORD` in
+  `app/backend/core/config.py`: the public demo account's password, for a
+  shared workspace of synthetic data. It is deliberate and not a secret, but it
+  is `repr=False`, absent from `public_summary`, never logged, and never
+  returned.
+- `DATA_UNAVAILABLE_MESSAGE` names no script and no path. The commands and the
+  database path an operator needs go to the server log instead.
 - The Docker image bakes in no secret, runs as a non-root user (uid 1000), and
   copies nothing from `data/processed/`.
 - **There is no session signing key** (§2), so the largest category of

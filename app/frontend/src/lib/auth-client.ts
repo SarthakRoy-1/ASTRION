@@ -92,6 +92,25 @@ export function signIn(email: string, password: string): Promise<LoginResult> {
   return post<LoginResult>("/api/auth/login", { email, password });
 }
 
+/**
+ * Enter the public demo, with no credential in the browser.
+ *
+ * Takes no arguments, and that is the design rather than a convenience: the
+ * address and password live in the backend's configuration, so there is
+ * nothing here to publish, nothing to inline into the bundle, and nothing a
+ * reader of this code could sign in as somebody else with. The response is
+ * shaped like `signIn`'s because it *is* a sign-in — the server verifies its
+ * own credential through the ordinary login path and sets the same HttpOnly
+ * cookie.
+ *
+ * It may take a few seconds on a sleeping deployment: the backend builds the
+ * demo database, ingests the dataset and indexes the documents before it
+ * answers. That wait is the whole feature, and the button says so.
+ */
+export function demoSignIn(): Promise<LoginResult> {
+  return post<LoginResult>("/api/auth/demo-login");
+}
+
 /** Complete the second factor on a session that has passed a password only. */
 export function submitMfaCode(code: string): Promise<{ status: string }> {
   return post("/api/auth/mfa/challenge", { code });

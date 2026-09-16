@@ -576,6 +576,10 @@ class HealthResponse(BaseModel):
     #: deployment running without real authentication is visible from outside
     #: rather than only in its own configuration.
     auth_mode: str = "session"
+    #: Whether this deployment offers one-click public demo access. A boolean
+    #: and nothing more: the frontend needs it to decide whether to render the
+    #: demo button, and the credential behind it stays on the server.
+    demo_login_enabled: bool = False
 
     database_ready: bool
     documents_indexed: int

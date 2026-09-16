@@ -2091,23 +2091,73 @@ database for an operator and creates a workspace every time it runs
 would give a restarting container `astrion-demo-7`. Both scripts call the
 same repository and service functions; only the idempotency contract differs.
 
-### Where the flag lives
+### Why the seed moved into the application
 
-`DEMO_SEED_ENABLED` is read by `docker-entrypoint.sh` and by nothing else. The
-application has no demo concept at all, which is the point: a server that
-cannot tell a demo request from any other has nowhere for a bypass to grow.
-The flag is never implied by `APP_ENV` — a deployment does not inherit a demo
-tenant from calling itself production.
+The first design read `DEMO_SEED_ENABLED` in `docker-entrypoint.sh` only, and
+kept the application free of any demo concept. It failed in production for a
+reason no code in the repository could show: the hosted backend did not run
+the entrypoint, so nothing ever built the database. `/health` reported
+`database_ready: false, documents_indexed: 0`, and `/api/auth/me` answered
+`503 data_unavailable` — which the sign-in page rendered verbatim as "The
+ASTRION database has not been built. Run `python scripts/ingest_dataset.py`…",
+to members of the public. On a platform that sleeps idle services and rebuilds
+their disk, a bootstrap that lives in a boot script is a bootstrap that
+depends on which boot path the platform happens to use.
 
-### The credential
+So the application now converges on the environment itself
+(`app/backend/services/bootstrap.py`, `ensure_demo_environment`):
 
-A public demo means a published credential; there is no way around that and
-pretending otherwise would produce a worse design. What makes it safe is
-everything around it: the account is an ordinary member of one workspace over
-synthetic records, and RBAC, tenant scoping, the confirmation gate, the
-manager threshold and audit authorization all apply to it unchanged. The
-password is deployment configuration — absent from this repository, and a test
-scans every tracked file to keep it that way.
+- **State is read from the database, never remembered.** No process flag: the
+  process may be new and the database old, or the reverse.
+- **Each step checks before it writes.** Dataset ingestion runs only if
+  `dataset_metadata`, `accounts`, `orders` or `tickets` is empty; document
+  ingestion only if `documents` or `document_chunks` is; the seed only if the
+  workspace, the demo user, their membership or the workspace's accounts are
+  missing. The common call does no writes at all.
+- **Nothing is reimplemented.** It calls `scripts/ingest_dataset.ingest`,
+  `scripts/ingest_documents.ingest` and `scripts/seed_demo.seed`.
+- **Concurrency.** A process-local lock serialises threads (FastAPI runs sync
+  handlers in a threadpool); an `O_CREAT|O_EXCL` lock file serialises worker
+  processes, with a staleness timeout so a crashed holder cannot close the demo.
+  Correctness does not rest on either: each ingestion is one transaction and
+  the seed rests on `organizations.slug`, `users.email` and the unique index on
+  `organization_accounts.account_id`.
+- **Called from two places.** The FastAPI lifespan (best-effort, logged, never
+  fatal — so the sign-in page is right on arrival) and `POST
+  /api/auth/demo-login` (authoritative, on every call).
+
+`DEMO_LOGIN_ENABLED` controls it. `load_settings` defaults it on, because this
+application is a public demo; the `Settings` model defaults it off, so a test
+that constructs settings directly never acquires a workspace it did not ask
+for. `DEMO_SEED_ENABLED` still works for a Docker boot that wants to seed
+eagerly.
+
+### The credential, and the endpoint that was once rejected
+
+Option 2 above — an endpoint that mints a session for a named demo user — was
+rejected because it issues a session without a credential. `POST
+/api/auth/demo-login` is not that endpoint:
+
+- it takes **no body**, so a caller cannot name a user, a role or a workspace;
+- it calls `auth.service.login` with the server's own configured credential,
+  so the session passed password verification, the lockout check and the audit
+  trail exactly like a typed sign-in;
+- it signs in as exactly one address, `Settings.demo_email`, which must be one
+  of `seed_demo.DEMO_USERS`.
+
+The previous design published the password through `NEXT_PUBLIC_DEMO_PASSWORD`,
+inlined into the client bundle at build time. That was honest — a public demo
+needs a reachable credential — but it made visitors copy a password, and a
+build-time value silently diverged whenever the deployment's password changed.
+The credential now has a backend default (`DEFAULT_DEMO_PASSWORD`), overridable
+with `DEMO_PASSWORD` or `DEMO_SEED_PASSWORD`. It is still a published credential
+for a synthetic workspace, not a secret; what changed is that no response, log
+line or frontend file contains it, and tests assert all three.
+
+If a stored hash disagrees with the configured password (a database carried
+across a password change), the first refused demo sign-in repairs that one
+account's hash and retries once. The repair has no address parameter; it can
+only touch `Settings.demo_email`. Lockout is never cleared.
 
 ### The policy that was breaking the deployment
 
@@ -2139,6 +2189,16 @@ runtime stage so the bundle and the policy cannot disagree.
   account-uniqueness constraint that *is* the tenant boundary.
 - **Reset is by rebuilding.** There is no runtime reset endpoint, and the
   audit chain is never selectively deleted.
+- **On an ephemeral disk, demo history does not survive a cold start.** The
+  environment rebuilds itself, but confirmed actions, audit entries and
+  sessions from before the platform recycled the disk are gone. Keeping them
+  would need a persistent disk or an external database — an infrastructure
+  change, not a code one.
+- **The demo account can be locked out.** Anyone may fail sign-ins against the
+  published demo address at `/api/auth/login`; five failures in fifteen minutes
+  lock it, and the demo button then reports the lockout until the window
+  passes. Clearing it from the demo endpoint would give the same attacker a way
+  to clear it too.
 - **Self-registration still cannot complete on a hosted deployment.** Unchanged
   and documented; the demo account is the answer, not a weakened verification
   rule.

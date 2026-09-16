@@ -1,11 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { Button } from "./ui/Button";
 import { Callout } from "./ui/Callout";
 import { TextField } from "./ui/Field";
-import { demoAccess } from "@/lib/demo";
 
 import styles from "./SignInPanel.module.css";
 
@@ -47,7 +46,9 @@ export function SignInPanel({
   stage,
   busy,
   error,
+  demoAvailable = false,
   onSignIn,
+  onDemoSignIn,
   onSubmitMfaCode,
   onRegistered,
   onDismissError,
@@ -55,7 +56,10 @@ export function SignInPanel({
   stage: "signed-out" | "mfa-required";
   busy: boolean;
   error: string | null;
+  /** From `/health`. The server decides whether there is a demo to offer. */
+  demoAvailable?: boolean;
   onSignIn(email: string, password: string): void;
+  onDemoSignIn?(): void;
   onSubmitMfaCode(code: string): void;
   onRegistered(message: string, verificationToken: string | undefined, email: string, emailSent?: boolean): void;
   onDismissError(): void;
@@ -161,7 +165,6 @@ export function SignInPanel({
   }
 
   const registering = mode === "register";
-  const demo = demoAccess();
 
   return (
     <div className={styles.panel}>
@@ -169,13 +172,8 @@ export function SignInPanel({
         {registering ? "Create your account" : "Sign in"}
       </h1>
 
-      {demo && !registering ? (
-        <DemoAccess
-          email={demo.email}
-          password={demo.password}
-          busy={busy}
-          onSignIn={onSignIn}
-        />
+      {demoAvailable && !registering && onDemoSignIn ? (
+        <DemoAccess busy={busy} onSignIn={onDemoSignIn} />
       ) : null}
       <p className={styles.lede}>
         {registering
@@ -311,11 +309,20 @@ export function SignInPanel({
 /**
  * The way in, for a visitor who has no account and no reason to make one.
  *
- * Rendered only when the deployment published a demo address. It is an
- * ordinary sign-in: the button fills nothing the form could not be filled with
- * by hand and posts to the same endpoint, so the session that comes back went
- * through the same password check, the same rate limiter, the same lockout and
- * the same workspace scoping as anyone else's.
+ * One button, and nothing to copy. The address and the password live in the
+ * backend's configuration and are never sent here, so there is no credential
+ * in this file, none in the compiled bundle, and none for a reader of the page
+ * source to find. `POST /api/auth/demo-login` takes no body at all — the
+ * server signs *itself* in through the ordinary login path and returns the
+ * same HttpOnly cookie any other sign-in would.
+ *
+ * What replaced it is worth naming, because the old panel was not careless.
+ * It published the credential because a published demo has to be reachable to
+ * be usable, and it was honest about that. What it could not fix is that a
+ * visitor still had to read a password off a page and hand it back — and that
+ * a `NEXT_PUBLIC_*` value is baked into the bundle at build time, so the demo
+ * broke silently whenever the deployment's password and the frontend's build
+ * disagreed. Moving the credential behind the endpoint removes both.
  *
  * Everything it says is a fact a visitor needs *before* they act, not
  * marketing:
@@ -327,21 +334,26 @@ export function SignInPanel({
  * - actions are **real inside it**, because a demo that faked the
  *   confirmation gate would be demonstrating nothing.
  *
- * The password is shown because a published demo credential has to be
- * reachable to be usable. It never travels in a URL, is never logged, and is
- * only ever sent in the body of the sign-in request the visitor asked for.
+ * The button owns its own pending label. A sleeping deployment builds the
+ * database, ingests the dataset and indexes the documents before it answers,
+ * and "Preparing demo…" is the difference between a wait and a dead button.
  */
 function DemoAccess({
-  email,
-  password,
   busy,
   onSignIn,
 }: {
-  email: string;
-  password: string | null;
   busy: boolean;
-  onSignIn(email: string, password: string): void;
+  onSignIn(): void;
 }) {
+  // Whether *this* button started the work the panel is busy with. Without it,
+  // typing into the form below would put the demo button into its pending
+  // state too, which would read as though the form had triggered the demo.
+  const [requested, setRequested] = useState(false);
+  useEffect(() => {
+    if (!busy) setRequested(false);
+  }, [busy]);
+  const preparing = requested && busy;
+
   return (
     <Callout tone="info" title="Public demo" className={styles.demo}>
       <p>
@@ -355,33 +367,23 @@ function DemoAccess({
         real: the assistant runs, the confirmation gate holds, and your role
         decides what you may do.
       </p>
-      <dl className={styles.demoAccount}>
-        <div>
-          <dt>Email</dt>
-          <dd>{email}</dd>
-        </div>
-        {password ? (
-          <div>
-            <dt>Password</dt>
-            <dd>{password}</dd>
-          </div>
-        ) : null}
-      </dl>
-      {password ? (
-        <Button
-          type="button"
-          variant="secondary"
-          disabled={busy}
-          onClick={() => onSignIn(email, password)}
-        >
-          {busy ? "Working…" : "Sign in to the demo"}
-        </Button>
-      ) : (
-        <p className={styles.demoNote}>
-          Ask whoever runs this deployment for the demo password, or sign in
-          with your own account below.
-        </p>
-      )}
+      <Button
+        type="button"
+        variant="primary"
+        block
+        disabled={busy}
+        className={styles.demoButton}
+        onClick={() => {
+          setRequested(true);
+          onSignIn();
+        }}
+      >
+        {preparing ? "Preparing demo…" : "Sign in to the demo"}
+      </Button>
+      <p className={styles.demoNote}>
+        No account needed. The first visit after a quiet period takes a few
+        seconds while the demo data is prepared.
+      </p>
     </Callout>
   );
 }

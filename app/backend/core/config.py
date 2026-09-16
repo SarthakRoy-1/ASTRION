@@ -6,7 +6,10 @@ properties matter more than the field list:
 - **No secret is ever hard-coded, and none is ever echoed back.** The API key
   lives in the environment. `Settings` exposes only whether one is present
   (`has_provider_credentials`), never the value, and `/health` reports the
-  provider *mode*, not its configuration.
+  provider *mode*, not its configuration. The one hard-coded credential is the
+  public demo password, which is not a secret: it authenticates a published
+  account on a shared workspace of synthetic data, it is overridable per
+  deployment, and no endpoint returns it and no log line contains it.
 
 - **Provider selection is explicit, never inferred.** `LLM_PROVIDER` must say
   `deterministic` or `real`. A missing key while `real` is requested is a
@@ -27,6 +30,26 @@ from app.backend.core.errors import ConfigurationError, ProviderConfigurationErr
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_DB_PATH = REPO_ROOT / "data" / "processed" / "astrion.db"
+
+#: The public demo identity, owned by the backend.
+#:
+#: Hard-coded on purpose, and safe to be: this is a published credential for a
+#: shared workspace over synthetic data, not a secret. Every server-side control
+#: — RBAC, tenant scoping, the confirmation gate, the manager threshold, audit
+#: authorization — applies to it exactly as to any other account, which is what
+#: makes publishing one acceptable at all.
+#:
+#: The address must be one of `scripts/seed_demo.py`'s `DEMO_USERS`, because
+#: that script is what creates it; a test asserts the two agree. It is under
+#: `.example`, which RFC 2606 reserves, so it cannot receive mail anywhere and
+#: nobody can be misled into thinking a verification message was sent.
+#:
+#: The password is never shown to a visitor, never returned by any endpoint and
+#: never written to a log. A deployment may override it (`DEMO_PASSWORD`, or the
+#: `DEMO_SEED_PASSWORD` that `docker-entrypoint.sh` already reads, so a Docker
+#: boot and an in-process bootstrap cannot disagree about it).
+DEFAULT_DEMO_EMAIL = "support@demo.astrion.example"
+DEFAULT_DEMO_PASSWORD = "astrion-public-demo"
 
 
 class ProviderMode(StrEnum):
@@ -138,6 +161,22 @@ class Settings(BaseModel):
     session_cookie_samesite: str = "lax"
     #: Require a verified email address before a password may issue a session.
     require_verified_email: bool = True
+
+    # --- public demo ---------------------------------------------------------
+    #: Whether `POST /api/auth/demo-login` exists and whether the application
+    #: will build the demo environment for itself.
+    #:
+    #: **The model default is off; `load_settings` defaults it on.** That split
+    #: is deliberate rather than an oversight. A `Settings` built directly in a
+    #: test is describing one specific configuration and must not silently gain
+    #: a workspace and an ingested dataset it did not ask for; a `Settings`
+    #: loaded from the environment is a real deployment of *this* application,
+    #: which is a public demo. Set `DEMO_LOGIN_ENABLED=false` to turn it off.
+    demo_login_enabled: bool = False
+    demo_email: str = DEFAULT_DEMO_EMAIL
+    #: `repr=False` keeps it out of tracebacks and log lines, and
+    #: `public_summary` does not carry it, so no response can contain it.
+    demo_password: str = Field(default=DEFAULT_DEMO_PASSWORD, repr=False)
 
     # --- abuse prevention ----------------------------------------------------
     #: Largest body the server will read at all, enforced before parsing. The
@@ -270,6 +309,10 @@ class Settings(BaseModel):
             # Reported so an operator can see from the outside that a
             # deployment is running without real authentication.
             "auth_mode": self.auth_mode.value,
+            # A boolean, and only a boolean. The frontend needs to know whether
+            # to offer the demo button; it must never learn the credential, and
+            # there is nothing here it could learn it from.
+            "demo_login_enabled": self.demo_login_enabled,
         }
 
 
@@ -325,6 +368,13 @@ def load_settings(*, env_file: Path | str | None = None) -> Settings:
         session_cookie_secure=_env_bool("SESSION_COOKIE_SECURE", True),
         session_cookie_samesite=(_env("SESSION_COOKIE_SAMESITE", "lax") or "lax").lower(),
         require_verified_email=_env_bool("REQUIRE_VERIFIED_EMAIL", True),
+        demo_login_enabled=_env_bool("DEMO_LOGIN_ENABLED", True),
+        demo_email=_env("DEMO_EMAIL", DEFAULT_DEMO_EMAIL) or DEFAULT_DEMO_EMAIL,
+        demo_password=(
+            _env("DEMO_PASSWORD")
+            or _env("DEMO_SEED_PASSWORD")
+            or DEFAULT_DEMO_PASSWORD
+        ),
         max_request_bytes=_env_int("MAX_REQUEST_BYTES", 256 * 1024),
         rate_limit_enabled=_env_bool("RATE_LIMIT_ENABLED", True),
         rate_limit_per_minute=_env_int("RATE_LIMIT_PER_MINUTE", 120),

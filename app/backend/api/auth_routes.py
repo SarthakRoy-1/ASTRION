@@ -44,6 +44,7 @@ from app.backend.core.config import AuthMode, Settings, email_provider_for
 from app.backend.core.errors import (
     AuthenticationError,
     AuthorizationError,
+    DataUnavailableError,
     InvalidRequestError,
     NotFoundError,
 )
@@ -54,6 +55,12 @@ from app.backend.services.audit import (
     record_event,
     verify_audit_chain,
 )
+from app.backend.services.bootstrap import (
+    DemoEnvironmentError,
+    ensure_demo_environment,
+    sign_in_demo_user,
+)
+from app.backend.services.database import get_connection
 
 #: Reserved for this module's own diagnostics. Deliberately never used to
 #: record a verification or reset token — see `_may_disclose_link`.
@@ -440,6 +447,102 @@ def login(
         max_age=repo.ABSOLUTE_TIMEOUT_HOURS * 3600,
     )
     return {
+        "status": "mfa_required" if result.mfa_pending else "authenticated",
+        "mfa_required": result.mfa_pending,
+        "user_id": result.user_id,
+        "org_id": result.org_id,
+    }
+
+
+#: What a visitor is told when the environment could not be built. It names no
+#: script, no path and no stage — those go to the server log, which is where
+#: somebody who could act on them is reading. Telling a member of the public to
+#: run an ingestion command is not an error message, it is an apology for not
+#: having one.
+DEMO_UNAVAILABLE_MESSAGE = (
+    "The demo environment is temporarily initialising. Please retry in a moment."
+)
+
+
+@auth_router.post("/demo-login")
+def demo_login(request: Request, response: Response) -> dict:
+    """One click into the public demo, with no credential in the browser.
+
+    Three things make this safe to expose to anyone who can reach the port:
+
+    - **The credential lives on the server.** This endpoint takes no body at
+      all, so there is no address and no password a caller could substitute —
+      the demo identity comes from `Settings` and from nowhere else. A visitor
+      cannot ask to be signed in as somebody else, because the request has no
+      field in which to ask.
+    - **It is an ordinary sign-in.** `sign_in_demo_user` calls the same
+      `auth.service.login` the typed form reaches, so the session that comes
+      back passed the same password verification, is subject to the same
+      lockout and the same rate limit, wrote the same audit entry, and is
+      scoped to its workspace by the same membership lookup.
+    - **It builds only what is missing.** `ensure_demo_environment` reads the
+      database and does the absent part, so the first visitor after a cold
+      start gets an environment and the ten thousandth gets three `COUNT(*)`
+      queries. It is deliberately not guarded by a process-memory flag: the
+      process may be new and the database old, or the reverse.
+
+    Notably absent: `DbDep`. This is the one endpoint that must work when there
+    is no database yet, and a dependency whose job is to refuse in exactly that
+    case would make it the one endpoint that could not.
+    """
+    settings = _settings(request)
+    _reject_in_demo_mode(settings)
+    if not settings.demo_login_enabled:
+        # Not an authorization refusal: on a deployment that has not published
+        # a demo, this route has nothing behind it.
+        raise NotFoundError("This deployment does not offer public demo access.")
+
+    try:
+        report = ensure_demo_environment(settings)
+    except DemoEnvironmentError as exc:
+        # The stage and the underlying error go to the operator; the visitor
+        # gets something they can act on, which is "try again".
+        logger.error(
+            "demo environment could not be prepared at stage %r: %s",
+            exc.stage,
+            exc.detail,
+        )
+        raise DataUnavailableError(DEMO_UNAVAILABLE_MESSAGE) from exc
+
+    if report.changed:
+        logger.info(
+            "demo environment prepared on demand in %.2fs", report.duration_seconds
+        )
+
+    conn = get_connection(settings.database_path)
+    try:
+        result = sign_in_demo_user(
+            conn,
+            settings,
+            client_ip=client_address(request),
+            user_agent=request.headers.get("user-agent"),
+        )
+    except auth_service.AccountLocked as exc:
+        # Reachable only by someone deliberately failing sign-ins against the
+        # published demo address often enough to trip the account lockout.
+        # Clearing it here would hand them a way to clear it for themselves too.
+        logger.warning("demo sign-in refused: the demo account is locked out")
+        raise AuthenticationError(str(exc)) from exc
+    except auth_service.AuthError as exc:
+        logger.error("demo sign-in failed after a successful bootstrap: %s", exc)
+        raise DataUnavailableError(DEMO_UNAVAILABLE_MESSAGE) from exc
+    finally:
+        conn.close()
+
+    _set_session_cookie(
+        response,
+        settings,
+        result.session_token,
+        max_age=repo.ABSOLUTE_TIMEOUT_HOURS * 3600,
+    )
+    return {
+        # Shaped exactly like `/login`'s response, so the client has one
+        # sign-in result to understand rather than two.
         "status": "mfa_required" if result.mfa_pending else "authenticated",
         "mfa_required": result.mfa_pending,
         "user_id": result.user_id,

@@ -19,6 +19,7 @@ Two mechanics worth stating:
 
 from __future__ import annotations
 
+import logging
 import sqlite3
 import uuid
 from collections.abc import Iterator
@@ -35,6 +36,20 @@ from app.backend.models.agent import AgentContext
 from app.backend.policies.base import PolicyDataError, load_evaluation_context
 from app.backend.services.database import get_connection, initialize_schema
 from app.backend.tools.registry import build_default_registry
+
+logger = logging.getLogger("astrion.api")
+
+#: What a caller is told when the data is not there.
+#:
+#: Two audiences, and only one of them can act. An operator needs the commands
+#: and the path, and gets them from the log line beside each raise; whoever is
+#: holding the browser needs to know whether to wait or to give up, and gets
+#: that. The message used to carry the commands, which meant a member of the
+#: public arriving at a sleeping deployment was told to run two Python scripts
+#: on a machine they have no access to.
+DATA_UNAVAILABLE_MESSAGE = (
+    "The ASTRION environment is still initialising. Please retry in a moment."
+)
 
 
 def now_utc() -> datetime:
@@ -58,11 +73,13 @@ def get_db(request: Request) -> Iterator[sqlite3.Connection]:
     """Open a scoped connection, refusing clearly if the data is not built."""
     settings: Settings = request.app.state.settings
     if not settings.database_path.exists():
-        raise DataUnavailableError(
-            "The ASTRION database has not been built. Run "
-            "`python scripts/ingest_dataset.py` and "
-            "`python scripts/ingest_documents.py`, then retry."
+        logger.error(
+            "no database at %s. Build it with `python scripts/ingest_dataset.py` "
+            "and `python scripts/ingest_documents.py`, or set "
+            "DEMO_LOGIN_ENABLED=true to have the application build it itself.",
+            settings.database_path,
         )
+        raise DataUnavailableError(DATA_UNAVAILABLE_MESSAGE)
     conn = get_connection(settings.database_path)
     try:
         # Idempotent, and applies any column added since this file was built.
@@ -77,10 +94,11 @@ def require_dataset(conn: sqlite3.Connection) -> None:
     try:
         load_evaluation_context(conn)
     except PolicyDataError as exc:
-        raise DataUnavailableError(
-            "The dataset has not been ingested, so no time-based question can be "
+        logger.error(
+            "the dataset has not been ingested, so no time-based question can be "
             "answered. Run `python scripts/ingest_dataset.py`."
-        ) from exc
+        )
+        raise DataUnavailableError(DATA_UNAVAILABLE_MESSAGE) from exc
 
 
 def resolve_principal(

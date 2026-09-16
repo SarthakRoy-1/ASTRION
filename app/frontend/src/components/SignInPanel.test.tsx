@@ -1,7 +1,7 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { act } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { act, useState } from "react";
+import { describe, expect, it, vi } from "vitest";
 
 import { SignInPanel } from "./SignInPanel";
 
@@ -221,66 +221,66 @@ describe("the registration form", () => {
 /**
  * The public-demo panel.
  *
- * A hosted deployment running real authentication has no way in for a
- * visitor, and this is the way in: an ordinary sign-in with a published
- * account. What the panel owes the visitor is the truth before they act —
- * that the workspace is shared, the records synthetic, and the actions real
- * inside it — and what it owes the product is that it stays an ordinary
- * sign-in, with no channel for the credential except the request the visitor
- * asked for.
+ * One button, and the visitor types nothing. The credential that used to be
+ * printed here lives in the backend's configuration now, so what these tests
+ * are really about is what is *absent*: no address to copy, no password on the
+ * page, no `NEXT_PUBLIC_*` value baked into the bundle, and no argument on the
+ * call that could name a different account.
+ *
+ * What the panel still owes the visitor is unchanged — the truth before they
+ * act, that the workspace is shared, the records synthetic, and the actions
+ * real inside it.
  */
 describe("the public demo panel", () => {
-  const DEMO_EMAIL = "support@demo.astrion.example";
-  const DEMO_PASSWORD = "published-demo-password";
-
-  function renderPanel() {
+  function renderPanel(
+    props: {
+      demoAvailable?: boolean;
+      busy?: boolean;
+      onDemoSignIn?: () => void;
+    } = {},
+  ) {
     const user = userEvent.setup();
     const onSignIn = vi.fn();
-    render(
+    const onDemoSignIn = props.onDemoSignIn ?? vi.fn();
+    const view = render(
       <SignInPanel
         stage="signed-out"
-        busy={false}
+        busy={props.busy ?? false}
         error={null}
+        demoAvailable={props.demoAvailable ?? true}
         onSignIn={onSignIn}
+        onDemoSignIn={onDemoSignIn}
         onSubmitMfaCode={vi.fn()}
         onRegistered={vi.fn()}
         onDismissError={vi.fn()}
       />,
     );
-    return { user, onSignIn };
+    return { user, onSignIn, onDemoSignIn, view };
   }
 
-  function publish(email?: string, password?: string) {
-    vi.stubEnv("NEXT_PUBLIC_DEMO_EMAIL", email ?? "");
-    vi.stubEnv("NEXT_PUBLIC_DEMO_PASSWORD", password ?? "");
-  }
+  const demoButton = () =>
+    screen.getByRole("button", { name: /sign in to the demo|preparing demo/i });
 
-  afterEach(() => {
-    vi.unstubAllEnvs();
-  });
-
-  it("is absent when the deployment published no demo account", () => {
-    // A self-hosted copy must not advertise credentials it does not have.
-    publish();
-    renderPanel();
+  it("is absent when the deployment offers no demo", () => {
+    // The server answers this on `/health`; a self-hosted copy must not
+    // advertise a way in that its backend would refuse.
+    renderPanel({ demoAvailable: false });
 
     expect(screen.queryByText("Public demo")).toBeNull();
-    expect(screen.queryByRole("button", { name: /sign in to the demo/i })).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: /sign in to the demo/i }),
+    ).toBeNull();
   });
 
   it("says the workspace is shared before the visitor acts in it", () => {
-    publish(DEMO_EMAIL, DEMO_PASSWORD);
     renderPanel();
 
     expect(screen.getByText("Public demo")).toBeInTheDocument();
     expect(screen.getByText(/everyone shares one workspace/i)).toBeInTheDocument();
-    expect(
-      screen.getByText(/visible to whoever visits next/i),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/visible to whoever visits next/i)).toBeInTheDocument();
   });
 
   it("says the records are synthetic and the actions are not", () => {
-    publish(DEMO_EMAIL, DEMO_PASSWORD);
     renderPanel();
 
     expect(screen.getByText(/synthetic accounts, orders, tickets/i)).toBeInTheDocument();
@@ -289,57 +289,100 @@ describe("the public demo panel", () => {
     expect(screen.getByText(/the confirmation gate holds/i)).toBeInTheDocument();
   });
 
-  it("names the account being used", () => {
-    publish(DEMO_EMAIL, DEMO_PASSWORD);
-    renderPanel();
+  it("asks the visitor for nothing at all", async () => {
+    const { user, onDemoSignIn, onSignIn } = renderPanel();
 
-    expect(screen.getByText(DEMO_EMAIL)).toBeInTheDocument();
+    await user.click(demoButton());
+
+    // No arguments: there is no address and no password in this component to
+    // pass, which is what keeps them out of the bundle.
+    expect(onDemoSignIn).toHaveBeenCalledTimes(1);
+    expect(onDemoSignIn).toHaveBeenCalledWith();
+    // And it is not the typed form's callback wearing a different hat.
+    expect(onSignIn).not.toHaveBeenCalled();
   });
 
-  it("signs in through the ordinary path, with the published credentials", async () => {
-    publish(DEMO_EMAIL, DEMO_PASSWORD);
-    const { user, onSignIn } = renderPanel();
+  it("shows no credential of its own", () => {
+    renderPanel();
+
+    // Scoped to the demo panel: the ordinary form below it still has a password
+    // field, and should. What must be empty is the demo path — not "the
+    // password is not displayed", but that there is nothing here that could be
+    // one, and nothing to type.
+    const panel = screen.getByText("Public demo").parentElement!;
+    expect(panel).toContainElement(demoButton());
+    expect(panel.querySelectorAll("input")).toHaveLength(0);
+    expect(panel.textContent).not.toMatch(/@/);
+    expect(panel.textContent).not.toMatch(/password/i);
+  });
+
+  it("puts nothing in a URL or a navigable attribute", () => {
+    renderPanel();
+
+    // A query string, a link target or a form action would put whatever it
+    // carried into history, the Referer header and every access log on the way.
+    // There is nothing to carry now, and this is what keeps it that way.
+    expect(document.querySelectorAll("form[action]")).toHaveLength(0);
+    for (const anchor of Array.from(document.querySelectorAll("a[href]"))) {
+      expect(anchor.getAttribute("href")).not.toMatch(/demo/i);
+    }
+  });
+
+  it("says it is preparing while the backend builds the environment", async () => {
+    // A sleeping deployment ingests a dataset and indexes six documents before
+    // it answers. Without this the button looks dead for those seconds.
+    function Harness() {
+      const [busy, setBusy] = useState(false);
+      return (
+        <SignInPanel
+          stage="signed-out"
+          busy={busy}
+          error={null}
+          demoAvailable
+          onSignIn={vi.fn()}
+          onDemoSignIn={() => setBusy(true)}
+          onSubmitMfaCode={vi.fn()}
+          onRegistered={vi.fn()}
+          onDismissError={vi.fn()}
+        />
+      );
+    }
+
+    const user = userEvent.setup();
+    render(<Harness />);
+    expect(screen.getByRole("button", { name: /sign in to the demo/i })).toBeEnabled();
 
     await user.click(screen.getByRole("button", { name: /sign in to the demo/i }));
 
-    // The same callback the typed form uses. No second endpoint, no minted
-    // session, no role chosen by the browser.
-    expect(onSignIn).toHaveBeenCalledTimes(1);
-    expect(onSignIn).toHaveBeenCalledWith(DEMO_EMAIL, DEMO_PASSWORD);
+    const button = screen.getByRole("button", { name: /preparing demo/i });
+    expect(button).toBeDisabled();
   });
 
-  it("puts the credential in no URL and no navigable attribute", () => {
-    publish(DEMO_EMAIL, DEMO_PASSWORD);
-    renderPanel();
+  it("does not claim to be preparing when something else is busy", () => {
+    // `busy` is shared with the form below. A demo button that went pending
+    // because somebody pressed Sign in would be reporting the wrong thing.
+    renderPanel({ busy: true });
 
-    // The password is displayed, because a published demo credential has to be
-    // readable to be usable. What it must never be is *carried* — a query
-    // string, a link target or a form action would put it into history, the
-    // Referer header and every access log along the way.
-    for (const element of Array.from(document.querySelectorAll("*"))) {
-      for (const attribute of Array.from(element.attributes)) {
-        expect(attribute.value).not.toContain(DEMO_PASSWORD);
-      }
-    }
-    expect(document.querySelectorAll("form[action]")).toHaveLength(0);
-  });
-
-  it("offers instructions rather than a button when no password was published", () => {
-    publish(DEMO_EMAIL);
-    renderPanel();
-
-    expect(screen.getByText(DEMO_EMAIL)).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /sign in to the demo/i })).toBeNull();
     expect(
-      screen.getByText(/ask whoever runs this deployment/i),
+      screen.getByRole("button", { name: /sign in to the demo/i }),
     ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /preparing demo/i })).toBeNull();
   });
 
   it("stays out of the way of someone creating a real account", async () => {
-    publish(DEMO_EMAIL, DEMO_PASSWORD);
     const { user } = renderPanel();
     await user.click(screen.getByRole("tab", { name: /create account/i }));
 
     expect(screen.queryByText("Public demo")).toBeNull();
+  });
+
+  it("leaves the ordinary sign-in form in place", () => {
+    // Real accounts still exist, and the demo is an addition rather than a
+    // replacement for them.
+    renderPanel();
+
+    expect(screen.getByLabelText(/^email$/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/^password$/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^sign in$/i })).toBeInTheDocument();
   });
 });

@@ -727,7 +727,17 @@ def test_there_is_no_silent_fallback_from_real_to_deterministic(api_settings):
 # --- error envelope ----------------------------------------------------------------------------
 
 
-def test_missing_data_produces_a_clear_structured_error(tmp_path):
+def test_missing_data_produces_a_clear_structured_error(tmp_path, caplog):
+    """Structured for the caller, actionable for whoever can act.
+
+    The message used to carry the ingestion commands, which read well on a
+    developer's laptop and badly everywhere else: the same string reached the
+    public sign-in page of the hosted deployment, telling a visitor to run two
+    Python scripts on a machine they have no access to. The commands moved to
+    the log, which is where somebody who could run them is reading.
+    """
+    import logging
+
     from fastapi.testclient import TestClient
 
     from app.backend.api.app import create_app
@@ -735,13 +745,21 @@ def test_missing_data_produces_a_clear_structured_error(tmp_path):
     settings = Settings(
         database_path=tmp_path / "missing.db", auth_mode=AuthMode.DEMO_HEADER
     )
-    with TestClient(create_app(settings)) as client:
-        response = post_chat(client, "Can ORD-1001 be cancelled?")
+    with caplog.at_level(logging.ERROR, logger="astrion.api"):
+        with TestClient(create_app(settings)) as client:
+            response = post_chat(client, "Can ORD-1001 be cancelled?")
 
     assert response.status_code == 503
     body = response.json()["error"]
     assert body["code"] == "data_unavailable"
-    assert "ingest_dataset" in body["message"]
+    assert "retry" in body["message"].lower()
+    assert "ingest_dataset" not in body["message"]
+    assert "python" not in body["message"].lower()
+
+    # The operator still gets the commands, and the path the application was
+    # actually looking at — which the response deliberately does not disclose.
+    assert "ingest_dataset" in caplog.text
+    assert "missing.db" in caplog.text
 
 
 def test_an_unexpected_failure_never_leaks_a_traceback(raw_client, monkeypatch):

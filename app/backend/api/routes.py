@@ -117,6 +117,7 @@ def health(request: Request) -> HealthResponse:
         max_tool_steps=summary["max_tool_steps"],
         state_changing_actions_enabled=summary["state_changing_actions_enabled"],
         auth_mode=summary["auth_mode"],
+        demo_login_enabled=summary["demo_login_enabled"],
         database_ready=database_ready,
         documents_indexed=documents,
         dataset_snapshot=snapshot,

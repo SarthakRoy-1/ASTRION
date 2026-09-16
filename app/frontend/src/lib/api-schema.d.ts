@@ -100,6 +100,48 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/auth/demo-login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Demo Login
+         * @description One click into the public demo, with no credential in the browser.
+         *
+         *     Three things make this safe to expose to anyone who can reach the port:
+         *
+         *     - **The credential lives on the server.** This endpoint takes no body at
+         *       all, so there is no address and no password a caller could substitute —
+         *       the demo identity comes from `Settings` and from nowhere else. A visitor
+         *       cannot ask to be signed in as somebody else, because the request has no
+         *       field in which to ask.
+         *     - **It is an ordinary sign-in.** `sign_in_demo_user` calls the same
+         *       `auth.service.login` the typed form reaches, so the session that comes
+         *       back passed the same password verification, is subject to the same
+         *       lockout and the same rate limit, wrote the same audit entry, and is
+         *       scoped to its workspace by the same membership lookup.
+         *     - **It builds only what is missing.** `ensure_demo_environment` reads the
+         *       database and does the absent part, so the first visitor after a cold
+         *       start gets an environment and the ten thousandth gets three `COUNT(*)`
+         *       queries. It is deliberately not guarded by a process-memory flag: the
+         *       process may be new and the database old, or the reverse.
+         *
+         *     Notably absent: `DbDep`. This is the one endpoint that must work when there
+         *     is no database yet, and a dependency whose job is to refuse in exactly that
+         *     case would make it the one endpoint that could not.
+         */
+        post: operations["demo_login_api_auth_demo_login_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/auth/login": {
         parameters: {
             query?: never;
@@ -335,13 +377,46 @@ export interface paths {
         put?: never;
         /**
          * Register
-         * @description Create an account and issue an email-verification link.
+         * @description Create an account and send a verification email.
          *
          *     The response is identical whether or not the address was already
          *     registered, so this endpoint cannot be used to test which addresses have
          *     accounts.
+         *
+         *     Email delivery is attempted but does not gate account creation: if Resend
+         *     is not configured (or fails), registration still succeeds and the frontend
+         *     receives `email_sent: false` along with the token — but only in non-
+         *     production, where returning the token is acceptable for developer testing.
          */
         post: operations["register_api_auth_register_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/resend-verification": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resend Verification
+         * @description Re-send a verification email to an unverified address.
+         *
+         *     Rate-limited server-side: 30-second minimum interval between sends, at
+         *     most 3 total sends per address, then a 24-hour cooldown. The response is
+         *     identical whether or not the address is registered, so this endpoint cannot
+         *     be used to discover which addresses have accounts.
+         *
+         *     Returns current resend state so the frontend can update its countdown
+         *     without a separate status call.
+         */
+        post: operations["resend_verification_api_auth_resend_verification_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -933,6 +1008,11 @@ export interface components {
             database_ready: boolean;
             /** Dataset Snapshot */
             dataset_snapshot?: string | null;
+            /**
+             * Demo Login Enabled
+             * @default false
+             */
+            demo_login_enabled: boolean;
             /** Documents Indexed */
             documents_indexed: number;
             /** Max Tool Steps */
@@ -1147,6 +1227,11 @@ export interface components {
             email: string;
             /** Password */
             password: string;
+        };
+        /** ResendVerificationRequest */
+        ResendVerificationRequest: {
+            /** Email */
+            email: string;
         };
         /**
          * ResponseOutcome
@@ -1446,6 +1531,28 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    demo_login_api_auth_demo_login_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
                 };
             };
         };
@@ -1793,6 +1900,41 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["RegisterRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resend_verification_api_auth_resend_verification_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ResendVerificationRequest"];
             };
         };
         responses: {
