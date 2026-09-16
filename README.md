@@ -238,7 +238,11 @@ docs/             architecture, security, product, reference, screenshots
 
 - [Architecture](docs/architecture.md) — the full technical design.
 - [Security](docs/SECURITY.md) — threat model, controls and limitations.
-- [Product notes](docs/product.md) — who it is for, roles, what it refuses to do.
+- [Product note](docs/product.md) — problem, users, trust, actions, next steps
+  and the success metric.
+- [Demo script](docs/demo-script.md) — the five-minute walkthrough.
+- [Submission checklist](docs/submission-checklist.md) — what is verified and
+  what remains.
 - [Engineering reference](docs/reference.md) — detailed setup, deployment,
   API, environment variables and the build history.
 - [Future plan](docs/FuturePlan.md) — what would come next, in order.

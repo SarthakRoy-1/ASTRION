@@ -1,30 +1,158 @@
 # Architecture
 
-> **Current through Phase 5.** Sections 1–6 state the constraints the design
-> had to satisfy, written before the source pack was ingested; sections 7–10
-> record what each phase actually built and why. Where an early section was
-> refined by later evidence, the later section says so and wins. Section 11
-> lists what remains deliberately open.
+This document has two parts. **Section 0** is a short overview of the system
+as it runs today. **Sections 1–18** are the detailed design record. They were
+written phase by phase, so the phase numbers in their headings follow the build
+history. Where a later section refines an earlier one, the later section wins.
+
+## 0. Overview
+
+### 0.1 The principle
+
+> **LLM reasoning proposes and coordinates. Deterministic application logic
+> makes policy-sensitive decisions. Authorization is enforced below the model.
+> State-changing actions require explicit confirmation.**
+
+In practice:
+
+- **The planner decides which tools to run and writes the explanation.** It
+  interprets the question, picks tools, sequences them and phrases the answer.
+  - The planner sits behind one interface, `PlanningProvider`.
+  - `LLM_PROVIDER=real` selects an OpenAI model.
+  - The default, and what the hosted demo runs (`/health` reports
+    `provider_mode: deterministic`), is a rule-based planner that needs no key
+    and no network.
+  - Either way, the planner has the same authority: none over the points below.
+- **Python code computes every policy-sensitive result.** This covers
+  cancellation fees, failed-pickup credits, SLA targets and breaches, which
+  source governs, and whether an answer can be trusted.
+  - Figures come back from tools with their inputs and citations attached.
+  - A figure the model writes in prose carries no authority (§10.12).
+  - `prepare_service_credit` refuses an amount supplied by its caller.
+- **Access is enforced before the model sees any data.**
+  - The caller's workspace is resolved from their server-side session.
+  - That workspace's account set is compiled into the SQL `WHERE` clause of
+    every record, document and signal query.
+  - An out-of-scope record never reaches the model, so neither a prompt nor a
+    document containing a prompt-injection payload can widen scope.
+  - Authorization is never expressed as a prompt instruction.
+- **Actions are proposed, then confirmed.**
+  - The chat endpoint has no execution path; its tools can only write a
+    `pending_confirmation` proposal.
+  - Execution happens only through a separate call,
+    `POST /api/actions/{id}/confirm`. That call re-checks the confirming user's
+    permission, the conversation, the parameter fingerprint, expiry and single
+    use before writing anything.
+
+### 0.2 Diagram
+
+```text
+ Browser ── Next.js 16 (Vercel) ── Support · Documents · Operations · Workspace/Audit
+                │  HttpOnly session cookie
+                ▼
+ FastAPI (Render) ─ session auth ─► caller = user + workspace + role + account scope
+                │                                   │ (scope passed down, never chosen by the model)
+                ▼                                   ▼
+   POST /api/chat ──► Orchestrator ◄──► PlanningProvider (deterministic │ OpenAI)
+                          │ tool calls (12, schema-validated, step budget)
+          ┌───────────────┼──────────────────┬───────────────────┐
+          ▼               ▼                  ▼                   ▼
+   record tools     document tools     policy tools        action tools
+   (orders,         (BM25 + authority  (fee · credit ·     (prepare only →
+    tickets,         tiers, per-topic   SLA, deterministic)  pending_confirmation)
+    accounts)        precedence)             │
+          └───────────────┴────────┬─────────┘
+                                   ▼
+                  Trust assessment (agent/trust.py) → answer + citations + trust status
+                                   │
+   POST /api/actions/{id}/confirm ─┴─► permission · session · fingerprint · expiry ·
+                                       manager threshold · single use → execute → audit
+                                   │
+                                   ▼
+           SQLite: records · documents/chunks · workspaces · sessions · actions ·
+                   hash-chained audit log      ◄── ingestion + self-healing bootstrap
+```
+
+### 0.3 Components at a glance
+
+| Concern | Where | What it does |
+| --- | --- | --- |
+| **Frontend** | `app/frontend/` (Next.js 16, React 19) | Four areas: Support (chat), Documents, Operations and Workspace (members, audit). Signs in with an HttpOnly session cookie and holds no credential. A per-request nonce CSP is set in `src/middleware.ts`. The UI renders what the API returns and computes nothing policy-related. |
+| **Backend** | `app/backend/api/` (FastAPI, Pydantic v2) | One error envelope. Requests are `extra="forbid"`, so a client cannot supply a tenant, role or amount. Rate limits and CORS are applied here. |
+| **Agent orchestration** | `agent/orchestrator.py`, `agent/provider.py` | A bounded tool loop (`max_tool_steps`). Tools are dispatched through a registry, arguments are validated, and the response is assembled by `agent/composer.py`. |
+| **Document retrieval** | `retrieval/search.py`, `retrieval/authority.py` | BM25 relevance over chunks, then precedence by authority tier, resolved per topic. Returns evidence with document, page, section, tier and status. |
+| **Structured data tools** | `tools/record_tools.py`, `services/records.py` | Lookups for accounts, orders and tickets, plus their provenance. An out-of-scope record is reported exactly like a missing one. |
+| **Deterministic policy layer** | `policies/`, `tools/policy_tools.py` | Cancellation fee, failed-pickup service credit, and first-response SLA. Each result carries its rule, inputs and citations. A customer agreement's override is applied per topic. |
+| **Trust / reliability layer** | `agent/trust.py` | Gives each answer one of five statuses: `confident`, `conditional`, `conflict`→`escalate`, `insufficient_data` or `escalate`. The status is derived only from tool results, worst status wins, and a turn with no evidence cannot be `confident` (§15). |
+| **Action preparation** | `tools/action_tools.py` | `prepare_escalation`, `prepare_ticket_note` and `prepare_service_credit` write a proposal with a parameter fingerprint and expiry, and nothing else. |
+| **Explicit confirmation** | `POST /api/actions/{id}/confirm` | Checks the confirming user's `execute_action` permission, conversation ownership, fingerprint, expiry and the manager threshold. A replay returns 409. Only then does it execute and audit (§9.6, §10.7, §17). |
+| **Authorization** | `auth/permissions.py`, `api/authentication.py` | Session authentication with RBAC. Roles are `viewer` ⊂ `support` (propose) ⊂ `operations` (execute, read audit) ⊂ `admin` (approve high-value credits, manage documents and members) ⊂ `owner`. |
+| **Tenant / account scoping** | `auth/workspaces.py`, `services/*` | User → membership → workspace → `organization_accounts`. Each account belongs to at most one workspace. The scope reaches SQL and never comes from the model or the request body (§14). |
+| **Database** | SQLite (`STRICT` tables), `services/database.py` | Holds records, documents and chunks, users, sessions, workspaces, actions, service credits, and an append-only hash-chained audit log written under `BEGIN IMMEDIATE`. |
+| **Document ingestion** | `scripts/ingest_documents.py`, `services/document_ingestion.py`, `api/document_routes.py` | PyMuPDF extraction → section-aware chunks → status and type read from the document itself. Uploads need `manage_documents` and must name an account in the caller's scope. The canonical source pack cannot be deleted, and re-indexing is scoped to the caller ([SECURITY §7](SECURITY.md#7-file-and-document-security)). |
+| **Proactive operations** | `operations/detection.py`, `operations/ranking.py` | Four rule-based detectors (SLA risk, recurring issue, cross-customer issue, operational anomaly) with itemised, deterministic priority. No model is involved (§16). |
+| **Self-healing demo bootstrap** | `services/bootstrap.py` | `ensure_demo_environment` reads state from the database and ingests or seeds only what is missing. It is guarded by a thread lock and an `O_CREAT\|O_EXCL` lock file, and runs at startup and on every `POST /api/auth/demo-login` (§18). |
+
+### 0.4 Source authority, and why it matters
+
+Every document chunk carries an authority tier derived from the document's own
+type and in-document status (`retrieval/authority.py`, `AuthorityTier`). The
+order restates the precedence clause in the current support policy itself.
+
+| Tier | Source | Role in an answer |
+| --- | --- | --- |
+| 1 | **Signed customer agreement** (`Status: ACTIVE`) | Governs, but only for that customer's accounts and only on the topics its sections alter |
+| 2 | **Current support policy** (`Status: CURRENT`) | Governs where no agreement speaks to the topic |
+| 3 | **Current product / SOP documentation** | Governs the procedures and product behaviour that policy does not settle |
+| 4 | **Deprecated or superseded documents** | Non-authoritative context only; never governs, however well it matches |
+
+Historical ticket resolutions are structured records, not documents. They are
+likewise surfaced as context only and are never grounds for an answer.
+
+The source pack contradicts itself deliberately, and a relevance-only search
+would get these cases wrong:
+
+- The deprecated v2 policy quotes a different P1 target from v3 and matches
+  keywords just as well.
+- Northstar's agreement waives a cancellation fee the SOP would charge.
+- A historical ticket records a fee that policy no longer supports.
+
+Authority is therefore kept separate from relevance:
+
+- Relevance finds candidate evidence. Authority decides which of it governs.
+- Precedence is resolved **per topic**, so the cancellation SOP governing
+  cancellations does not let it govern severity.
+- Precedence is resolved **per account**, so one customer's agreement never
+  bleeds into another's answer.
+- When two documents at the same tier disagree on a topic, the result is a
+  conflict that escalates rather than a guess.
+- The answer names the override ("agreement §2 outranks the SOP"). A support
+  agent can then tell the customer *why* they are treated differently.
+
+§2 and §8.4 give the detail.
+
+---
 
 ## 1. The non-negotiable split
 
-The single most important structural decision: **the LLM reasons, code decides.**
+The table behind §0.1. **The planner reasons; code decides.**
 
-| Owned by the LLM | Owned by deterministic Python |
+| Owned by the planner (LLM or deterministic) | Owned by deterministic Python |
 | --- | --- |
 | Understanding the question | Authorization / role checks |
 | Choosing which tools to call | Account scoping of every query |
 | Sequencing multi-step tool use | Source precedence resolution |
 | Reasoning over retrieved evidence | SLA calculation |
 | Explaining an answer in prose | Cancellation fee calculation |
-| Judging when it is uncertain | Service-credit calculation |
-| Drafting an action for review | Input validation |
+| Drafting an action for review | Service-credit calculation |
+| | Trust status (`agent/trust.py`) |
+| | Input validation |
 | | Executing any state change |
 
 Consequences to hold to:
 
 - A monetary figure or SLA deadline the model produces in free text is not an
-  answer — it must come back from a tool as a computed value with its inputs
+  answer. It must come back from a tool as a computed value with its inputs
   attached.
 - Access control is never expressed as a prompt instruction. The tool layer
   filters by the caller's identity before results ever reach the model, so a
@@ -33,18 +161,22 @@ Consequences to hold to:
 
 ## 2. Source authority
 
-Retrieval is not similarity-only. Each chunk carries a tier, and precedence
-resolves conflicts before an answer is composed:
+Retrieval is not similarity-only. Each chunk carries a tier (§0.4), and
+precedence resolves conflicts before an answer is composed:
 
 ```text
-Tier 1  Active signed customer agreement    (scoped to that customer only)
-Tier 2  Current support policy / SOP / product documentation
-Tier 3  Structured operational facts        (accounts, orders, tickets, SLAs)
-Tier 4  Historical tickets & internal notes (context only — never authority)
+Tier 1  CUSTOMER_AGREEMENT        signed, ACTIVE agreement — that customer's accounts only
+Tier 2  CURRENT_SUPPORT_POLICY    the CURRENT support policy
+Tier 3  CURRENT_OPERATIONAL_DOC   current SOP / product documentation
+Tier 4  NON_AUTHORITATIVE         deprecated or superseded — context only, never governing
 ```
 
-Rules, all now implemented for the document tiers in
-`app/backend/retrieval/authority.py` (see section 8):
+Structured operational facts (accounts, orders, tickets) are not a document
+tier. They are the inputs that policy is applied to, and they reach the agent
+through the record tools. Historical ticket resolutions within them are context
+only.
+
+The rules below are implemented in `app/backend/retrieval/authority.py` (§8):
 
 - Deprecated documents are indexed but flagged. They can never be cited as
   current policy; they may be surfaced only to explain that a rule changed.
@@ -54,43 +186,40 @@ Rules, all now implemented for the document tiers in
   justification on its own.
 - Where tiers conflict irreconcilably, the system escalates rather than picking.
 
-The Phase 1 open questions are answered. Agreement terms are structured as
-numbered sections whose headings name the domain they alter ("2. Shipment
-cancellation", "3. Failed-pickup credits"), which is what makes a
-topic-scoped override decidable in code. Status is stated **in-document**
-(`Status: ACTIVE` in each agreement, `Status: CURRENT` / `Status: DEPRECATED`
-in the policies), not only in the spreadsheet — so authority is derived from
-the document itself and cross-checked against the workbook rather than
-depending on it. Override clauses are per-section and explicit; one agreement
-(LumenWorks) even defers back to the SOP in writing.
+**How agreement overrides are decided in code:**
 
-One refinement Phase 3 made to the tier list above: tiers 1–2 are unchanged,
-but "current support policy / SOP / product documentation" is not a single
-undifferentiated tier in practice. The current *support policy* and the
-current *SOP / product documentation* are separated (tiers 2 and 3), and
-precedence is resolved **per subject-matter topic**, so the cancellation SOP
-governing cancellations does not make it govern severity definitions. Section
-8.4 explains why.
+- **Scope of an override.** Agreement terms are numbered sections whose
+  headings name the domain they alter ("2. Shipment cancellation", "3.
+  Failed-pickup credits"). That is what makes a topic-scoped override decidable
+  in code.
+- **Where status comes from.** Status is stated **in the document itself**:
+  `Status: ACTIVE` in each agreement, and `Status: CURRENT` or
+  `Status: DEPRECATED` in the policies. Authority is derived from the document
+  and cross-checked against the workbook, not taken from the workbook.
+- **Explicit clauses.** Override clauses are per-section and explicit. One
+  agreement (LumenWorks) even defers back to the SOP in writing.
+
+An early draft of this list lumped the support policy and the SOP/product
+documentation into one tier. Phase 3 separated them into tiers 2 and 3 and
+resolved precedence **per subject-matter topic**; §8.4 explains why.
 
 ## 3. Components
 
+§0.3 summarises the components by concern. The package layout:
+
 | Module | Responsibility |
 | --- | --- |
-| `app/backend/api/` | FastAPI routes, request/response schemas, error mapping |
-| `app/backend/agent/` | Orchestration loop, system prompts, tool dispatch, step budget |
-| `app/backend/tools/` | Tool definitions exposed to the LLM; thin, validated wrappers |
-| `app/backend/policies/` | Deterministic rule engine — SLA, cancellation, credits |
+| `app/backend/api/` | FastAPI assembly (`app.py`), routes for chat/actions, auth, workspaces, documents and operations, the wire schemas, per-request dependencies, rate limiting and the error envelope |
+| `app/backend/agent/` | Orchestration loop, planning providers (deterministic and OpenAI), prompts, response composition, trust assessment |
+| `app/backend/tools/` | Tool definitions exposed to the planner; thin, validated wrappers over records, documents, policies, operations and actions |
+| `app/backend/policies/` | Deterministic rule engine for SLA, cancellation and credits |
 | `app/backend/retrieval/` | `extraction.py` PDF→chunks · `authority.py` precedence · `search.py` BM25 + evidence |
-| `app/backend/auth/` | Identity, roles, account scoping |
-| `app/backend/services/` | `database.py` schema · `records.py` structured facts · `documents.py` documents/chunks |
-| `app/backend/models/` | Pydantic schemas — `records.py` (P2), `documents.py` (P3), `policy.py`/`actions.py`/`agent.py` (P4) |
+| `app/backend/operations/` | Proactive signal detection and ranking |
+| `app/backend/auth/` | Passwords, sessions, TOTP, workspaces and memberships, RBAC permissions; `principals.py` keeps the `demo_header` identity directory, which is local-only and refused in production |
+| `app/backend/services/` | Database schema, records, documents, document ingestion, actions, audit, demo bootstrap |
+| `app/backend/models/` | Pydantic schemas for records, documents, policy, actions, agent, signals |
 | `app/backend/core/` | `config.py` settings · `errors.py` typed failures and their HTTP contract |
-| `app/backend/main.py` | ASGI entry point — `uvicorn app.backend.main:app` |
-
-All nine exist as of Phase 5. `api/` holds `app.py` (assembly), `routes.py`,
-`schemas.py` (the wire contract), `dependencies.py` (per-request wiring) and
-`errors.py` (one envelope); `auth/principals.py` holds the mock identity
-directory that produces an `AgentContext`.
+| `app/backend/main.py` | ASGI entry point, `uvicorn app.backend.main:app` |
 
 Tools are deliberately thin. A tool validates its arguments, applies scoping,
 calls into `policies/` or `services/`, and returns a structured result with
