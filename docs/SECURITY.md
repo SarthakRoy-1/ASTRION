@@ -420,10 +420,33 @@ caller's scope before it reaches the model.
 
 ## 7. File and document security
 
-ASTRION has **no upload endpoint**. Ingestion is two offline scripts over a
-fixed, checksummed source pack. `app/backend/ingestion/safety.py` implements
-the validation anyway, so the day an upload route exists it is a call to
-`validate_upload` rather than a pipeline written under time pressure.
+The supplied source pack is ingested by `scripts/ingest_documents.py` (and by
+the demo bootstrap, which calls it). Workspaces can also upload documents
+through `POST /api/documents/upload`, and every upload passes
+`validate_upload` before a parser sees it.
+
+**The `documents` table is shared by every workspace**, and a *general*
+document (no `Account:`) is read by every tenant's retrieval. A general upload
+titled as a support policy with `Status: CURRENT` would therefore become an
+authoritative tier-2 policy in *other* workspaces — this was demonstrated
+against the first version of the endpoint, along with a workspace owner
+deleting the supplied support policy for everyone. The management rules that
+close it:
+
+| Rule | Why |
+| --- | --- |
+| An upload must state an `Account:` owned by the caller's workspace | Account ownership is exclusive, so a customer-specific document affects exactly one workspace. General documents come only from the supplied source pack |
+| The supplied source pack (`scripts/inspect_sources.PDF_FILES`) cannot be deleted | It is the authority every workspace's answers rest on — including the agreement for the caller's own account |
+| Delete and reindex act only on documents for the caller's accounts; another workspace's upload answers 404 | Existence is not disclosed across tenants |
+| Management requires a session and `manage_documents` (owner/admin); the demo identity header is refused | That header carries no permission set, so exempting it — as reads do — admitted every persona, including customers |
+| An upload that fails to parse returns a generic message; the detail goes to the server log | PyMuPDF's errors include absolute server paths |
+| Uploads are stored under `UPLOADS_DIR` (default `data/uploads/`, git-ignored) | Configurable so a deployment can put it beside the database on persistent storage, and so tests never write into the repository |
+
+Within its own accounts a workspace *can* upload a customer agreement, and
+that agreement is tier 1 for those accounts — which is the feature. On the
+public demo this means anyone signed in as the demo **owner** can change what
+the shared demo workspace's agent treats as a signed agreement, until the next
+rebuild; the one-click demo identity (support) cannot upload.
 
 ```
 bytes ──> size ──> magic-byte type ──> extension cross-check ──> content-type

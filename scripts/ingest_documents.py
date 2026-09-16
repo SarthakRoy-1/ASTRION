@@ -48,6 +48,10 @@ from app.backend.services.database import (  # noqa: E402
     get_connection,
     initialize_schema,
 )
+from app.backend.services.document_ingestion import (  # noqa: E402
+    load_into_db,
+    validate_account_links,
+)
 from scripts.inspect_sources import PDF_FILES  # noqa: E402
 from scripts.verify_source_pack import sha256_of  # noqa: E402
 
@@ -70,137 +74,6 @@ def extract_all(source_dir: Path) -> list[ExtractedDocument]:
     return extracted
 
 
-def validate_account_links(conn: sqlite3.Connection, documents: list[Document]) -> list[str]:
-    """Cross-check each agreement's `Account:` against Phase 2's accounts data.
-
-    Skipped when the accounts table is absent or empty — document ingestion
-    must work standalone, before or without the workbook having been loaded.
-
-    Two outcomes are deliberately graded differently:
-
-    - An agreement naming an account the workbook does not contain is only
-      *noted*. The two layers are loaded from independent sources and may be
-      different vintages; refusing to ingest documents because the workbook
-      is a subset would re-create exactly the ordering coupling that keeping
-      account_id out of the foreign-key graph was meant to avoid. Account
-      isolation is unaffected — it keys on the document's own stated account.
-    - Both sources describing the *same* account but disagreeing about which
-      file is its contract is a genuine contradiction, and fails loudly.
-    """
-    try:
-        rows = conn.execute("SELECT account_id, contract_file FROM accounts").fetchall()
-    except sqlite3.OperationalError:
-        return ["accounts table not present — account cross-check skipped"]
-    if not rows:
-        return ["accounts table empty — account cross-check skipped"]
-
-    contract_by_account = {r["account_id"]: r["contract_file"] for r in rows}
-    notes: list[str] = []
-    for document in documents:
-        if document.account_id is None:
-            continue
-        if document.account_id not in contract_by_account:
-            notes.append(
-                f"{document.source_file}: states 'Account: {document.account_id}', which is not "
-                f"present in the accounts table — not cross-checked"
-            )
-            continue
-        expected_file = contract_by_account[document.account_id]
-        if expected_file is not None and expected_file != document.source_file:
-            raise DocumentIngestionError(
-                f"{document.source_file}: states 'Account: {document.account_id}', but that "
-                f"account's contract_file is {expected_file!r} — source data disagrees"
-            )
-        notes.append(f"{document.source_file} ↔ {document.account_id} confirmed against accounts")
-    return notes
-
-
-def _iso(value: date | None) -> str | None:
-    return None if value is None else value.isoformat()
-
-
-def _insert_document(conn: sqlite3.Connection, document: Document, run_id: int) -> None:
-    conn.execute(
-        """
-        INSERT INTO documents
-            (document_id, source_file, source_sha256, title, document_type, status,
-             status_raw, is_current, is_deprecated, is_authoritative, authority_tier,
-             account_id, customer_name, plan, effective_date_raw, effective_date,
-             updated_date_raw, updated_date, term_raw, term_start, term_end,
-             supersedes, superseded_by, page_count, ingestion_run_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-        (
-            document.document_id, document.source_file, document.source_sha256,
-            document.title, str(document.document_type.value), str(document.status.value),
-            document.status_raw, int(document.is_current), int(document.is_deprecated),
-            int(document.is_authoritative), int(document.authority_tier),
-            document.account_id, document.customer_name, document.plan,
-            document.effective_date_raw, _iso(document.effective_date),
-            document.updated_date_raw, _iso(document.updated_date),
-            document.term_raw, _iso(document.term_start), _iso(document.term_end),
-            document.supersedes, document.superseded_by, int(document.page_count), int(run_id),
-        ),
-    )
-
-
-def _insert_chunk(conn: sqlite3.Connection, chunk: DocumentChunk) -> None:
-    conn.execute(
-        """
-        INSERT INTO document_chunks
-            (chunk_id, document_id, chunk_ordinal, page_number, section_number,
-             section_title, subsection_title, section_path, topic, text,
-             char_count, word_count, page_char_start, page_char_end)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-        (
-            chunk.chunk_id, chunk.document_id, int(chunk.chunk_ordinal),
-            int(chunk.page_number), chunk.section_number, chunk.section_title,
-            chunk.subsection_title, chunk.section_path, str(chunk.topic.value),
-            chunk.text, int(chunk.char_count), int(chunk.word_count),
-            int(chunk.page_char_start), int(chunk.page_char_end),
-        ),
-    )
-
-
-def load_into_db(
-    conn: sqlite3.Connection, extracted: list[ExtractedDocument], *, source_dir: Path
-) -> dict[str, int]:
-    """Replace the document tables inside a single transaction."""
-    started = datetime.now(timezone.utc).isoformat()
-
-    with conn:
-        cursor = conn.execute(
-            """
-            INSERT INTO document_ingestion_runs
-                (started_at_utc, source_dir, ingestion_script_version, status)
-            VALUES (?, ?, ?, 'running')
-            """,
-            (started, str(source_dir), INGESTION_SCRIPT_VERSION),
-        )
-        run_id = cursor.lastrowid
-
-        conn.execute("DELETE FROM document_chunks")
-        conn.execute("DELETE FROM documents")
-
-        chunk_total = 0
-        for item in extracted:
-            _insert_document(conn, item.document, run_id)
-            for chunk in item.chunks:
-                _insert_chunk(conn, chunk)
-            chunk_total += len(item.chunks)
-
-        conn.execute(
-            """
-            UPDATE document_ingestion_runs
-               SET finished_at_utc = ?, status = 'success',
-                   document_count = ?, chunk_count = ?
-             WHERE id = ?
-            """,
-            (datetime.now(timezone.utc).isoformat(), len(extracted), chunk_total, run_id),
-        )
-
-    return {"documents": len(extracted), "chunks": chunk_total}
 
 
 def ingest(

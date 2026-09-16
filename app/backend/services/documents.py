@@ -263,3 +263,32 @@ def get_latest_document_ingestion_run(conn: sqlite3.Connection) -> dict | None:
         "SELECT * FROM document_ingestion_runs ORDER BY id DESC LIMIT 1"
     ).fetchone()
     return None if row is None else dict(row)
+
+
+def delete_document(
+    conn: sqlite3.Connection,
+    document_id: str,
+    *,
+    account_id: str | None = None,
+    allowed_account_ids: Collection[str] | None = None,
+) -> bool:
+    """Delete a document and its chunks if visible to the caller.
+    
+    Returns True if deleted, False if not found or not visible.
+    """
+    clause, params = visibility_sql(account_id, allowed_account_ids)
+    
+    with conn:
+        # Check existence and visibility first
+        row = conn.execute(
+            f"SELECT document_id FROM documents d WHERE d.document_id = ? AND {clause}",
+            [document_id, *params],
+        ).fetchone()
+        
+        if row is None:
+            return False
+            
+        conn.execute("DELETE FROM document_chunks WHERE document_id = ?", (document_id,))
+        conn.execute("DELETE FROM documents WHERE document_id = ?", (document_id,))
+        
+    return True

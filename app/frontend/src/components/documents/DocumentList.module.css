@@ -1,0 +1,59 @@
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.documentRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem;
+  background: var(--surface-base);
+  border: 1px solid var(--border-base);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.documentRow:hover {
+  border-color: var(--border-hover);
+  background: var(--surface-hover);
+}
+
+.info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.title {
+  font-weight: 500;
+  color: var(--text-base);
+}
+
+.meta {
+  font-size: 0.875rem;
+  color: var(--text-dim);
+  display: flex;
+  gap: 1rem;
+}
+
+.badge {
+  display: inline-block;
+  padding: 0.125rem 0.375rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.badgeActive {
+  background: var(--surface-success);
+  color: var(--text-success);
+}
+
+.badgeDeprecated {
+  background: var(--surface-fail);
+  color: var(--text-fail);
+}

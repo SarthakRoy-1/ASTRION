@@ -131,6 +131,20 @@
         "title": "ActionState",
         "type": "string"
       },
+      "Body_upload_document_api_documents_upload_post": {
+        "properties": {
+          "file": {
+            "contentMediaType": "application/octet-stream",
+            "title": "File",
+            "type": "string"
+          }
+        },
+        "required": [
+          "file"
+        ],
+        "title": "Body_upload_document_api_documents_upload_post",
+        "type": "object"
+      },
       "ChangeRoleRequest": {
         "additionalProperties": false,
         "properties": {
@@ -357,6 +371,334 @@
           "name"
         ],
         "title": "CreateWorkspaceRequest",
+        "type": "object"
+      },
+      "DocumentChunkResponse": {
+        "description": "A single chunk of a document.",
+        "properties": {
+          "chunk_id": {
+            "title": "Chunk Id",
+            "type": "string"
+          },
+          "document_id": {
+            "title": "Document Id",
+            "type": "string"
+          },
+          "page_number": {
+            "title": "Page Number",
+            "type": "integer"
+          },
+          "section_number": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Section Number"
+          },
+          "section_path": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Section Path"
+          },
+          "section_title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Section Title"
+          },
+          "subsection_title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subsection Title"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          },
+          "topic": {
+            "title": "Topic",
+            "type": "string"
+          }
+        },
+        "required": [
+          "chunk_id",
+          "document_id",
+          "page_number",
+          "section_number",
+          "section_title",
+          "subsection_title",
+          "section_path",
+          "topic",
+          "text"
+        ],
+        "title": "DocumentChunkResponse",
+        "type": "object"
+      },
+      "DocumentChunksResponse": {
+        "description": "List of chunks for a document.",
+        "properties": {
+          "chunks": {
+            "items": {
+              "$ref": "#/components/schemas/DocumentChunkResponse"
+            },
+            "title": "Chunks",
+            "type": "array"
+          }
+        },
+        "required": [
+          "chunks"
+        ],
+        "title": "DocumentChunksResponse",
+        "type": "object"
+      },
+      "DocumentListResponse": {
+        "description": "List of visible documents.",
+        "properties": {
+          "documents": {
+            "items": {
+              "$ref": "#/components/schemas/DocumentMetadataResponse"
+            },
+            "title": "Documents",
+            "type": "array"
+          }
+        },
+        "required": [
+          "documents"
+        ],
+        "title": "DocumentListResponse",
+        "type": "object"
+      },
+      "DocumentMetadataResponse": {
+        "description": "Metadata for a single document.",
+        "properties": {
+          "account_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Account Id"
+          },
+          "authority_tier": {
+            "title": "Authority Tier",
+            "type": "integer"
+          },
+          "customer_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Customer Name"
+          },
+          "document_id": {
+            "title": "Document Id",
+            "type": "string"
+          },
+          "document_type": {
+            "title": "Document Type",
+            "type": "string"
+          },
+          "effective_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effective Date"
+          },
+          "effective_date_raw": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effective Date Raw"
+          },
+          "is_authoritative": {
+            "title": "Is Authoritative",
+            "type": "boolean"
+          },
+          "is_current": {
+            "title": "Is Current",
+            "type": "boolean"
+          },
+          "is_deprecated": {
+            "title": "Is Deprecated",
+            "type": "boolean"
+          },
+          "page_count": {
+            "title": "Page Count",
+            "type": "integer"
+          },
+          "plan": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Plan"
+          },
+          "source_file": {
+            "title": "Source File",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "status_raw": {
+            "title": "Status Raw",
+            "type": "string"
+          },
+          "superseded_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Superseded By"
+          },
+          "supersedes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supersedes"
+          },
+          "term_end": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Term End"
+          },
+          "term_raw": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Term Raw"
+          },
+          "term_start": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Term Start"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "updated_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated Date"
+          },
+          "updated_date_raw": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated Date Raw"
+          }
+        },
+        "required": [
+          "document_id",
+          "source_file",
+          "title",
+          "document_type",
+          "status",
+          "status_raw",
+          "is_current",
+          "is_deprecated",
+          "is_authoritative",
+          "authority_tier",
+          "account_id",
+          "customer_name",
+          "plan",
+          "effective_date_raw",
+          "effective_date",
+          "updated_date_raw",
+          "updated_date",
+          "term_raw",
+          "term_start",
+          "term_end",
+          "supersedes",
+          "superseded_by",
+          "page_count"
+        ],
+        "title": "DocumentMetadataResponse",
         "type": "object"
       },
       "ExecutedActionView": {
@@ -610,6 +952,71 @@
           "checked_at_utc"
         ],
         "title": "HealthResponse",
+        "type": "object"
+      },
+      "IngestionStatusResponse": {
+        "description": "Status of a document ingestion run.",
+        "properties": {
+          "chunk_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Chunk Count"
+          },
+          "document_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Document Count"
+          },
+          "finished_at_utc": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At Utc"
+          },
+          "id": {
+            "title": "Id",
+            "type": "integer"
+          },
+          "source_dir": {
+            "title": "Source Dir",
+            "type": "string"
+          },
+          "started_at_utc": {
+            "title": "Started At Utc",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "started_at_utc",
+          "finished_at_utc",
+          "source_dir",
+          "status",
+          "document_count",
+          "chunk_count"
+        ],
+        "title": "IngestionStatusResponse",
         "type": "object"
       },
       "InviteRequest": {
@@ -2401,6 +2808,241 @@
         "summary": "Chat",
         "tags": [
           "agent"
+        ]
+      }
+    },
+    "/api/documents": {
+      "get": {
+        "operationId": "list_documents_api_documents_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "List Documents",
+        "tags": [
+          "documents"
+        ]
+      }
+    },
+    "/api/documents/ingestion-status": {
+      "get": {
+        "operationId": "get_ingestion_status_api_documents_ingestion_status_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IngestionStatusResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get Ingestion Status",
+        "tags": [
+          "documents"
+        ]
+      }
+    },
+    "/api/documents/reindex": {
+      "post": {
+        "description": "Re-extract the uploaded documents that belong to this workspace.\n\nPer file rather than a wholesale reload of the uploads directory: that\ndirectory holds every workspace's uploads, and one workspace's reindex must\nneither rewrite another's documents nor be stopped by another's file.",
+        "operationId": "reindex_documents_api_documents_reindex_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Reindex Documents Api Documents Reindex Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Reindex Documents",
+        "tags": [
+          "documents"
+        ]
+      }
+    },
+    "/api/documents/upload": {
+      "post": {
+        "operationId": "upload_document_api_documents_upload_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_upload_document_api_documents_upload_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Upload Document Api Documents Upload Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Upload Document",
+        "tags": [
+          "documents"
+        ]
+      }
+    },
+    "/api/documents/{document_id}": {
+      "delete": {
+        "operationId": "delete_document_api_documents__document_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "title": "Document Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Delete Document Api Documents  Document Id  Delete",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Document",
+        "tags": [
+          "documents"
+        ]
+      },
+      "get": {
+        "operationId": "get_document_api_documents__document_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "title": "Document Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentMetadataResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Document",
+        "tags": [
+          "documents"
+        ]
+      }
+    },
+    "/api/documents/{document_id}/chunks": {
+      "get": {
+        "operationId": "get_document_chunks_api_documents__document_id__chunks_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "document_id",
+            "required": true,
+            "schema": {
+              "title": "Document Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentChunksResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Document Chunks",
+        "tags": [
+          "documents"
         ]
       }
     },

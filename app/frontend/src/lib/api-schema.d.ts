@@ -485,6 +485,116 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/documents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Documents */
+        get: operations["list_documents_api_documents_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/documents/ingestion-status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Ingestion Status */
+        get: operations["get_ingestion_status_api_documents_ingestion_status_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/documents/reindex": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reindex Documents
+         * @description Re-extract the uploaded documents that belong to this workspace.
+         *
+         *     Per file rather than a wholesale reload of the uploads directory: that
+         *     directory holds every workspace's uploads, and one workspace's reindex must
+         *     neither rewrite another's documents nor be stopped by another's file.
+         */
+        post: operations["reindex_documents_api_documents_reindex_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/documents/upload": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Upload Document */
+        post: operations["upload_document_api_documents_upload_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/documents/{document_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Document */
+        get: operations["get_document_api_documents__document_id__get"];
+        put?: never;
+        post?: never;
+        /** Delete Document */
+        delete: operations["delete_document_api_documents__document_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/documents/{document_id}/chunks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Document Chunks */
+        get: operations["get_document_chunks_api_documents__document_id__chunks_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/invitations/accept": {
         parameters: {
             query?: never;
@@ -829,6 +939,11 @@ export interface components {
          * @enum {string}
          */
         ActionState: "none" | "pending_confirmation" | "confirmed" | "executed" | "rejected" | "expired" | "failed";
+        /** Body_upload_document_api_documents_upload_post */
+        Body_upload_document_api_documents_upload_post: {
+            /** File */
+            file: string;
+        };
         /** ChangeRoleRequest */
         ChangeRoleRequest: {
             /** Role */
@@ -924,6 +1039,98 @@ export interface components {
         CreateWorkspaceRequest: {
             /** Name */
             name: string;
+        };
+        /**
+         * DocumentChunkResponse
+         * @description A single chunk of a document.
+         */
+        DocumentChunkResponse: {
+            /** Chunk Id */
+            chunk_id: string;
+            /** Document Id */
+            document_id: string;
+            /** Page Number */
+            page_number: number;
+            /** Section Number */
+            section_number: string | null;
+            /** Section Path */
+            section_path: string | null;
+            /** Section Title */
+            section_title: string | null;
+            /** Subsection Title */
+            subsection_title: string | null;
+            /** Text */
+            text: string;
+            /** Topic */
+            topic: string;
+        };
+        /**
+         * DocumentChunksResponse
+         * @description List of chunks for a document.
+         */
+        DocumentChunksResponse: {
+            /** Chunks */
+            chunks: components["schemas"]["DocumentChunkResponse"][];
+        };
+        /**
+         * DocumentListResponse
+         * @description List of visible documents.
+         */
+        DocumentListResponse: {
+            /** Documents */
+            documents: components["schemas"]["DocumentMetadataResponse"][];
+        };
+        /**
+         * DocumentMetadataResponse
+         * @description Metadata for a single document.
+         */
+        DocumentMetadataResponse: {
+            /** Account Id */
+            account_id: string | null;
+            /** Authority Tier */
+            authority_tier: number;
+            /** Customer Name */
+            customer_name: string | null;
+            /** Document Id */
+            document_id: string;
+            /** Document Type */
+            document_type: string;
+            /** Effective Date */
+            effective_date: string | null;
+            /** Effective Date Raw */
+            effective_date_raw: string | null;
+            /** Is Authoritative */
+            is_authoritative: boolean;
+            /** Is Current */
+            is_current: boolean;
+            /** Is Deprecated */
+            is_deprecated: boolean;
+            /** Page Count */
+            page_count: number;
+            /** Plan */
+            plan: string | null;
+            /** Source File */
+            source_file: string;
+            /** Status */
+            status: string;
+            /** Status Raw */
+            status_raw: string;
+            /** Superseded By */
+            superseded_by: string | null;
+            /** Supersedes */
+            supersedes: string | null;
+            /** Term End */
+            term_end: string | null;
+            /** Term Raw */
+            term_raw: string | null;
+            /** Term Start */
+            term_start: string | null;
+            /** Title */
+            title: string;
+            /** Updated Date */
+            updated_date: string | null;
+            /** Updated Date Raw */
+            updated_date_raw: string | null;
         };
         /**
          * ExecutedActionView
@@ -1023,6 +1230,26 @@ export interface components {
             provider_mode: string;
             /** State Changing Actions Enabled */
             state_changing_actions_enabled: boolean;
+            /** Status */
+            status: string;
+        };
+        /**
+         * IngestionStatusResponse
+         * @description Status of a document ingestion run.
+         */
+        IngestionStatusResponse: {
+            /** Chunk Count */
+            chunk_count: number | null;
+            /** Document Count */
+            document_count: number | null;
+            /** Finished At Utc */
+            finished_at_utc: string | null;
+            /** Id */
+            id: number;
+            /** Source Dir */
+            source_dir: string;
+            /** Started At Utc */
+            started_at_utc: string;
             /** Status */
             status: string;
         };
@@ -2039,6 +2266,198 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ChatResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_documents_api_documents_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentListResponse"];
+                };
+            };
+        };
+    };
+    get_ingestion_status_api_documents_ingestion_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IngestionStatusResponse"];
+                };
+            };
+        };
+    };
+    reindex_documents_api_documents_reindex_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    upload_document_api_documents_upload_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_upload_document_api_documents_upload_post"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_document_api_documents__document_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentMetadataResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_document_api_documents__document_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_document_chunks_api_documents__document_id__chunks_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DocumentChunksResponse"];
                 };
             };
             /** @description Validation Error */

@@ -20,6 +20,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const demo = session.stage === "demo";
   const areas = [
     { href: "/" as const, label: "Support", show: true },
+    { href: "/documents" as const, label: "Documents", show: true },
     { href: "/operations" as const, label: "Operations", show: !demo && session.can("operations.read") },
     { href: "/workspace" as const, label: "Workspace", show: !demo },
   ].filter((area) => area.show);

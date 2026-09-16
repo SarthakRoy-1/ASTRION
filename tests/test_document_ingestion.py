@@ -142,6 +142,62 @@ def test_repeat_ingestion_keeps_counts_stable(tmp_path):
         conn.close()
 
 
+def test_reingesting_the_same_corpus_from_a_differently_spelled_path_is_stable(
+    tmp_path, monkeypatch
+):
+    """The same pack, loaded once by absolute path and once relative to cwd.
+
+    A reload that matched old documents by the `source_dir` string alone found
+    nothing to delete on the second run and then failed on the documents' own
+    unique keys. A container's `/app/data/source` and a checkout's path are the
+    same corpus; replacing has to be by identity.
+    """
+    db_path = _fresh_db(tmp_path)
+    ingest_documents.ingest(source_dir=SOURCE_DIR.resolve(), db_path=db_path)
+
+    monkeypatch.chdir(SOURCE_DIR.parent.parent)
+    relative = SOURCE_DIR.relative_to(SOURCE_DIR.parent.parent)
+    second = ingest_documents.ingest(source_dir=relative, db_path=db_path)
+
+    assert second["counts"]["documents"] == EXPECTED_DOCUMENT_COUNT
+    conn = get_connection(db_path)
+    try:
+        assert conn.execute("SELECT COUNT(*) FROM documents").fetchone()[0] == EXPECTED_DOCUMENT_COUNT
+    finally:
+        conn.close()
+
+
+def test_reloading_the_source_pack_keeps_uploaded_documents(tmp_path):
+    """The point of scoping the reload: a canonical re-ingest is not a reset."""
+    from app.backend.retrieval.extraction import extract_document
+    from app.backend.services.document_ingestion import ingest_single_document
+    from conftest import valid_agreement_pages, write_pdf
+
+    db_path = _fresh_db(tmp_path)
+    ingest_documents.ingest(source_dir=SOURCE_DIR, db_path=db_path)
+
+    uploads = tmp_path / "uploads"
+    uploads.mkdir()
+    upload = uploads / "abc123_Testco_Agreement.pdf"
+    write_pdf(upload, valid_agreement_pages())
+
+    conn = get_connection(db_path)
+    try:
+        ingest_single_document(conn, extract_document(upload), str(uploads))
+    finally:
+        conn.close()
+
+    ingest_documents.ingest(source_dir=SOURCE_DIR, db_path=db_path)
+
+    conn = get_connection(db_path)
+    try:
+        ids = {row[0] for row in conn.execute("SELECT document_id FROM documents")}
+    finally:
+        conn.close()
+    assert "abc123_testco_agreement" in ids
+    assert len(ids) == EXPECTED_DOCUMENT_COUNT + 1
+
+
 def test_chunk_ids_are_stable_across_reingestion(tmp_path):
     db_path = _fresh_db(tmp_path)
 

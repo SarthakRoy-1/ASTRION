@@ -30,6 +30,7 @@ from app.backend.core.errors import ConfigurationError, ProviderConfigurationErr
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_DB_PATH = REPO_ROOT / "data" / "processed" / "astrion.db"
+DEFAULT_UPLOADS_DIR = REPO_ROOT / "data" / "uploads"
 
 #: The public demo identity, owned by the backend.
 #:
@@ -127,6 +128,14 @@ def _database_path(raw: str | None) -> Path:
     return path if path.is_absolute() else (REPO_ROOT / path).resolve()
 
 
+def _repo_relative(raw: str | None, default: Path) -> Path:
+    """A plain path, resolved against the repository root when relative."""
+    if not raw:
+        return default
+    path = Path(raw)
+    return path if path.is_absolute() else (REPO_ROOT / path).resolve()
+
+
 class Settings(BaseModel):
     """Resolved runtime configuration. Frozen: nothing reconfigures mid-run."""
 
@@ -146,6 +155,11 @@ class Settings(BaseModel):
     llm_temperature: float = 0.0
 
     database_path: Path = DEFAULT_DB_PATH
+    #: Where uploaded documents are stored. Configurable for the same reason
+    #: the database is: a deployment with a persistent disk must be able to
+    #: put both on it, and a test must be able to put both in a temporary
+    #: directory rather than writing into the repository.
+    uploads_dir: Path = DEFAULT_UPLOADS_DIR
     cors_allow_origins: tuple[str, ...] = ("http://localhost:3000",)
     enable_state_changing_actions: bool = True
 
@@ -360,6 +374,7 @@ def load_settings(*, env_file: Path | str | None = None) -> Settings:
         agent_request_timeout_seconds=_env_float("AGENT_REQUEST_TIMEOUT_SECONDS", 60.0),
         llm_temperature=_env_float("LLM_TEMPERATURE", 0.0),
         database_path=_database_path(_env("DATABASE_URL")),
+        uploads_dir=_repo_relative(_env("UPLOADS_DIR"), DEFAULT_UPLOADS_DIR),
         cors_allow_origins=tuple(o.strip() for o in origins.split(",") if o.strip()),
         enable_state_changing_actions=_env_bool("ENABLE_STATE_CHANGING_ACTIONS", True),
         auth_mode=auth_mode,

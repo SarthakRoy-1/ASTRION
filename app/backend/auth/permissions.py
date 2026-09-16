@@ -149,6 +149,7 @@ class Permission(StrEnum):
 
     # Configuration
     MANAGE_RULES = "manage_rules"
+    MANAGE_DOCUMENTS = "manage_documents"
 
 
 #: Every member can see the workspace they belong to and who else is in it.
@@ -179,6 +180,7 @@ _OPERATIONS: frozenset[Permission] = _SUPPORT | {
 _ADMIN: frozenset[Permission] = _OPERATIONS | {
     Permission.APPROVE_HIGH_VALUE_ACTION,
     Permission.MANAGE_RULES,
+    Permission.MANAGE_DOCUMENTS,
     Permission.MEMBERS_INVITE,
     Permission.MEMBERS_REMOVE,
     Permission.MEMBERS_CHANGE_ROLE,

@@ -26,6 +26,8 @@ httpx==0.28.1
 # Loads .env for local development. Optional at runtime -- config falls back to
 # the process environment when it is absent (app/backend/core/config.py).
 python-dotenv==1.2.3
+# Required for FastAPI file uploads
+python-multipart==0.0.32
 
 # --- Phase 5: real LLM provider ----------------------------------------------
 # Needed only for LLM_PROVIDER=real. The deterministic provider -- and the

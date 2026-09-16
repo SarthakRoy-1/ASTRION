@@ -21,6 +21,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.backend.api.auth_routes import auth_router
+from app.backend.api.document_routes import router as document_router
 from app.backend.api.errors import register_error_handlers
 from app.backend.api.middleware import (
     BodySizeLimitMiddleware,
@@ -182,4 +183,5 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(auth_router)
     app.include_router(workspace_router)
     app.include_router(operations_router)
+    app.include_router(document_router)
     return app

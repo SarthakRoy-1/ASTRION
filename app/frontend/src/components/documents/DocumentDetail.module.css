@@ -1,0 +1,105 @@
+.detailView {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  gap: 1.5rem;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--border-base);
+}
+
+.titleArea {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.title {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--text-base);
+}
+
+.actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.metadataGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.metaItem {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.metaLabel {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-dim);
+  text-transform: uppercase;
+}
+
+.metaValue {
+  font-size: 0.875rem;
+  color: var(--text-base);
+}
+
+.chunksHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.chunksTitle {
+  font-size: 1.125rem;
+  font-weight: 500;
+  color: var(--text-base);
+  margin: 0;
+}
+
+.chunksList {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  overflow-y: auto;
+  padding-right: 0.5rem;
+}
+
+.chunk {
+  padding: 1rem;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--surface-subtle);
+}
+
+.chunkHeader {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+  font-size: 0.875rem;
+  color: var(--text-dim);
+}
+
+.chunkTopic {
+  font-weight: 600;
+  color: var(--text-base);
+}
+
+.chunkText {
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: var(--text-base);
+  white-space: pre-wrap;
+}

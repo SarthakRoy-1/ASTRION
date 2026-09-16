@@ -1,0 +1,47 @@
+.uploadBox {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 3rem 2rem;
+  border: 2px dashed var(--border-base);
+  border-radius: var(--radius-lg);
+  background: var(--surface-base);
+  transition: all 0.2s ease;
+  text-align: center;
+}
+
+.uploadBox.active {
+  border-color: var(--brand-base);
+  background: var(--surface-hover);
+}
+
+.icon {
+  width: 48px;
+  height: 48px;
+  margin-bottom: 1rem;
+  color: var(--text-dim);
+}
+
+.title {
+  font-size: 1.125rem;
+  font-weight: 500;
+  color: var(--text-base);
+  margin-bottom: 0.5rem;
+}
+
+.description {
+  font-size: 0.875rem;
+  color: var(--text-dim);
+  margin-bottom: 1.5rem;
+}
+
+.actions {
+  display: flex;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.hiddenInput {
+  display: none;
+}
