@@ -35,10 +35,12 @@ export function SignInScene({ children }: { children: React.ReactNode }) {
       <SiteHeader current="sign-in" />
 
       <main id="sign-in-main" className={styles.stage}>
-        <h1 className={styles.headline}>
-          <span>Welcome Back</span> <span>to Astrion</span>
-        </h1>
-        <div className={styles.card}>{children}</div>
+        <div className={styles.hero}>
+          <h1 className={styles.headline}>
+            <span>Welcome Back</span> <span>to Astrion</span>
+          </h1>
+          <div className={styles.card}>{children}</div>
+        </div>
       </main>
 
       <footer className={styles.footer}>
