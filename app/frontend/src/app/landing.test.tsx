@@ -211,6 +211,54 @@ describe("the sign-in routes, when already signed in", () => {
   });
 });
 
+describe("the public site's background", () => {
+  /** The artwork's `<img>`, wherever next/image put its URL. */
+  function backdropImage(): HTMLImageElement | undefined {
+    return [...document.querySelectorAll("img")].find((img) =>
+      decodeURIComponent(img.getAttribute("src") ?? "").includes("/astrion-background.webp"),
+    );
+  }
+
+  it("is the same artwork on the landing page as on the sign-in page", async () => {
+    const { unmount } = await (async () => {
+      setTestRoute("/");
+      stubSignedOut();
+      const view = renderApp(<SupportPage />);
+      await screen.findByRole("heading", { level: 1, name: HEADLINE });
+      return view;
+    })();
+    const landing = backdropImage();
+    expect(landing).toBeDefined();
+    // Decorative, and hidden from assistive technology with its layer.
+    expect(landing).toHaveAttribute("alt", "");
+    expect(landing?.closest("[aria-hidden='true']")).not.toBeNull();
+    // The old drawn planet is gone, not layered underneath.
+    expect(document.querySelector("svg[viewBox='0 0 717 420']")).toBeNull();
+    expect(document.querySelectorAll("svg[viewBox='0 0 2000 1150']")).toHaveLength(1);
+    unmount();
+
+    setTestRoute("/sign-in");
+    stubSignedOut();
+    renderApp(<SignInPage />);
+    await screen.findByLabelText(/^work email address$/i);
+    const signIn = backdropImage();
+    expect(signIn).toBeDefined();
+    expect(document.querySelectorAll("svg[viewBox='0 0 2000 1150']")).toHaveLength(1);
+  });
+
+  it("is placed by one shared stylesheet, not two copies", () => {
+    const read = (...parts: string[]) =>
+      readFileSync(join(process.cwd(), "src", "components", ...parts), "utf8");
+    const shared = read("site", "SiteBackdrop.module.css");
+    expect(shared).toMatch(/object-fit:\s*cover/);
+    expect(shared).toMatch(/object-position:\s*100% 50%/);
+    for (const page of [["landing", "LandingPage.module.css"], ["auth", "SignInScene.module.css"]]) {
+      const css = read(...page);
+      expect(css).not.toMatch(/object-position|astrion-background|radial-gradient/);
+    }
+  });
+});
+
 describe("the sign-in page", () => {
   async function renderSignInPage() {
     const user = userEvent.setup();

@@ -1,5 +1,6 @@
 import Image from "next/image";
 
+import { SiteBackdrop } from "@/components/site/SiteBackdrop";
 import { SiteHeader } from "@/components/site/SiteHeader";
 
 import styles from "./SignInScene.module.css";
@@ -19,11 +20,8 @@ const FOOTER_ITEMS = ["Privacy", "Terms", "Help", "Contact us"] as const;
  * in a translucent card over the brand background, under the landing page's
  * own header. It holds no state and makes no request.
  *
- * The background is the supplied artwork, used whole: covered to the viewport
- * and pinned to its right edge so the planet stays on the right. The
- * "HIGHER CONTEXT / BRIGHTER OUTCOMES" line is drawn in the image's own
- * coordinate space (an SVG sliced exactly as the image is covered), so it stays
- * on the same patch of the planet at every viewport size.
+ * The background is the public site's shared artwork (`site/SiteBackdrop`),
+ * the same one the landing page wears.
  */
 export function SignInScene({ children }: { children: React.ReactNode }) {
   return (
@@ -32,29 +30,7 @@ export function SignInScene({ children }: { children: React.ReactNode }) {
         Skip to main content
       </a>
 
-      <div className={styles.backdrop} aria-hidden="true">
-        <Image
-          className={styles.backdropImage}
-          src="/astrion-background.webp"
-          alt=""
-          fill
-          priority
-          sizes="100vw"
-        />
-        <svg
-          className={styles.tagline}
-          viewBox="0 0 2000 1150"
-          preserveAspectRatio="xMaxYMid slice"
-          focusable="false"
-        >
-          <text x="1647" y="628">
-            <tspan x="1647">HIGHER</tspan>
-            <tspan x="1647" dy="44">CONTEXT</tspan>
-            <tspan x="1647" dy="78">BRIGHTER</tspan>
-            <tspan x="1647" dy="44">OUTCOMES</tspan>
-          </text>
-        </svg>
-      </div>
+      <SiteBackdrop />
 
       <SiteHeader current="sign-in" />
 

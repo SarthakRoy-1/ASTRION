@@ -1,6 +1,6 @@
 /* The landing page: one dark viewport, composed like the design reference at
-   1440 × 840 — header, hero copy on the left, the planet filling the lower
-   right, and the value strip along the bottom. Sizes that set the composition
+   1440 × 840 — header, hero copy on the left, the value strip along the
+   bottom, and the public site's artwork (`site/SiteBackdrop`) behind it all. Sizes that set the composition
    scale with the viewport width so the proportions hold across desktop sizes. */
 
 .page {
@@ -12,9 +12,8 @@
   flex-direction: column;
   min-height: 100dvh;
   overflow: hidden;
-  background:
-    radial-gradient(120% 90% at 0% 0%, rgba(20, 30, 40, 0.35), transparent 60%),
-    var(--landing-bg);
+  /* Only ever seen while the artwork is still loading. */
+  background: var(--landing-bg);
   color: var(--landing-text);
 }
 
@@ -26,9 +25,6 @@
 
 /* --- hero ------------------------------------------------------------------ */
 
-/* `main` is deliberately not positioned, so the planet (absolutely placed
-   inside it) is laid against the whole page, header included — exactly as
-   the reference frames it. */
 .hero {
   display: flex;
   flex: 1;
@@ -42,6 +38,17 @@
   position: relative;
   z-index: 1;
   max-width: 820px;
+  /* Where a narrower window brings the planet's lit limb under the copy, the
+     same soft shade the sign-in headline uses keeps it legible without
+     dimming the artwork. */
+  text-shadow:
+    0 2px 28px rgba(4, 9, 14, 0.6),
+    0 0 3px rgba(4, 9, 14, 0.3);
+}
+
+/* The calls to action have their own surfaces; no shadow on their labels. */
+.copy .ctas {
+  text-shadow: none;
 }
 
 .eyebrow {
@@ -151,18 +158,6 @@
   color: var(--landing-text);
 }
 
-/* The planet sits behind everything else in the page, in a box with the
-   reference's own proportions pinned to the bottom-right corner. Wider screens
-   crop its top, exactly as a cover would; narrower ones scale it down rather
-   than letting it grow into the copy. */
-.hero .visual {
-  inset: auto 0 0 auto;
-  z-index: 0;
-  width: 100%;
-  height: auto;
-  aspect-ratio: 717 / 420;
-}
-
 /* --- value strip ----------------------------------------------------------- */
 
 .values {
@@ -237,22 +232,12 @@
     padding-top: 40px;
   }
 
-  /* The planet leaves the background and becomes its own band under the
-     calls to action, cropped from the right so the lit limb, the orbit and
-     the tagline all stay in frame. */
-  .hero .visual {
-    position: relative;
-    inset: auto;
-    width: auto;
-    aspect-ratio: auto;
-    height: clamp(300px, 62vw, 460px);
-    margin: 8px calc(var(--landing-gutter) * -1) 0;
-  }
-
+  /* The space the planet band used to hold between the calls to action and
+     the values; the planet is now the page's own background. */
   .values {
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 24px;
-    margin-top: 8px;
+    margin-top: 56px;
   }
 }
 

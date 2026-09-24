@@ -1,0 +1,59 @@
+/* The public site's background artwork. Moved here unchanged from the sign-in
+   page (`auth/SignInScene.module.css`) so the landing page shares it. */
+
+.backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+}
+
+/* Covered, never stretched, and pinned to the right edge: a narrower window
+   gives up starfield on the left, never the planet. */
+.backdrop .backdropImage {
+  object-fit: cover;
+  object-position: 100% 50%;
+}
+
+/* Only as much shade as the copy needs: a soft fall-off behind the copy on the
+   left, and a little at the foot. The artwork itself is left as it is. */
+.backdrop::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(90deg, rgba(4, 9, 14, 0.5) 0%, rgba(4, 9, 14, 0.22) 36%, rgba(4, 9, 14, 0) 58%),
+    linear-gradient(0deg, rgba(4, 9, 14, 0.42) 0%, rgba(4, 9, 14, 0) 20%);
+}
+
+/* The same slice as the image's cover, so its text sits on the planet. */
+.tagline {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+}
+
+.tagline text {
+  fill: rgba(236, 232, 225, 0.34);
+  font-family: var(--font-sans);
+  font-size: 26px;
+  letter-spacing: 7.8px;
+}
+
+/* A portrait tablet crops the artwork so tightly that the line's patch of the
+   planet lands against the page's content. */
+@media (max-width: 900px) and (orientation: portrait) {
+  .tagline {
+    display: none;
+  }
+}
+
+/* On a phone the planet's patch is under the content; the line would only
+   compete with it. */
+@media (max-width: 640px) {
+  .tagline {
+    display: none;
+  }
+}
