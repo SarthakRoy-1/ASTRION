@@ -7,6 +7,15 @@ import health from "@/test/fixtures/health.json";
 import { setTestRoute } from "@/test/next-navigation";
 import { renderApp } from "@/test/render";
 
+// The public demo is switched off in the shipped frontend for now
+// (`PUBLIC_DEMO_SIGN_IN_ENABLED`), but every part of it is kept so it can be
+// restored. These tests keep that dormant flow honest by turning the switch on
+// for this file; `landing.test.tsx` asserts that the shipped default hides it.
+vi.mock("@/lib/features", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/features")>()),
+  PUBLIC_DEMO_SIGN_IN_ENABLED: true,
+}));
+
 /**
  * The public demo, from the visitor's side.
  *
@@ -144,7 +153,8 @@ function stubSignIn(
 
 async function renderSignIn(options: Parameters<typeof stubSignIn>[0] = {}) {
   const user = userEvent.setup();
-  setTestRoute("/");
+  // The sign-in form lives at `/sign-in`; `/` is the public landing page.
+  setTestRoute("/sign-in");
   const stub = stubSignIn(options);
   renderApp(<SupportPage />);
   await screen.findByRole("heading", { name: /sign in/i });

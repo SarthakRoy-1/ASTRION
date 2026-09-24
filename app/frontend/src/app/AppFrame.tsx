@@ -1,14 +1,19 @@
 "use client";
 
-import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { useState, useSyncExternalStore } from "react";
 
+import { ConnectionNotice } from "@/components/ConnectionNotice";
+import { ErrorNotice } from "@/components/ErrorNotice";
 import { SignInPanel } from "@/components/SignInPanel";
 import { WorkspaceOnboarding } from "@/components/WorkspaceOnboarding";
 import { VerifyEmailPrompt } from "@/components/auth/VerifyEmailPrompt";
 import { AppShell } from "@/components/shell/AppShell";
 import { AuthLayout } from "@/components/shell/AuthLayout";
-import { useSession } from "@/app/providers";
+import { LandingPage } from "@/components/landing/LandingPage";
+import { useChat, useSession } from "@/app/providers";
+import { PUBLIC_DEMO_SIGN_IN_ENABLED } from "@/lib/features";
+import { readSessionHint, subscribeSessionHint } from "@/lib/session-hint";
 
 /**
  * Which of the product's three frames the current URL and session get.
@@ -25,7 +30,13 @@ import { useSession } from "@/app/providers";
  * inside a workspace — so they never wear the signed-in chrome, whatever the
  * session turns out to be.
  *
- * `loading` deliberately falls through to the shell rather than rendering a
+ * One more, in front of those three: **the public landing page at `/`.** It is
+ * shown to a signed-out visitor, and — because it needs nothing from the API —
+ * also while the session is still `loading` for a browser with no record of a
+ * recent sign-in (`lib/session-hint.ts`). A returning user keeps the behaviour
+ * below; nobody signed in ever sees it.
+ *
+ * `loading` otherwise falls through to the shell rather than rendering a
  * spinner. While the backend is still waking, what the user needs to see is
  * the connection notice explaining the wait — not a blank screen, and not a
  * sign-in form that could not work yet. A backend we cannot reach is not a
@@ -39,6 +50,15 @@ const PUBLIC_ROUTES = ["/verify-email"];
 /** Reachable while signed in but *before* belonging to any workspace. */
 const PRE_WORKSPACE_ROUTES = ["/join"];
 
+/** Where the landing page's "Get Started" leads: the form opens on registration. */
+const REGISTER_ROUTE = "/get-started";
+
+/** The two ways in from the landing page. */
+const AUTH_ROUTES = ["/sign-in", REGISTER_ROUTE];
+
+/** `false` while rendering on the server, where no browser storage exists. */
+const serverSessionHint = () => false;
+
 interface Registration {
   email: string;
   message: string;
@@ -48,8 +68,15 @@ interface Registration {
 
 export function AppFrame({ children }: { children: React.ReactNode }) {
   const session = useSession();
+  const chat = useChat();
+  const router = useRouter();
   const pathname = usePathname() ?? "/";
   const [registration, setRegistration] = useState<Registration | null>(null);
+  const recentlySignedIn = useSyncExternalStore(
+    subscribeSessionHint,
+    readSessionHint,
+    serverSessionHint,
+  );
 
   const isPublic = PUBLIC_ROUTES.includes(pathname);
   const isPreWorkspace = PRE_WORKSPACE_ROUTES.includes(pathname);
@@ -72,6 +99,32 @@ export function AppFrame({ children }: { children: React.ReactNode }) {
     return <AuthLayout>{children}</AuthLayout>;
   }
 
+  // The public front door. Signed-out visitors to `/` see the landing page
+  // rather than a sign-in form; so does a first-time visitor while the API is
+  // still being reached, since nothing on the page depends on it.
+  if (
+    pathname === "/" &&
+    (session.stage === "signed-out" ||
+      (session.stage === "loading" && !recentlySignedIn))
+  ) {
+    return <LandingPage />;
+  }
+
+  // Someone who has just pressed "Sign in" or "Get Started" is waiting for a
+  // form, not for the product: while the API is still being reached they see
+  // the connection notice in the sign-in frame, never the application chrome.
+  if (AUTH_ROUTES.includes(pathname) && session.stage === "loading") {
+    return (
+      <AuthLayout>
+        {chat.principalsError ? (
+          <ErrorNotice error={chat.principalsError} />
+        ) : (
+          <ConnectionNotice state={chat.connection} />
+        )}
+      </AuthLayout>
+    );
+  }
+
   if (session.stage === "signed-out" || session.stage === "mfa-required") {
     // Registration succeeded and the address is not yet confirmed. The panel
     // below closes that loop; without it the only route onward was a sign-in
@@ -84,7 +137,12 @@ export function AppFrame({ children }: { children: React.ReactNode }) {
             message={registration.message}
             emailSent={registration.emailSent}
             verificationToken={registration.token}
-            onDone={() => setRegistration(null)}
+            onDone={() => {
+              setRegistration(null);
+              // "Continue to sign in" means the sign-in form, not a second
+              // registration form on the page they registered from.
+              if (pathname === REGISTER_ROUTE) router.replace("/sign-in");
+            }}
           />
         </AuthLayout>
       );
@@ -93,12 +151,19 @@ export function AppFrame({ children }: { children: React.ReactNode }) {
     return (
       <AuthLayout>
         <SignInPanel
+          // Keyed so moving between `/sign-in` and `/get-started` opens the
+          // tab the link promised rather than whichever was open before.
+          key={pathname === REGISTER_ROUTE ? "register" : "signin"}
           stage={session.stage}
           busy={session.busy}
           error={session.error}
-          demoAvailable={session.demoAvailable}
+          initialMode={pathname === REGISTER_ROUTE ? "register" : "signin"}
+          // The public demo is not offered for now. Everything behind it —
+          // the endpoint, the seeded workspace, `signInToDemo` and the panel
+          // itself — is intact; `PUBLIC_DEMO_SIGN_IN_ENABLED` restores it.
+          demoAvailable={PUBLIC_DEMO_SIGN_IN_ENABLED && session.demoAvailable}
           onSignIn={session.signIn}
-          onDemoSignIn={session.signInToDemo}
+          onDemoSignIn={PUBLIC_DEMO_SIGN_IN_ENABLED ? session.signInToDemo : undefined}
           onSubmitMfaCode={session.submitMfaCode}
           onRegistered={(message, token, email, emailSent) =>
             setRegistration({ message, token, email: email ?? "", emailSent: emailSent ?? false })

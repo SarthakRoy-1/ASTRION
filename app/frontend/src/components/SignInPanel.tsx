@@ -47,6 +47,7 @@ export function SignInPanel({
   busy,
   error,
   demoAvailable = false,
+  initialMode = "signin",
   onSignIn,
   onDemoSignIn,
   onSubmitMfaCode,
@@ -58,13 +59,15 @@ export function SignInPanel({
   error: string | null;
   /** From `/health`. The server decides whether there is a demo to offer. */
   demoAvailable?: boolean;
+  /** Which tab opens first: `/get-started` opens on "Create account". */
+  initialMode?: "signin" | "register";
   onSignIn(email: string, password: string): void;
   onDemoSignIn?(): void;
   onSubmitMfaCode(code: string): void;
   onRegistered(message: string, verificationToken: string | undefined, email: string, emailSent?: boolean): void;
   onDismissError(): void;
 }) {
-  const [mode, setMode] = useState<"signin" | "register">("signin");
+  const [mode, setMode] = useState<"signin" | "register">(initialMode);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
