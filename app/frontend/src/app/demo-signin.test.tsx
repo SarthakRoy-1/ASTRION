@@ -157,7 +157,9 @@ async function renderSignIn(options: Parameters<typeof stubSignIn>[0] = {}) {
   setTestRoute("/sign-in");
   const stub = stubSignIn(options);
   renderApp(<SupportPage />);
-  await screen.findByRole("heading", { name: /sign in/i });
+  // The form itself: while the API is still being reached the page already
+  // shows a "Sign in" title over the connection notice.
+  await screen.findByLabelText(/^password$/i);
   return { user, stub };
 }
 
@@ -178,7 +180,7 @@ describe("entering the public demo", () => {
     expect(
       screen.queryByRole("button", { name: /sign in to the demo/i }),
     ).toBeNull();
-    expect(screen.getByLabelText(/^email$/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/^work email address$/i)).toBeInTheDocument();
   });
 
   it("gets the visitor in without them typing anything", async () => {

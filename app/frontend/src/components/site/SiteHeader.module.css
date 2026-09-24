@@ -1,0 +1,157 @@
+/* The public site's header, shared by the landing page and the sign-in page
+   so the two can never drift apart. It relies on the tokens of `.site`
+   (site.module.css), which every page that renders it composes. */
+
+.header {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  height: 120px;
+  padding: 0 var(--landing-gutter);
+}
+
+/* The global focus style rounds to --radius-sm; a pill must stay a pill. */
+.header .headerCta:focus-visible {
+  border-radius: var(--radius-pill);
+}
+
+.brand {
+  display: inline-flex;
+  justify-self: start;
+  align-items: center;
+  line-height: 0;
+  border-radius: 6px;
+}
+
+.brand img {
+  display: block;
+  width: 182px;
+  height: auto;
+}
+
+.sections ul {
+  display: flex;
+  gap: 44px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.section {
+  font-size: 16px;
+  line-height: 1;
+  letter-spacing: 0.005em;
+  color: rgba(242, 238, 231, 0.82);
+  cursor: default;
+}
+
+.account {
+  display: flex;
+  justify-self: end;
+  align-items: center;
+  gap: 36px;
+}
+
+.signIn {
+  font-size: 16px;
+  white-space: nowrap;
+  color: rgba(242, 238, 231, 0.86);
+  text-decoration: none;
+  border-radius: 6px;
+  transition: color var(--duration-fast) ease;
+}
+
+.signIn:hover {
+  color: var(--landing-text);
+}
+
+/* On the sign-in page itself: full strength, with a quiet underline. */
+.signIn[aria-current="page"] {
+  color: var(--landing-text);
+  text-decoration: underline;
+  text-decoration-color: rgba(242, 238, 231, 0.45);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 7px;
+}
+
+.headerCta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 48px;
+  padding: 0 27px;
+  border-radius: var(--radius-pill);
+  background: var(--landing-cream);
+  color: var(--landing-ink);
+  font-size: 16px;
+  font-weight: 500;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background-color var(--duration-fast) ease;
+}
+
+.headerCta:hover {
+  background: var(--landing-cream-hover);
+}
+
+@media (max-width: 1180px) {
+  .sections ul {
+    gap: 32px;
+  }
+}
+
+@media (max-width: 900px) {
+  /* The section list holds no working links yet, so on a narrow header it is
+     dropped rather than folded behind a menu with nothing in it. */
+  .sections {
+    display: none;
+  }
+
+  .header {
+    grid-template-columns: auto 1fr;
+    height: 88px;
+  }
+}
+
+@media (max-width: 640px) {
+  .header {
+    height: 72px;
+  }
+
+  .brand img {
+    width: 132px;
+  }
+
+  .account {
+    gap: 18px;
+  }
+
+  .signIn,
+  .headerCta {
+    font-size: 15px;
+  }
+
+  .headerCta {
+    height: 40px;
+    padding: 0 18px;
+  }
+}
+
+/* The narrowest phones: both ways in stay on screen; the wordmark gives way. */
+@media (max-width: 380px) {
+  /* The lockup's ink runs edge to edge, so it is sized to leave the two
+     ways in their full width beside it at 320px. */
+  .brand img {
+    width: 88px;
+  }
+
+  .account {
+    gap: 14px;
+  }
+
+  .headerCta {
+    padding: 0 14px;
+  }
+}

@@ -4,15 +4,7 @@
    scale with the viewport width so the proportions hold across desktop sizes. */
 
 .page {
-  --landing-bg: #04090e;
-  --landing-text: #f2eee7;
-  --landing-text-soft: rgba(236, 232, 225, 0.78);
-  --landing-text-muted: #8d8a85;
-  --landing-cream: #ebe2d6;
-  --landing-cream-hover: #f5eee4;
-  --landing-ink: #0a0f14;
-  --landing-line: rgba(236, 230, 220, 0.4);
-  --landing-gutter: clamp(20px, 5vw, 96px);
+  composes: site from "../site/site.module.css";
 
   position: relative;
   isolation: isolate;
@@ -26,103 +18,10 @@
   color: var(--landing-text);
 }
 
-.page :focus-visible {
-  outline: 2px solid var(--brand-sand);
-  outline-offset: 3px;
-}
-
 /* The global focus style rounds to --radius-sm; a pill must stay a pill. */
-.page .headerCta:focus-visible,
 .page .primaryCta:focus-visible,
 .page .secondaryCta:focus-visible {
   border-radius: var(--radius-pill);
-}
-
-/* --- header ---------------------------------------------------------------- */
-
-.header {
-  position: relative;
-  z-index: 2;
-  display: grid;
-  grid-template-columns: 1fr auto 1fr;
-  align-items: center;
-  height: 120px;
-  padding: 0 var(--landing-gutter);
-}
-
-.brand {
-  display: inline-flex;
-  justify-self: start;
-  align-items: center;
-  line-height: 0;
-  border-radius: 6px;
-}
-
-.brand img {
-  display: block;
-  width: 182px;
-  height: auto;
-}
-
-.sections ul {
-  display: flex;
-  gap: 44px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.section {
-  font-size: 16px;
-  line-height: 1;
-  letter-spacing: 0.005em;
-  color: rgba(242, 238, 231, 0.82);
-  cursor: default;
-}
-
-.account {
-  display: flex;
-  justify-self: end;
-  align-items: center;
-  gap: 36px;
-}
-
-.signIn {
-  font-size: 16px;
-  white-space: nowrap;
-  color: rgba(242, 238, 231, 0.86);
-  text-decoration: none;
-  border-radius: 6px;
-  transition: color var(--duration-fast) ease;
-}
-
-.signIn:hover {
-  color: var(--landing-text);
-}
-
-.headerCta,
-.primaryCta {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: var(--radius-pill);
-  background: var(--landing-cream);
-  color: var(--landing-ink);
-  font-weight: 500;
-  text-decoration: none;
-  white-space: nowrap;
-  transition: background-color var(--duration-fast) ease;
-}
-
-.headerCta:hover,
-.primaryCta:hover {
-  background: var(--landing-cream-hover);
-}
-
-.headerCta {
-  height: 48px;
-  padding: 0 27px;
-  font-size: 16px;
 }
 
 /* --- hero ------------------------------------------------------------------ */
@@ -186,6 +85,23 @@
   flex-wrap: wrap;
   gap: 23px;
   margin-top: 46px;
+}
+
+.primaryCta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-pill);
+  background: var(--landing-cream);
+  color: var(--landing-ink);
+  font-weight: 500;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background-color var(--duration-fast) ease;
+}
+
+.primaryCta:hover {
+  background: var(--landing-cream-hover);
 }
 
 .primaryCta,
@@ -306,10 +222,6 @@
 /* --- smaller desktops ------------------------------------------------------ */
 
 @media (max-width: 1180px) {
-  .sections ul {
-    gap: 32px;
-  }
-
   .values {
     grid-template-columns: repeat(3, minmax(0, 260px));
     column-gap: 24px;
@@ -319,17 +231,6 @@
 /* --- tablet and below: one column ------------------------------------------ */
 
 @media (max-width: 900px) {
-  /* The section list holds no working links yet, so on a narrow header it is
-     dropped rather than folded behind a menu with nothing in it. */
-  .sections {
-    display: none;
-  }
-
-  .header {
-    grid-template-columns: auto 1fr;
-    height: 88px;
-  }
-
   .hero {
     justify-content: flex-start;
     gap: 0;
@@ -356,28 +257,6 @@
 }
 
 @media (max-width: 640px) {
-  .header {
-    height: 72px;
-  }
-
-  .brand img {
-    width: 132px;
-  }
-
-  .account {
-    gap: 18px;
-  }
-
-  .signIn,
-  .headerCta {
-    font-size: 15px;
-  }
-
-  .headerCta {
-    height: 40px;
-    padding: 0 18px;
-  }
-
   .hero {
     padding-top: 28px;
     padding-bottom: 32px;
@@ -411,23 +290,8 @@
 
 }
 
-/* The narrowest phones: both ways in stay on screen; the wordmark gives way. */
 @media (max-width: 380px) {
   .headline {
     font-size: 30px;
-  }
-
-  /* The lockup's ink runs edge to edge, so it is sized to leave the two
-     ways in their full width beside it at 320px. */
-  .brand img {
-    width: 88px;
-  }
-
-  .account {
-    gap: 14px;
-  }
-
-  .headerCta {
-    padding: 0 14px;
   }
 }

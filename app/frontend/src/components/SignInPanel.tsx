@@ -1,7 +1,9 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 
+import { ArrowRightIcon } from "./landing/icons";
 import { Button } from "./ui/Button";
 import { Callout } from "./ui/Callout";
 import { TextField } from "./ui/Field";
@@ -41,6 +43,12 @@ const MIN_PASSWORD_LENGTH = 8;
  * transport — returns the token in the response so the flow can be completed.
  * Discarding it left a new user registered, unable to sign in, and told only
  * "Incorrect email address or password."
+ *
+ * `appearance="glass"` is the same form dressed for the sign-in page's
+ * translucent card (`auth/SignInScene`): sign-in only — registration is the
+ * "Create one" link to `/get-started` — with the page's headline as the
+ * `h1` and the form's title as an `h2`. Every handler, validation and message
+ * is shared; only the presentation differs.
  */
 export function SignInPanel({
   stage,
@@ -48,6 +56,7 @@ export function SignInPanel({
   error,
   demoAvailable = false,
   initialMode = "signin",
+  appearance = "card",
   onSignIn,
   onDemoSignIn,
   onSubmitMfaCode,
@@ -61,6 +70,8 @@ export function SignInPanel({
   demoAvailable?: boolean;
   /** Which tab opens first: `/get-started` opens on "Create account". */
   initialMode?: "signin" | "register";
+  /** `glass` for the sign-in page's translucent card. */
+  appearance?: "card" | "glass";
   onSignIn(email: string, password: string): void;
   onDemoSignIn?(): void;
   onSubmitMfaCode(code: string): void;
@@ -75,6 +86,9 @@ export function SignInPanel({
   const [code, setCode] = useState("");
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const [confirmError, setConfirmError] = useState<string | null>(null);
+  const glass = appearance === "glass";
+  const Title = glass ? "h2" : "h1";
+  const panelClass = glass ? styles.glass : styles.panel;
 
   /**
    * What is wrong with the password pair, if anything.
@@ -124,8 +138,8 @@ export function SignInPanel({
 
   if (stage === "mfa-required") {
     return (
-      <div className={styles.panel}>
-        <h1 className={styles.title}>Two-factor authentication</h1>
+      <div className={panelClass}>
+        <Title className={styles.title}>Two-factor authentication</Title>
         <p className={styles.lede}>
           Enter the six-digit code from your authenticator app. You are half
           signed in: the session exists but can do nothing until this is
@@ -167,53 +181,58 @@ export function SignInPanel({
     );
   }
 
-  const registering = mode === "register";
+  // The glass form signs in only; registration has its own page.
+  const registering = !glass && mode === "register";
 
   return (
-    <div className={styles.panel}>
-      <h1 className={styles.title}>
+    <div className={panelClass}>
+      <Title className={styles.title}>
         {registering ? "Create your account" : "Sign in"}
-      </h1>
+      </Title>
 
       {demoAvailable && !registering && onDemoSignIn ? (
         <DemoAccess busy={busy} onSignIn={onDemoSignIn} />
       ) : null}
-      <p className={styles.lede}>
-        {registering
-          ? "You will name your first workspace next. A workspace holds one operation's accounts, orders, tickets and documents."
-          : "Use the address your workspace was created with, or the one an invitation was sent to."}
-      </p>
+      {glass ? null : (
+        <>
+          <p className={styles.lede}>
+            {registering
+              ? "You will name your first workspace next. A workspace holds one operation's accounts, orders, tickets and documents."
+              : "Use the address your workspace was created with, or the one an invitation was sent to."}
+          </p>
 
-      <div className={styles.tabs} role="tablist" aria-label="Sign in or register">
-        <button
-          type="button"
-          role="tab"
-          aria-selected={!registering}
-          className={!registering ? `${styles.tab} ${styles.tabActive}` : styles.tab}
-          onClick={() => {
-            setMode("signin");
-            onDismissError();
-            setPasswordError(null);
-            setConfirmError(null);
-          }}
-        >
-          Sign in
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={registering}
-          className={registering ? `${styles.tab} ${styles.tabActive}` : styles.tab}
-          onClick={() => {
-            setMode("register");
-            onDismissError();
-            setPasswordError(null);
-            setConfirmError(null);
-          }}
-        >
-          Create account
-        </button>
-      </div>
+          <div className={styles.tabs} role="tablist" aria-label="Sign in or register">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={!registering}
+              className={!registering ? `${styles.tab} ${styles.tabActive}` : styles.tab}
+              onClick={() => {
+                setMode("signin");
+                onDismissError();
+                setPasswordError(null);
+                setConfirmError(null);
+              }}
+            >
+              Sign in
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={registering}
+              className={registering ? `${styles.tab} ${styles.tabActive}` : styles.tab}
+              onClick={() => {
+                setMode("register");
+                onDismissError();
+                setPasswordError(null);
+                setConfirmError(null);
+              }}
+            >
+              Create account
+            </button>
+          </div>
+        </>
+      )}
 
       <form
         className={styles.form}
@@ -237,7 +256,7 @@ export function SignInPanel({
         ) : null}
 
         <TextField
-          label="Email"
+          label={glass ? "Work email address" : "Email"}
           type="email"
           value={email}
           onChange={(event) => setEmail(event.target.value)}
@@ -298,13 +317,20 @@ export function SignInPanel({
           className={styles.submit}
         >
           {busy ? "Working…" : registering ? "Create account" : "Sign in"}
+          {glass && !busy ? <ArrowRightIcon className={styles.submitArrow} /> : null}
         </Button>
       </form>
 
-      <p className={styles.footnote}>
-        Invited to an existing workspace? Open the invitation link you were
-        sent, signed in as the address it was issued to.
-      </p>
+      {glass ? (
+        <p className={styles.switch}>
+          Don’t have an account? <Link href="/get-started">Create one</Link>
+        </p>
+      ) : (
+        <p className={styles.footnote}>
+          Invited to an existing workspace? Open the invitation link you were
+          sent, signed in as the address it was issued to.
+        </p>
+      )}
     </div>
   );
 }
