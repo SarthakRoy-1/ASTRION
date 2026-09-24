@@ -38,6 +38,7 @@ import {
   submitMfaCode as apiSubmitMfa,
 } from "@/lib/auth-client";
 import { ApiError } from "@/lib/client";
+import { writeSessionHint } from "@/lib/session-hint";
 import type { AuthMode, CurrentUser, Workspace } from "@/lib/auth-types";
 import type { HealthResponse } from "@/lib/types";
 
@@ -276,6 +277,17 @@ export function useWorkspaceSession(
     () => run(() => load(authMode ?? "session")),
     [authMode, load, run],
   );
+
+  // Remember, as a presentation hint only, whether this browser is signed in —
+  // see `lib/session-hint.ts`. Written when the server has answered and never
+  // while it is still loading, so a slow backend cannot erase it.
+  useEffect(() => {
+    if (stage === "ready" || stage === "onboarding" || stage === "demo") {
+      writeSessionHint(true);
+    } else if (stage === "signed-out") {
+      writeSessionHint(false);
+    }
+  }, [stage]);
 
   const activeWorkspace = useMemo(
     () => workspaces.find((w) => w.workspace_id === activeId) ?? null,

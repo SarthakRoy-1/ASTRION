@@ -1,0 +1,53 @@
+/* A fixed slot, so the message beside it never shifts as the video arrives or
+   is replaced by the dot. */
+.slot {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 28px;
+}
+
+/* Contained, never cropped: the asset's own framing is kept, and a
+   transparent background shows the notice surface through it. */
+.video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: transparent;
+  pointer-events: none;
+}
+
+/* Present (so it loads) but not shown until it has a frame to show. */
+.pending {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dot {
+    animation: none;
+  }
+}

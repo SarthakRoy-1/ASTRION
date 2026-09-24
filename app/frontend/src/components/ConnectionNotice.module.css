@@ -12,30 +12,3 @@
   color: var(--text-secondary);
   font-size: var(--text-small);
 }
-
-.pulse {
-  flex: none;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--accent);
-  animation: pulse 1.4s ease-in-out infinite;
-}
-
-@keyframes pulse {
-  0%,
-  100% {
-    opacity: 0.35;
-  }
-  50% {
-    opacity: 1;
-  }
-}
-
-/* A reader who has asked for less motion still gets the message; they just do
-   not get the dot moving while they read it. */
-@media (prefers-reduced-motion: reduce) {
-  .pulse {
-    animation: none;
-  }
-}

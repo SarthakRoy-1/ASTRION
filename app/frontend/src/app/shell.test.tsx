@@ -7,6 +7,7 @@ import WorkspacePage from "./workspace/page";
 import { chatCalls, fixtures, stubApi } from "@/test/helpers";
 import { setTestRoute } from "@/test/next-navigation";
 import { renderApp } from "@/test/render";
+import { writeSessionHint } from "@/lib/session-hint";
 
 /**
  * The application shell under real session authentication.
@@ -180,7 +181,11 @@ describe("a backend that is still waking", () => {
       // The hosted deployment spins down when idle. A backend that cannot be
       // reached yet is not a signed-out user, and showing a sign-in form at
       // that moment is what makes a cold start look like a logout.
+      // A returning user: this browser was signed in before. (A first-time
+      // visitor to `/` sees the public landing page during the wait; that
+      // case is covered in `landing.test.tsx`.)
       setTestRoute("/");
+      writeSessionHint(true);
       stubApi({ session: {}, sleeping: 2 });
       renderApp(<SupportPage />);
 

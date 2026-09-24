@@ -1,4 +1,6 @@
 import Image from "next/image";
+import Link from "next/link";
+
 import styles from "./AuthLayout.module.css";
 
 const POINTS: { title: string; body: string }[] = [
@@ -12,7 +14,7 @@ export function AuthLayout({ children }: { children: React.ReactNode }) {
     <div className={styles.page}>
       <aside className={styles.pitch}>
         <header className={styles.pitchHeader}>
-          <Image className={styles.pitchLogo} src="/astrion-wordmark.svg" alt="ASTRION" width={220} height={38} priority />
+          <Link href="/" className={styles.homeLink} aria-label="ASTRION home"><Image className={styles.pitchLogo} src="/astrion-wordmark.svg" alt="ASTRION" width={220} height={38} priority /></Link>
           <span className={styles.headerNote}>AI for real work</span>
         </header>
         <div className={styles.orbit} aria-hidden="true"><span /></div>
@@ -27,7 +29,7 @@ export function AuthLayout({ children }: { children: React.ReactNode }) {
       </aside>
       <main className={styles.stage}>
         <div className={styles.card}>
-          <Image className={styles.compactLogo} src="/astrion-wordmark.svg" alt="ASTRION" width={190} height={33} priority />
+          <Link href="/" className={styles.compactHome} aria-label="ASTRION home"><Image className={styles.compactLogo} src="/astrion-wordmark.svg" alt="ASTRION" width={190} height={33} priority /></Link>
           {children}
         </div>
       </main>
