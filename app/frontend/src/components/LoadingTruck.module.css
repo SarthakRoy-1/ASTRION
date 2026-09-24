@@ -8,23 +8,29 @@
   justify-content: center;
   width: 44px;
   height: 28px;
+  overflow: hidden;
 }
 
-/* Contained, never cropped: the asset's own framing is kept, and a
-   transparent background shows the notice surface through it. */
+/* The asset is a 150 × 150 frame with a transparent background, and the
+   truck (speed lines included, across the whole loop) only ever occupies the
+   74 × 40 box from (40, 62) to (113, 101). Contained whole, the truck would be
+   a 12-pixel speck; so the frame is scaled by 0.58 and offset to put that box
+   — and only that box — in the middle of the slot, at about 43 × 23. Nothing
+   the animation draws falls outside the slot, so nothing is cropped. */
 .video {
+  position: absolute;
+  top: -33.3px;
+  left: -22.4px;
   display: block;
-  width: 100%;
-  height: 100%;
-  object-fit: contain;
+  width: 87px;
+  height: 87px;
+  max-width: none;
   background: transparent;
   pointer-events: none;
 }
 
 /* Present (so it loads) but not shown until it has a frame to show. */
 .pending {
-  position: absolute;
-  inset: 0;
   opacity: 0;
 }
 

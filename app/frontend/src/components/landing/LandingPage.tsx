@@ -39,10 +39,10 @@ export function LandingPage() {
       <header className={styles.header}>
         <Link href="/" className={styles.brand} aria-label="ASTRION home">
           <Image
-            src="/astrion-wordmark.svg"
+            src="/astrion-logo-light.png"
             alt="ASTRION"
             width={182}
-            height={31}
+            height={36}
             priority
           />
         </Link>

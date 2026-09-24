@@ -31,7 +31,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <header className={styles.top}>
         <div className={styles.topInner}>
           <Link href="/" className={styles.brand} aria-label="ASTRION home">
-            <Image src="/astrion-wordmark.svg" alt="ASTRION" width={210} height={36} priority />
+            <Image src="/astrion-logo-light.png" alt="ASTRION" width={176} height={34} priority />
           </Link>
           {session.activeWorkspace ? (
             <>

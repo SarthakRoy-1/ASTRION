@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
@@ -209,6 +212,13 @@ describe("the connecting animation", () => {
     expect(video).toHaveAttribute("loop");
     // Decorative: the notice's text is what is announced.
     expect(video.closest("[aria-hidden='true']")).not.toBeNull();
+  });
+
+  it("is served from the committed brand asset", () => {
+    const file = readFileSync(join(process.cwd(), "public", LOADING_TRUCK_SRC));
+
+    // The EBML signature: a real WebM, not a missing file or a placeholder.
+    expect([...file.subarray(0, 4)]).toEqual([0x1a, 0x45, 0xdf, 0xa3]);
   });
 
   it("falls back to the static dot when the asset cannot load", () => {

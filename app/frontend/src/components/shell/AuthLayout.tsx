@@ -14,7 +14,7 @@ export function AuthLayout({ children }: { children: React.ReactNode }) {
     <div className={styles.page}>
       <aside className={styles.pitch}>
         <header className={styles.pitchHeader}>
-          <Link href="/" className={styles.homeLink} aria-label="ASTRION home"><Image className={styles.pitchLogo} src="/astrion-wordmark.svg" alt="ASTRION" width={220} height={38} priority /></Link>
+          <Link href="/" className={styles.homeLink} aria-label="ASTRION home"><Image className={styles.pitchLogo} src="/astrion-logo-light.png" alt="ASTRION" width={178} height={35} priority /></Link>
           <span className={styles.headerNote}>AI for real work</span>
         </header>
         <div className={styles.orbit} aria-hidden="true"><span /></div>
@@ -29,7 +29,7 @@ export function AuthLayout({ children }: { children: React.ReactNode }) {
       </aside>
       <main className={styles.stage}>
         <div className={styles.card}>
-          <Link href="/" className={styles.compactHome} aria-label="ASTRION home"><Image className={styles.compactLogo} src="/astrion-wordmark.svg" alt="ASTRION" width={190} height={33} priority /></Link>
+          <Link href="/" className={styles.compactHome} aria-label="ASTRION home"><Image className={styles.compactLogo} src="/astrion-logo-dark.png" alt="ASTRION" width={170} height={33} priority /></Link>
           {children}
         </div>
       </main>

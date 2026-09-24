@@ -8,8 +8,9 @@ import styles from "./LoadingTruck.module.css";
  * Where the delivery-truck loading animation is served from.
  *
  * The source is the brand asset `Delivery Truck _ Loading _ Exporting.webm`,
- * committed unconverted as `app/frontend/public/delivery-truck-loading.webm`.
- * Served as-is so an alpha channel, if the file has one, survives.
+ * committed byte-for-byte as `app/frontend/public/delivery-truck-loading.webm`
+ * (VP8 with an alpha channel, 150 × 150, a 1.96-second loop). Served as-is so
+ * the transparency survives; the stylesheet frames the truck in the slot.
  */
 export const LOADING_TRUCK_SRC = "/delivery-truck-loading.webm";
 
