@@ -52,6 +52,15 @@ function stubSignedOut({ demoLoginEnabled = true } = {}) {
           error: { code: "unauthenticated", message: "Sign in.", details: {} },
         });
       }
+      if (url.includes("/api/auth/login")) {
+        return json(401, {
+          error: {
+            code: "invalid_credentials",
+            message: "Incorrect email address or password.",
+            details: {},
+          },
+        });
+      }
       throw new Error(`unexpected request: ${url}`);
     }),
   );
@@ -117,7 +126,7 @@ describe("the landing page", () => {
     expect(
       await screen.findByRole("heading", { name: /^sign in$/i }),
     ).toBeInTheDocument();
-    expect(screen.getByLabelText(/^email$/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/^work email address$/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/^password$/i)).toBeInTheDocument();
   });
 
@@ -199,6 +208,82 @@ describe("the sign-in routes, when already signed in", () => {
     renderApp(<SignInPage />);
 
     await waitFor(() => expect(testRoute()).toBe("/"));
+  });
+});
+
+describe("the sign-in page", () => {
+  async function renderSignInPage() {
+    const user = userEvent.setup();
+    setTestRoute("/sign-in");
+    const stub = stubSignedOut();
+    renderApp(<SignInPage />);
+    // The form, not the card's title: the title is already there while the
+    // API is still being reached.
+    await screen.findByLabelText(/^work email address$/i);
+    return { user, stub };
+  }
+
+  it("is the public site, not the application", async () => {
+    await renderSignInPage();
+
+    expect(
+      screen.getByRole("heading", { level: 1, name: /welcome back to astrion/i }),
+    ).toBeInTheDocument();
+    // The landing page's own header, with this page marked as current…
+    expect(screen.getByRole("navigation", { name: /^site$/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /^sign in$/i })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+    expect(screen.getByRole("link", { name: /get started/i })).toHaveAttribute(
+      "href",
+      "/get-started",
+    );
+    // …and none of the product's chrome.
+    expect(screen.queryByRole("navigation", { name: /primary/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /sign out/i })).toBeNull();
+  });
+
+  it("holds the sign-in form, with registration one link away", async () => {
+    await renderSignInPage();
+
+    expect(screen.getByRole("heading", { level: 2, name: /^sign in$/i })).toBeInTheDocument();
+    expect(screen.getByLabelText(/^work email address$/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/^password$/i)).toBeInTheDocument();
+    expect(screen.queryByRole("tab")).toBeNull();
+    expect(screen.getByRole("link", { name: /create one/i })).toHaveAttribute(
+      "href",
+      "/get-started",
+    );
+    expect(screen.queryByRole("button", { name: /sign in to the demo/i })).toBeNull();
+  });
+
+  it("signs in through the existing flow, and shows its answer", async () => {
+    const { user, stub } = await renderSignInPage();
+
+    await user.type(screen.getByLabelText(/^work email address$/i), "ada@example.com");
+    await user.type(screen.getByLabelText(/^password$/i), "correct horse battery");
+    await user.click(screen.getByRole("button", { name: /^sign in$/i }));
+
+    expect(
+      await screen.findByText(/incorrect email address or password/i),
+    ).toBeInTheDocument();
+    expect(stub.urls.some((url) => url.includes("/api/auth/login"))).toBe(true);
+  });
+
+  it("waits for the API inside the same page", async () => {
+    setTestRoute("/sign-in");
+    vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>(() => {})));
+    renderApp(<SignInPage />);
+
+    expect(
+      await screen.findByRole("heading", { level: 1, name: /welcome back to astrion/i }),
+    ).toBeInTheDocument();
+    // Said after a deliberate pause, so a fast start never flashes it.
+    expect(
+      await screen.findByText(/connecting to the astrion api/i, undefined, { timeout: 5000 }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("navigation", { name: /primary/i })).toBeNull();
   });
 });
 

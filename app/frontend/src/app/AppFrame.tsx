@@ -7,6 +7,7 @@ import { ConnectionNotice } from "@/components/ConnectionNotice";
 import { ErrorNotice } from "@/components/ErrorNotice";
 import { SignInPanel } from "@/components/SignInPanel";
 import { WorkspaceOnboarding } from "@/components/WorkspaceOnboarding";
+import { SignInScene, SignInWaiting } from "@/components/auth/SignInScene";
 import { VerifyEmailPrompt } from "@/components/auth/VerifyEmailPrompt";
 import { AppShell } from "@/components/shell/AppShell";
 import { AuthLayout } from "@/components/shell/AuthLayout";
@@ -29,6 +30,11 @@ import { readSessionHint, subscribeSessionHint } from "@/lib/session-hint";
  * where an emailed link lands, and both are reached by someone who is not yet
  * inside a workspace — so they never wear the signed-in chrome, whatever the
  * session turns out to be.
+ *
+ * The sign-in form itself — at `/sign-in`, and wherever a signed-out visitor
+ * lands other than `/` and `/get-started` — wears the public site instead of
+ * `AuthLayout`: `SignInScene`, the landing page's header over the brand
+ * background. Registration at `/get-started` keeps `AuthLayout`.
  *
  * One more, in front of those three: **the public landing page at `/`.** It is
  * shown to a signed-out visitor, and — because it needs nothing from the API —
@@ -112,16 +118,20 @@ export function AppFrame({ children }: { children: React.ReactNode }) {
 
   // Someone who has just pressed "Sign in" or "Get Started" is waiting for a
   // form, not for the product: while the API is still being reached they see
-  // the connection notice in the sign-in frame, never the application chrome.
+  // the connection notice in the page they asked for, never the application
+  // chrome.
   if (AUTH_ROUTES.includes(pathname) && session.stage === "loading") {
-    return (
-      <AuthLayout>
-        {chat.principalsError ? (
-          <ErrorNotice error={chat.principalsError} />
-        ) : (
-          <ConnectionNotice state={chat.connection} />
-        )}
-      </AuthLayout>
+    const notice = chat.principalsError ? (
+      <ErrorNotice error={chat.principalsError} />
+    ) : (
+      <ConnectionNotice state={chat.connection} />
+    );
+    return pathname === REGISTER_ROUTE ? (
+      <AuthLayout>{notice}</AuthLayout>
+    ) : (
+      <SignInScene>
+        <SignInWaiting>{notice}</SignInWaiting>
+      </SignInScene>
     );
   }
 
@@ -148,29 +158,35 @@ export function AppFrame({ children }: { children: React.ReactNode }) {
       );
     }
 
-    return (
-      <AuthLayout>
-        <SignInPanel
-          // Keyed so moving between `/sign-in` and `/get-started` opens the
-          // tab the link promised rather than whichever was open before.
-          key={pathname === REGISTER_ROUTE ? "register" : "signin"}
-          stage={session.stage}
-          busy={session.busy}
-          error={session.error}
-          initialMode={pathname === REGISTER_ROUTE ? "register" : "signin"}
-          // The public demo is not offered for now. Everything behind it —
-          // the endpoint, the seeded workspace, `signInToDemo` and the panel
-          // itself — is intact; `PUBLIC_DEMO_SIGN_IN_ENABLED` restores it.
-          demoAvailable={PUBLIC_DEMO_SIGN_IN_ENABLED && session.demoAvailable}
-          onSignIn={session.signIn}
-          onDemoSignIn={PUBLIC_DEMO_SIGN_IN_ENABLED ? session.signInToDemo : undefined}
-          onSubmitMfaCode={session.submitMfaCode}
-          onRegistered={(message, token, email, emailSent) =>
-            setRegistration({ message, token, email: email ?? "", emailSent: emailSent ?? false })
-          }
-          onDismissError={session.clearError}
-        />
-      </AuthLayout>
+    const registering = pathname === REGISTER_ROUTE;
+    const panel = (
+      <SignInPanel
+        // Keyed so moving between `/sign-in` and `/get-started` opens the
+        // tab the link promised rather than whichever was open before.
+        key={registering ? "register" : "signin"}
+        stage={session.stage}
+        busy={session.busy}
+        error={session.error}
+        initialMode={registering ? "register" : "signin"}
+        appearance={registering ? "card" : "glass"}
+        // The public demo is not offered for now. Everything behind it —
+        // the endpoint, the seeded workspace, `signInToDemo` and the panel
+        // itself — is intact; `PUBLIC_DEMO_SIGN_IN_ENABLED` restores it.
+        demoAvailable={PUBLIC_DEMO_SIGN_IN_ENABLED && session.demoAvailable}
+        onSignIn={session.signIn}
+        onDemoSignIn={PUBLIC_DEMO_SIGN_IN_ENABLED ? session.signInToDemo : undefined}
+        onSubmitMfaCode={session.submitMfaCode}
+        onRegistered={(message, token, email, emailSent) =>
+          setRegistration({ message, token, email: email ?? "", emailSent: emailSent ?? false })
+        }
+        onDismissError={session.clearError}
+      />
+    );
+
+    return registering ? (
+      <AuthLayout>{panel}</AuthLayout>
+    ) : (
+      <SignInScene>{panel}</SignInScene>
     );
   }
 

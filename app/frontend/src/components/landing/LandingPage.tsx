@@ -1,18 +1,12 @@
-import Image from "next/image";
 import Link from "next/link";
+
+import { SiteHeader } from "@/components/site/SiteHeader";
 
 import { HeroVisual } from "./HeroVisual";
 import { WatchDemoButton } from "./WatchDemoButton";
 import { ActionIcon, ArrowRightIcon, ShieldIcon, TeamIcon } from "./icons";
 
 import styles from "./LandingPage.module.css";
-
-/**
- * Site sections not yet built. Shown so the header reads as designed, but not
- * links: a link to a page that does not exist is a broken promise, and each
- * item says so to assistive technology.
- */
-const SITE_SECTIONS = ["Product", "Solutions", "Pricing", "Resources"] as const;
 
 const VALUES = [
   { title: "Trusted by teams", body: "Built for real workflows", Icon: TeamIcon },
@@ -36,39 +30,7 @@ export function LandingPage() {
         Skip to main content
       </a>
 
-      <header className={styles.header}>
-        <Link href="/" className={styles.brand} aria-label="ASTRION home">
-          <Image
-            src="/astrion-logo-light.png"
-            alt="ASTRION"
-            width={182}
-            height={36}
-            priority
-          />
-        </Link>
-
-        <nav className={styles.sections} aria-label="Site">
-          <ul>
-            {SITE_SECTIONS.map((section) => (
-              <li key={section}>
-                <span className={styles.section}>
-                  {section}
-                  <span className="visually-hidden"> (coming soon)</span>
-                </span>
-              </li>
-            ))}
-          </ul>
-        </nav>
-
-        <div className={styles.account}>
-          <Link href="/sign-in" className={styles.signIn}>
-            Sign in
-          </Link>
-          <Link href="/get-started" className={styles.headerCta}>
-            Get Started
-          </Link>
-        </div>
-      </header>
+      <SiteHeader />
 
       <main id="landing-main" className={styles.hero}>
         <div className={styles.copy}>
