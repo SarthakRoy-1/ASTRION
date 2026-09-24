@@ -1,14 +1,14 @@
 "use client";
 
 import { usePathname, useRouter } from "next/navigation";
-import { useState, useSyncExternalStore } from "react";
+import { useSyncExternalStore } from "react";
 
 import { ConnectionNotice } from "@/components/ConnectionNotice";
 import { ErrorNotice } from "@/components/ErrorNotice";
 import { SignInPanel } from "@/components/SignInPanel";
 import { WorkspaceOnboarding } from "@/components/WorkspaceOnboarding";
 import { SignInScene, SignInWaiting } from "@/components/auth/SignInScene";
-import { VerifyEmailPrompt } from "@/components/auth/VerifyEmailPrompt";
+import { EmailCodeVerification } from "@/components/auth/EmailCodeVerification";
 import { AppShell } from "@/components/shell/AppShell";
 import { AuthLayout } from "@/components/shell/AuthLayout";
 import { LandingPage } from "@/components/landing/LandingPage";
@@ -65,19 +65,11 @@ const AUTH_ROUTES = ["/sign-in", REGISTER_ROUTE];
 /** `false` while rendering on the server, where no browser storage exists. */
 const serverSessionHint = () => false;
 
-interface Registration {
-  email: string;
-  message: string;
-  token?: string;
-  emailSent: boolean;
-}
-
 export function AppFrame({ children }: { children: React.ReactNode }) {
   const session = useSession();
   const chat = useChat();
   const router = useRouter();
   const pathname = usePathname() ?? "/";
-  const [registration, setRegistration] = useState<Registration | null>(null);
   const recentlySignedIn = useSyncExternalStore(
     subscribeSessionHint,
     readSessionHint,
@@ -135,29 +127,32 @@ export function AppFrame({ children }: { children: React.ReactNode }) {
     );
   }
 
-  if (session.stage === "signed-out" || session.stage === "mfa-required") {
-    // Registration succeeded and the address is not yet confirmed. The panel
-    // below closes that loop; without it the only route onward was a sign-in
-    // the backend is required to refuse.
-    if (registration && session.stage === "signed-out") {
-      return (
-        <AuthLayout>
-          <VerifyEmailPrompt
-            email={registration.email}
-            message={registration.message}
-            emailSent={registration.emailSent}
-            verificationToken={registration.token}
-            onDone={() => {
-              setRegistration(null);
-              // "Continue to sign in" means the sign-in form, not a second
-              // registration form on the page they registered from.
-              if (pathname === REGISTER_ROUTE) router.replace("/sign-in");
-            }}
-          />
-        </AuthLayout>
-      );
-    }
+  // Proving an address with an emailed code — after registering, after the
+  // right password for an address never proven, or after a Google/GitHub
+  // sign-in that brought no verified address. Wherever the visitor is, this
+  // is the screen: nothing else can proceed until it is answered or left.
+  if (session.stage === "verify-email" && session.verification) {
+    const registering = pathname === REGISTER_ROUTE;
+    const screen = (
+      <EmailCodeVerification
+        verification={session.verification}
+        appearance={registering ? "card" : "glass"}
+        onVerified={session.completeVerification}
+        onCancel={async () => {
+          await session.abandonVerification();
+          // "Back to sign in" means the sign-in form, wherever this began.
+          if (pathname !== "/sign-in") router.replace("/sign-in");
+        }}
+      />
+    );
+    return registering ? (
+      <AuthLayout>{screen}</AuthLayout>
+    ) : (
+      <SignInScene>{screen}</SignInScene>
+    );
+  }
 
+  if (session.stage === "signed-out" || session.stage === "mfa-required") {
     const registering = pathname === REGISTER_ROUTE;
     const panel = (
       <SignInPanel
@@ -176,9 +171,8 @@ export function AppFrame({ children }: { children: React.ReactNode }) {
         onSignIn={session.signIn}
         onDemoSignIn={PUBLIC_DEMO_SIGN_IN_ENABLED ? session.signInToDemo : undefined}
         onSubmitMfaCode={session.submitMfaCode}
-        onRegistered={(message, token, email, emailSent) =>
-          setRegistration({ message, token, email: email ?? "", emailSent: emailSent ?? false })
-        }
+        oauthProviders={session.oauthProviders}
+        onRegistered={session.beginVerification}
         onDismissError={session.clearError}
       />
     );

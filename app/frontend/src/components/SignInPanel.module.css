@@ -73,6 +73,42 @@
   margin-top: var(--space-1);
 }
 
+/* "Continue with Google / GitHub", then a rule with "or" in it, then the form. */
+.alternatives {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  margin-bottom: 18px;
+}
+
+.divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.divider::before,
+.divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--border-default);
+}
+
+.providerError {
+  margin-bottom: 16px;
+}
+
+/* A form that follows prose directly (the code screen) needs its own air. */
+.lede + .form {
+  margin-top: var(--space-5);
+}
+
 .footnote {
   margin-top: var(--space-5);
   padding-top: var(--space-4);
@@ -139,7 +175,19 @@
 
 .glass .form {
   gap: 18px;
-  margin-top: 24px;
+}
+
+.glass .lede + .form {
+  margin-top: 22px;
+}
+
+.glass .alternatives,
+.glass .providerError {
+  margin-top: 22px;
+}
+
+.glass .providerError + .alternatives {
+  margin-top: 0;
 }
 
 .glass input {

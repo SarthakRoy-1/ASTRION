@@ -8,6 +8,7 @@
   "documents_indexed": 6,
   "max_tool_steps": 8,
   "model": null,
+  "oauth_providers": [],
   "provider_mode": "deterministic",
   "state_changing_actions_enabled": true,
   "status": "ok"

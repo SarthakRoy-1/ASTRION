@@ -817,6 +817,11 @@ default — **no `.env` is required** to run in deterministic mode.
 | `APP_ENV` / `CORS_ALLOW_ORIGINS` | Environment label; browser origins allowed to call the API |
 | `AUTH_SECRET_KEY` / `AUTH_TOKEN_TTL_MINUTES` | Reserved for the real identity provider; unused today |
 | `ENABLE_STATE_CHANGING_ACTIONS` | Kill switch: unregisters the preparation tools *and* closes the confirm endpoint |
+| `GOOGLE_OAUTH_CLIENT_ID` / `_SECRET`, `GITHUB_OAUTH_CLIENT_ID` / `_SECRET` | "Continue with Google / GitHub". Backend only. Callback URLs and console setup: [authentication.md](authentication.md#callback-urls-to-register) |
+| `API_PUBLIC_URL` / `FRONTEND_BASE_URL` | Public API origin (forms the OAuth callback) and the frontend origin the browser returns to |
+| `RESEND_API_KEY` / `EMAIL_FROM` | Email delivery for verification codes |
+| `EMAIL_OUTBOX_DIR` | Development only: write mail (and its code) to files. Refused in production; `dev.py` sets `data/outbox` |
+| `OTP_TTL_MINUTES`, `OTP_MAX_ATTEMPTS`, `OTP_RESEND_COOLDOWN_SECONDS`, `OTP_MAX_SENDS_PER_WINDOW`, `OTP_SEND_WINDOW_MINUTES`, `VERIFICATION_TTL_MINUTES` | Email-code policy; see [authentication.md](authentication.md#environment-variables-added) |
 | `NEXT_PUBLIC_API_BASE_URL` | Frontend → backend base URL. Set in `app/frontend/.env.local`, not in the backend `.env` — it is a browser-visible value and must never hold a secret. |
 
 ## Project layout

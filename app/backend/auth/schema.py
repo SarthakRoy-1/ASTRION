@@ -205,6 +205,100 @@ SECURITY_SCHEMA_STATEMENTS: tuple[str, ...] = (
         entry_hash TEXT NOT NULL
     ) STRICT
     """,
+    # --- email verification by one-time code ------------------------------
+    #
+    # A *verification* is a browser's claim to be proving one address. It is
+    # held as an HttpOnly cookie whose SHA-256 digest is `token_hash`, exactly
+    # like a session. It is issued only to a caller who created the account or
+    # who has just presented its correct password — so the verify endpoints
+    # take no email address and cannot be used to probe which addresses exist.
+    #
+    # `decoy` marks the verification handed back when someone registers an
+    # address that is already taken. It behaves like a real one in every
+    # observable way (codes, expiry, attempts, cooldowns) and can never
+    # succeed; that is what keeps registration from being an existence oracle.
+    #
+    # `purpose = 'oauth_signup'` rows carry a Google/GitHub identity whose
+    # provider supplied no verified address; `email` is NULL until the person
+    # types one, and the code proves it.
+    """
+    CREATE TABLE IF NOT EXISTS email_verifications (
+        verification_id TEXT PRIMARY KEY,
+        token_hash TEXT NOT NULL UNIQUE,
+        purpose TEXT NOT NULL,
+        user_id TEXT REFERENCES users (user_id),
+        email TEXT,
+        decoy INTEGER NOT NULL DEFAULT 0,
+        provider TEXT,
+        provider_subject TEXT,
+        provider_display_name TEXT,
+        created_at_utc TEXT NOT NULL,
+        expires_at_utc TEXT NOT NULL,
+        -- Set once, under a guarded UPDATE: a verification completes once.
+        completed_at_utc TEXT
+    ) STRICT
+    """,
+    # One row per code sent. The code itself is never stored: `code_hash` is
+    # HMAC-SHA256 keyed by a per-row random salt over the verification id and
+    # the code, so a stored hash is useless for any other verification and
+    # cannot be looked up in a precomputed table.
+    """
+    CREATE TABLE IF NOT EXISTS email_otps (
+        otp_id TEXT PRIMARY KEY,
+        verification_id TEXT NOT NULL REFERENCES email_verifications (verification_id),
+        -- The destination, for the per-address sending cap. NULL on a decoy,
+        -- so a decoy can never use up the real owner's allowance.
+        email TEXT,
+        code_salt TEXT NOT NULL,
+        code_hash TEXT NOT NULL,
+        created_at_utc TEXT NOT NULL,
+        expires_at_utc TEXT NOT NULL,
+        attempts INTEGER NOT NULL DEFAULT 0,
+        delivered INTEGER NOT NULL DEFAULT 0,
+        consumed_at_utc TEXT,
+        -- Set when a newer code replaces this one: only the latest code works.
+        superseded_at_utc TEXT
+    ) STRICT
+    """,
+    # --- sign-in with Google / GitHub ----------------------------------------
+    #
+    # A user may hold any number of provider identities. (provider, subject)
+    # is unique, so one Google account can never be attached to two ASTRION
+    # users. The provider's access token is never stored: it is used once, to
+    # read the profile, and dropped.
+    """
+    CREATE TABLE IF NOT EXISTS user_identities (
+        identity_id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL REFERENCES users (user_id),
+        provider TEXT NOT NULL,
+        provider_subject TEXT NOT NULL,
+        email_at_link TEXT,
+        created_at_utc TEXT NOT NULL,
+        last_used_at_utc TEXT,
+        UNIQUE (provider, provider_subject)
+    ) STRICT
+    """,
+    # The `state` of an authorization request in flight: its digest, the PKCE
+    # verifier that goes with it, and single use. The same value is also held
+    # in an HttpOnly cookie on the browser that started the flow, and the
+    # callback requires the two to match — which is what stops someone
+    # completing a sign-in in another person's browser.
+    """
+    CREATE TABLE IF NOT EXISTS oauth_states (
+        state_hash TEXT PRIMARY KEY,
+        provider TEXT NOT NULL,
+        code_verifier TEXT NOT NULL,
+        created_at_utc TEXT NOT NULL,
+        expires_at_utc TEXT NOT NULL,
+        consumed_at_utc TEXT
+    ) STRICT
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_email_verifications_user "
+    "ON email_verifications (user_id)",
+    "CREATE INDEX IF NOT EXISTS idx_email_otps_verification "
+    "ON email_otps (verification_id, created_at_utc)",
+    "CREATE INDEX IF NOT EXISTS idx_email_otps_email ON email_otps (email, created_at_utc)",
+    "CREATE INDEX IF NOT EXISTS idx_user_identities_user ON user_identities (user_id)",
     # At most ONE account may belong to ONE workspace. Without this, the same
     # dataset account could be granted to two workspaces and each would see the
     # other's orders, tickets and actions -- the composite primary key on

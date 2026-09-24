@@ -84,10 +84,25 @@ function stubRegister() {
       ok: true,
       status: 200,
       statusText: "",
+      // The shape `/api/auth/register` answers with: display state for the
+      // code screen, and no token or code of any kind.
       json: async () => ({
         status: "registration_received",
-        message: "If that address is available, an account was created.",
-        verification_token: "tok-123",
+        message: "We've sent a verification code to a••••@example.com.",
+        email_sent: true,
+        verification: {
+          purpose: "email_verification",
+          email_hint: "a••••@example.com",
+          needs_email: false,
+          provider: null,
+          code_expires_in_seconds: 600,
+          code_ttl_seconds: 600,
+          attempts_remaining: 5,
+          resend_in_seconds: 60,
+          sends_remaining: 4,
+          expires_in_seconds: 3600,
+          email_sent: true,
+        },
       }),
     })) as unknown as typeof fetch,
   );

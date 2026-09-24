@@ -13,7 +13,13 @@ from __future__ import annotations
 import logging
 
 from app.backend.email.provider import EmailDeliveryError
-from app.backend.email.templates import verification_email_html, verification_email_text
+from app.backend.email.templates import (
+    VERIFICATION_CODE_SUBJECT,
+    verification_code_email_html,
+    verification_code_email_text,
+    verification_email_html,
+    verification_email_text,
+)
 
 logger = logging.getLogger("astrion.email.resend")
 
@@ -70,3 +76,48 @@ class ResendEmailProvider:
                 "The verification link will be returned in the response "
                 "if this is not a production deployment."
             ) from exc
+
+    def send_verification_code(
+        self,
+        *,
+        to_address: str,
+        display_name: str,
+        code: str,
+        expires_minutes: int,
+    ) -> None:
+        try:
+            import resend
+        except ImportError as exc:
+            raise EmailDeliveryError(
+                "resend package is not installed. Add resend to requirements.txt."
+            ) from exc
+
+        resend.api_key = self._api_key  # type: ignore[attr-defined]
+        try:
+            params: resend.Emails.SendParams = {  # type: ignore[attr-defined]
+                "from": self._from_address,
+                "to": [to_address],
+                "subject": VERIFICATION_CODE_SUBJECT,
+                "html": verification_code_email_html(
+                    display_name=display_name, code=code, expires_minutes=expires_minutes
+                ),
+                "text": verification_code_email_text(
+                    display_name=display_name, code=code, expires_minutes=expires_minutes
+                ),
+            }
+            resend.Emails.send(params)  # type: ignore[attr-defined]
+            # The address's domain only: the log is not a record of who signed
+            # up, and it must never hold the code.
+            logger.info(
+                "email.resend: verification code sent domain=%s",
+                to_address.rsplit("@", 1)[-1],
+            )
+        except Exception as exc:
+            # The exception text is not logged or re-raised: some SDK versions
+            # echo the request body, which carries the code.
+            logger.error(
+                "email.resend: code delivery failed reason=%s", type(exc).__name__
+            )
+            raise EmailDeliveryError(
+                f"Email delivery failed ({type(exc).__name__})."
+            ) from None

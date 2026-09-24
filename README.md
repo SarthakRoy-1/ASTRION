@@ -299,7 +299,11 @@ To run the agent on a real model, set `LLM_PROVIDER=real` and
 - **The demo identity is operations, not a manager.** It can confirm ordinary
   actions but not a credit above the SOP's manager threshold. With the supplied
   data every eligible credit is below that threshold.
-- **Self-registration cannot complete on the hosted deployment**, which has no
-  mail transport; the demo is the way in.
+- **Self-registration and provider sign-in need external setup on the hosted
+  deployment.** Registration verifies the address with an emailed code, which
+  needs a Resend key and a verified sending domain. "Continue with Google /
+  GitHub" needs OAuth apps registered with each provider. Until those exist
+  there, the buttons show as not set up and registration cannot complete. See
+  [docs/authentication.md](docs/authentication.md#production-checklist).
 - **Uploads are capped by the global request size limit** (256 KB), which the
   supplied documents fit comfortably within.

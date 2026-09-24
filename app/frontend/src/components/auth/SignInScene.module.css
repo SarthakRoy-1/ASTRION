@@ -1,6 +1,5 @@
 /* The sign-in page: the landing page's header over the brand background, the
-   "Welcome Back" headline in the hero, and the sign-in card floating over its
-   left end. Desktop is composed at 1434 × 840, and the sizes that set the
+   sign-in card on the left and the "Welcome Back" headline beside it. Desktop is composed at 1434 × 840, and the sizes that set the
    composition scale with the viewport so its proportions hold. */
 
 .scene {
@@ -71,15 +70,25 @@
   padding: 16px var(--landing-gutter) 40px;
 }
 
-/* Part of the hero, not of the form: it begins beneath the card and runs out
-   into the open sky, so the card reads as floating over it. It is placed from
-   the card — whose middle is the stage's middle — so the two keep the same
-   overlap at every desktop size. */
+/* The card and the headline, side by side. The card comes first on the page
+   (visually) so the form sits where the eye lands; the headline comes first in
+   the document so a screen reader announces the page before its form. */
+.hero {
+  display: flex;
+  align-items: flex-start;
+  gap: clamp(40px, 4vw, 80px);
+}
+
+/* Above the glass, never beneath it: the headline stands beside the card rather
+   than under its corner, and its own stacking layer sits over the card's, so
+   neither the blur nor the tint can ever reach a letter of it. Aligned with
+   the card's upper edge, where the form's title is, so the two read as one
+   line of sight. */
 .headline {
-  position: absolute;
-  top: max(8px, calc(50% - 250px));
-  left: calc(var(--landing-gutter) + 290px);
-  margin: 0;
+  position: relative;
+  z-index: 2;
+  order: 2;
+  margin: clamp(4px, 1.2vw, 20px) 0 0;
   font-size: clamp(56px, 6.4vw, 124px);
   font-weight: 400;
   line-height: 1.02;
@@ -98,10 +107,13 @@
   white-space: nowrap;
 }
 
-/* Glass: dark enough to hold the form, clear enough that the headline and the
-   sky still show through it. */
+/* Glass: dark enough to hold the form, clear enough that the sky still shows
+   through it. */
 .card {
   position: relative;
+  z-index: 1;
+  order: 1;
+  flex: none;
   width: 362px;
   max-width: 100%;
   padding: 34px 30px 28px;
@@ -203,11 +215,22 @@
     padding-top: 28px;
   }
 
-  /* Back in the flow: at this width the card would cover most of it. */
+  /* Stacked: the headline above, the card beneath it. */
+  .hero {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 28px;
+    width: 100%;
+  }
+
   .headline {
-    position: static;
-    margin-bottom: 28px;
+    order: 0;
+    margin: 0;
     font-size: clamp(40px, 8vw, 64px);
+  }
+
+  .card {
+    order: 0;
   }
 }
 
@@ -225,8 +248,16 @@
     padding-bottom: 32px;
   }
 
+  .hero {
+    align-items: stretch;
+    gap: 22px;
+  }
+
+  .card {
+    width: 100%;
+  }
+
   .headline {
-    margin-bottom: 22px;
     font-size: 40px;
   }
 
