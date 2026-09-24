@@ -1,8 +1,8 @@
 import Link from "next/link";
 
+import { BACKDROP_SIZES_FULL_PAGE, SiteBackdrop } from "@/components/site/SiteBackdrop";
 import { SiteHeader } from "@/components/site/SiteHeader";
 
-import { HeroVisual } from "./HeroVisual";
 import { WatchDemoButton } from "./WatchDemoButton";
 import { ActionIcon, ArrowRightIcon, ShieldIcon, TeamIcon } from "./icons";
 
@@ -22,6 +22,9 @@ const VALUES = [
  * registration forms (`/sign-in`, `/get-started`), and everything after that
  * is the same authentication flow as before. It deliberately offers no demo
  * account — see `PUBLIC_DEMO_SIGN_IN_ENABLED` in `lib/features.ts`.
+ *
+ * Its background is the public site's shared artwork (`site/SiteBackdrop`),
+ * the same image, positioning and tagline as the sign-in page.
  */
 export function LandingPage() {
   return (
@@ -29,6 +32,9 @@ export function LandingPage() {
       <a className="skip-link" href="#landing-main">
         Skip to main content
       </a>
+
+      {/* The same artwork as the sign-in page, behind the whole page. */}
+      <SiteBackdrop sizes={BACKDROP_SIZES_FULL_PAGE} />
 
       <SiteHeader />
 
@@ -51,8 +57,6 @@ export function LandingPage() {
             <WatchDemoButton className={styles.secondaryCta} />
           </div>
         </div>
-
-        <HeroVisual className={styles.visual} />
 
         <ul className={styles.values} aria-label="Why ASTRION">
           {VALUES.map(({ title, body, Icon }) => (
