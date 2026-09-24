@@ -1,12 +1,53 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 
+import { ProviderButtons } from "./auth/ProviderButtons";
+import { ArrowRightIcon } from "./landing/icons";
 import { Button } from "./ui/Button";
 import { Callout } from "./ui/Callout";
 import { TextField } from "./ui/Field";
 
+import type { OAuthProvider, VerificationStatus } from "@/lib/auth-types";
+
 import styles from "./SignInPanel.module.css";
+
+/**
+ * What a returning Google/GitHub sign-in's `?auth_error=` means, in words.
+ *
+ * The backend appends only these codes, and never anything a provider or a
+ * visitor wrote, so nothing from the URL is ever rendered as text.
+ */
+const OAUTH_FAILED =
+  "The sign-in didn’t complete. Try again, or use your email address and password.";
+
+const PROVIDER_ERRORS: Record<string, string> = {
+  oauth_cancelled: "Sign-in was cancelled. Choose a way to continue.",
+  oauth_failed: OAUTH_FAILED,
+  oauth_state:
+    "That sign-in expired or was started in another browser. Please start again.",
+  oauth_unavailable: "That sign-in option isn’t available on this deployment.",
+  oauth_account:
+    "This account can’t be signed in to. Contact whoever manages your workspace.",
+};
+
+/** Read, and remove, the result a provider sign-in left in the address bar. */
+function takeProviderError(): string | null {
+  if (typeof window === "undefined") return null;
+  const params = new URLSearchParams(window.location.search);
+  const code = params.get("auth_error");
+  if (!params.has("auth_error") && !params.has("auth")) return null;
+  params.delete("auth_error");
+  params.delete("auth");
+  const rest = params.toString();
+  window.history.replaceState(
+    window.history.state,
+    "",
+    `${window.location.pathname}${rest ? `?${rest}` : ""}${window.location.hash}`,
+  );
+  return code ? (PROVIDER_ERRORS[code] ?? OAUTH_FAILED) : null;
+}
 
 /**
  * The shortest password the backend will store.
@@ -35,18 +76,32 @@ const MIN_PASSWORD_LENGTH = 8;
  *   `new-password`), so password managers offer the right thing and people are
  *   not pushed toward reusing one they can remember.
  *
- * Registration hands its result *up* rather than swallowing it. That is the
- * fix for a dead end: the backend issues a verification link, refuses sign-in
- * until it is used, and — outside production, where there is no mail
- * transport — returns the token in the response so the flow can be completed.
- * Discarding it left a new user registered, unable to sign in, and told only
- * "Incorrect email address or password."
+ * Registration hands its result *up* rather than swallowing it: the backend
+ * emails a one-time code and returns the verification's display state (never
+ * the code), and the session moves to the code screen
+ * (`auth/EmailCodeVerification`). Without that step a new user would be
+ * registered, unable to sign in, and told only "Incorrect email address or
+ * password."
+ *
+ * "Continue with Google / GitHub" sit above the form on both pages
+ * (`auth/ProviderButtons`); a provider sign-in that comes back with an error
+ * leaves a fixed code in the URL, which is read once, mapped to wording
+ * written here, and removed from the address bar.
+ *
+ * `appearance="glass"` is the same form dressed for the sign-in page's
+ * translucent card (`auth/SignInScene`): sign-in only — registration is the
+ * "Create one" link to `/get-started` — with the page's headline as the
+ * `h1` and the form's title as an `h2`. Every handler, validation and message
+ * is shared; only the presentation differs.
  */
 export function SignInPanel({
   stage,
   busy,
   error,
   demoAvailable = false,
+  initialMode = "signin",
+  appearance = "card",
+  oauthProviders = [],
   onSignIn,
   onDemoSignIn,
   onSubmitMfaCode,
@@ -58,13 +113,20 @@ export function SignInPanel({
   error: string | null;
   /** From `/health`. The server decides whether there is a demo to offer. */
   demoAvailable?: boolean;
+  /** Which tab opens first: `/get-started` opens on "Create account". */
+  initialMode?: "signin" | "register";
+  /** `glass` for the sign-in page's translucent card. */
+  appearance?: "card" | "glass";
+  /** From `/health`: the "Continue with …" providers the server can honour. */
+  oauthProviders?: OAuthProvider[];
   onSignIn(email: string, password: string): void;
   onDemoSignIn?(): void;
   onSubmitMfaCode(code: string): void;
-  onRegistered(message: string, verificationToken: string | undefined, email: string, emailSent?: boolean): void;
+  /** Registration succeeded; a code is on its way to the address. */
+  onRegistered(verification: VerificationStatus): void;
   onDismissError(): void;
 }) {
-  const [mode, setMode] = useState<"signin" | "register">("signin");
+  const [mode, setMode] = useState<"signin" | "register">(initialMode);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -72,6 +134,11 @@ export function SignInPanel({
   const [code, setCode] = useState("");
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const [confirmError, setConfirmError] = useState<string | null>(null);
+  const [providerError, setProviderError] = useState<string | null>(null);
+  useEffect(() => setProviderError(takeProviderError()), []);
+  const glass = appearance === "glass";
+  const Title = glass ? "h2" : "h1";
+  const panelClass = glass ? styles.glass : styles.panel;
 
   /**
    * What is wrong with the password pair, if anything.
@@ -112,7 +179,7 @@ export function SignInPanel({
       // Neither copy of the password outlives the request that used it.
       setPassword("");
       setConfirmPassword("");
-      onRegistered(result.message, result.verification_token, email, result.email_sent);
+      onRegistered(result.verification);
     } catch {
       // The hook surfaces the error; nothing useful to add here, and inventing
       // a message would risk contradicting the backend's careful wording.
@@ -121,8 +188,8 @@ export function SignInPanel({
 
   if (stage === "mfa-required") {
     return (
-      <div className={styles.panel}>
-        <h1 className={styles.title}>Two-factor authentication</h1>
+      <div className={panelClass}>
+        <Title className={styles.title}>Two-factor authentication</Title>
         <p className={styles.lede}>
           Enter the six-digit code from your authenticator app. You are half
           signed in: the session exists but can do nothing until this is
@@ -164,52 +231,70 @@ export function SignInPanel({
     );
   }
 
-  const registering = mode === "register";
+  // The glass form signs in only; registration has its own page.
+  const registering = !glass && mode === "register";
 
   return (
-    <div className={styles.panel}>
-      <h1 className={styles.title}>
+    <div className={panelClass}>
+      <Title className={styles.title}>
         {registering ? "Create your account" : "Sign in"}
-      </h1>
+      </Title>
 
       {demoAvailable && !registering && onDemoSignIn ? (
         <DemoAccess busy={busy} onSignIn={onDemoSignIn} />
       ) : null}
-      <p className={styles.lede}>
-        {registering
-          ? "You will name your first workspace next. A workspace holds one operation's accounts, orders, tickets and documents."
-          : "Use the address your workspace was created with, or the one an invitation was sent to."}
-      </p>
+      {glass ? null : (
+        <>
+          <p className={styles.lede}>
+            {registering
+              ? "You will name your first workspace next. A workspace holds one operation's accounts, orders, tickets and documents."
+              : "Use the address your workspace was created with, or the one an invitation was sent to."}
+          </p>
 
-      <div className={styles.tabs} role="tablist" aria-label="Sign in or register">
-        <button
-          type="button"
-          role="tab"
-          aria-selected={!registering}
-          className={!registering ? `${styles.tab} ${styles.tabActive}` : styles.tab}
-          onClick={() => {
-            setMode("signin");
-            onDismissError();
-            setPasswordError(null);
-            setConfirmError(null);
-          }}
-        >
-          Sign in
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={registering}
-          className={registering ? `${styles.tab} ${styles.tabActive}` : styles.tab}
-          onClick={() => {
-            setMode("register");
-            onDismissError();
-            setPasswordError(null);
-            setConfirmError(null);
-          }}
-        >
-          Create account
-        </button>
+          <div className={styles.tabs} role="tablist" aria-label="Sign in or register">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={!registering}
+              className={!registering ? `${styles.tab} ${styles.tabActive}` : styles.tab}
+              onClick={() => {
+                setMode("signin");
+                onDismissError();
+                setPasswordError(null);
+                setConfirmError(null);
+              }}
+            >
+              Sign in
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={registering}
+              className={registering ? `${styles.tab} ${styles.tabActive}` : styles.tab}
+              onClick={() => {
+                setMode("register");
+                onDismissError();
+                setPasswordError(null);
+                setConfirmError(null);
+              }}
+            >
+              Create account
+            </button>
+          </div>
+        </>
+      )}
+
+      {providerError ? (
+        <Callout tone="fail" role="alert" title="Could not sign in" className={styles.providerError}>
+          {providerError}
+        </Callout>
+      ) : null}
+
+      <div className={styles.alternatives}>
+        <ProviderButtons available={oauthProviders} disabled={busy} />
+        <div className={styles.divider} role="separator" aria-label="or">
+          <span aria-hidden="true">or</span>
+        </div>
       </div>
 
       <form
@@ -219,6 +304,7 @@ export function SignInPanel({
             ? submitRegistration
             : (event) => {
                 event.preventDefault();
+                setProviderError(null);
                 onSignIn(email, password);
               }
         }
@@ -234,7 +320,7 @@ export function SignInPanel({
         ) : null}
 
         <TextField
-          label="Email"
+          label={glass ? "Work email address" : "Email"}
           type="email"
           value={email}
           onChange={(event) => setEmail(event.target.value)}
@@ -295,13 +381,20 @@ export function SignInPanel({
           className={styles.submit}
         >
           {busy ? "Working…" : registering ? "Create account" : "Sign in"}
+          {glass && !busy ? <ArrowRightIcon className={styles.submitArrow} /> : null}
         </Button>
       </form>
 
-      <p className={styles.footnote}>
-        Invited to an existing workspace? Open the invitation link you were
-        sent, signed in as the address it was issued to.
-      </p>
+      {glass ? (
+        <p className={styles.switch}>
+          Don’t have an account? <Link href="/get-started">Create one</Link>
+        </p>
+      ) : (
+        <p className={styles.footnote}>
+          Invited to an existing workspace? Open the invitation link you were
+          sent, signed in as the address it was issued to.
+        </p>
+      )}
     </div>
   );
 }

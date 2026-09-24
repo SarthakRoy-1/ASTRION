@@ -68,6 +68,12 @@ class AuditEvent(StrEnum):
     MFA_DISABLED = "mfa.disabled"
     MFA_CHALLENGE_FAILED = "mfa.challenge_failed"
     SESSION_REVOKED = "session.revoked"
+    # Email one-time codes. Never the code, never the full address.
+    EMAIL_CODE_SENT = "user.email_code_sent"
+    EMAIL_CODE_FAILED = "user.email_code_failed"
+    # Sign-in with Google / GitHub. The provider's tokens never appear here.
+    IDENTITY_LINKED = "user.identity_linked"
+    OAUTH_FAILED = "login.oauth_failed"
 
     # Tenancy. The event names keep the `org.` prefix that Phase 0 wrote, so
     # existing entries stay queryable alongside new ones; `workspace` is the

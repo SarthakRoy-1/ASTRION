@@ -9,7 +9,9 @@ Nothing is illustrative. [architecture.md](architecture.md) covers the
 technical design; [demo-script.md](demo-script.md) walks through it in five
 minutes.
 
-- **Live:** <https://astrion-app.vercel.app/>. Press **Sign in to the demo**.
+- **Live:** <https://astrion-app.vercel.app/>. The one-click **Sign in to the
+  demo** button is hidden from the public UI (`PUBLIC_DEMO_SIGN_IN_ENABLED` in
+  `app/frontend/src/lib/features.ts`); the backend demo account is unchanged.
 - **Dataset snapshot:** all timing is measured against
   **2026-08-16 11:00 Asia/Kolkata**, never against today's date, so answers do
   not drift.
@@ -288,8 +290,8 @@ request  →  proposed action  →  explicit confirmation  →  execution  →  
 - **Multi-turn conversation memory.** Each turn is answered from tools, and
   prior turns are not replayed to the model.
 - **Self-registration on the hosted deployment.** Verification requires email
-  and there is no mail transport; the one-click demo account is provided
-  instead.
+  and there is no mail transport. The one-click demo account still exists on
+  the backend, but its sign-in button is hidden from the public UI.
 
 ## Success metric
 

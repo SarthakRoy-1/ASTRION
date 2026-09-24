@@ -73,6 +73,42 @@
   margin-top: var(--space-1);
 }
 
+/* "Continue with Google / GitHub", then a rule with "or" in it, then the form. */
+.alternatives {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  margin-bottom: 18px;
+}
+
+.divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.divider::before,
+.divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--border-default);
+}
+
+.providerError {
+  margin-bottom: 16px;
+}
+
+/* A form that follows prose directly (the code screen) needs its own air. */
+.lede + .form {
+  margin-top: var(--space-5);
+}
+
 .footnote {
   margin-top: var(--space-5);
   padding-top: var(--space-4);
@@ -123,4 +159,78 @@
   margin-top: var(--space-2);
   font-size: var(--text-small);
   color: var(--text-secondary);
+}
+
+/* --- appearance="glass": the sign-in page's translucent card ---------------
+
+   The card itself (surface, blur, border) and the colour tokens belong to
+   `auth/SignInScene`; these rules only set the form's own proportions, so the
+   same fields, errors and buttons carry over with their behaviour intact. */
+
+.glass .title {
+  font-size: 24px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+
+.glass .form {
+  gap: 18px;
+}
+
+.glass .lede + .form {
+  margin-top: 22px;
+}
+
+.glass .alternatives,
+.glass .providerError {
+  margin-top: 22px;
+}
+
+.glass .providerError + .alternatives {
+  margin-top: 0;
+}
+
+.glass input {
+  min-height: 46px;
+  border-radius: 12px;
+  padding: 0 14px;
+}
+
+.glass input:focus-visible {
+  border-color: rgba(235, 226, 214, 0.6);
+  outline: 2px solid rgba(235, 226, 214, 0.55);
+  outline-offset: 2px;
+}
+
+/* The landing page's primary call to action: a cream pill. */
+.glass .submit {
+  min-height: 48px;
+  margin-top: 4px;
+  border-radius: var(--radius-pill);
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.submitArrow {
+  width: 18px;
+  height: 18px;
+}
+
+.switch {
+  margin-top: 22px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.switch a {
+  color: var(--text-primary);
+  font-weight: 500;
+  text-decoration: underline;
+  text-decoration-color: rgba(242, 238, 231, 0.4);
+  text-underline-offset: 3px;
+}
+
+.switch a:hover {
+  text-decoration-color: currentColor;
 }

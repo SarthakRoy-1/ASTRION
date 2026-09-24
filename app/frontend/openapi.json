@@ -131,6 +131,22 @@
         "title": "ActionState",
         "type": "string"
       },
+      "AddressRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "email": {
+            "maxLength": 320,
+            "minLength": 3,
+            "title": "Email",
+            "type": "string"
+          }
+        },
+        "required": [
+          "email"
+        ],
+        "title": "AddressRequest",
+        "type": "object"
+      },
       "Body_upload_document_api_documents_upload_post": {
         "properties": {
           "file": {
@@ -346,6 +362,22 @@
           "responded_at_utc"
         ],
         "title": "ChatResponse",
+        "type": "object"
+      },
+      "CodeRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "maxLength": 16,
+            "minLength": 1,
+            "title": "Code",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code"
+        ],
+        "title": "CodeRequest",
         "type": "object"
       },
       "ConfirmationDecision": {
@@ -927,6 +959,13 @@
               }
             ],
             "title": "Model"
+          },
+          "oauth_providers": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Oauth Providers",
+            "type": "array"
           },
           "provider_mode": {
             "title": "Provider Mode",
@@ -2465,6 +2504,136 @@
         ]
       }
     },
+    "/api/auth/oauth/{provider}/callback": {
+      "get": {
+        "description": "Finish a provider sign-in and return the browser to the frontend.",
+        "operationId": "oauth_callback_api_auth_oauth__provider__callback_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "provider",
+            "required": true,
+            "schema": {
+              "title": "Provider",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "code",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Code"
+            }
+          },
+          {
+            "in": "query",
+            "name": "state",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "State"
+            }
+          },
+          {
+            "in": "query",
+            "name": "error",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Error"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Oauth Callback",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/oauth/{provider}/start": {
+      "get": {
+        "description": "Send the browser to the provider. Reached by navigation, not by fetch.",
+        "operationId": "oauth_start_api_auth_oauth__provider__start_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "provider",
+            "required": true,
+            "schema": {
+              "title": "Provider",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Oauth Start",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
     "/api/auth/password/change": {
       "post": {
         "operationId": "password_change_api_auth_password_change_post",
@@ -2598,7 +2767,7 @@
     },
     "/api/auth/register": {
       "post": {
-        "description": "Create an account and send a verification email.\n\nThe response is identical whether or not the address was already\nregistered, so this endpoint cannot be used to test which addresses have\naccounts.\n\nEmail delivery is attempted but does not gate account creation: if Resend\nis not configured (or fails), registration still succeeds and the frontend\nreceives `email_sent: false` along with the token \u2014 but only in non-\nproduction, where returning the token is acceptable for developer testing.",
+        "description": "Create an account and email a one-time code to verify its address.\n\nThe response is identical whether or not the address was already\nregistered, so this endpoint cannot be used to test which addresses have\naccounts: a taken address gets a *decoy* verification that looks and\nbehaves like a real one and can never succeed.\n\nThe code itself never appears in the response, in any environment. It goes\nto the address, or \u2014 in local development with `EMAIL_OUTBOX_DIR` set \u2014 to\na file on the developer's own disk.",
         "operationId": "register_api_auth_register_post",
         "requestBody": {
           "content": {
@@ -2703,6 +2872,166 @@
           }
         },
         "summary": "List Sessions",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/verification": {
+      "get": {
+        "description": "The verification this browser is in the middle of, if any.",
+        "operationId": "verification_status_api_auth_verification_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Verification Status Api Auth Verification Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Verification Status",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/verification/cancel": {
+      "post": {
+        "description": "Abandon the verification in this browser. Idempotent.",
+        "operationId": "verification_cancel_api_auth_verification_cancel_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Verification Cancel Api Auth Verification Cancel Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Verification Cancel",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/verification/email": {
+      "post": {
+        "description": "Choose the address a Google/GitHub sign-in will prove, and send it a code.\n\nOnly for a provider sign-in that arrived without a verified address. The\nanswer is the same whether or not the address belongs to an account:\nwhich one it becomes is decided only once the code proves the mailbox.",
+        "operationId": "verification_address_api_auth_verification_email_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddressRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Verification Address Api Auth Verification Email Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Verification Address",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/verification/resend": {
+      "post": {
+        "description": "Send a fresh code. The previous one stops working immediately.",
+        "operationId": "verification_resend_api_auth_verification_resend_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Verification Resend Api Auth Verification Resend Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Verification Resend",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/verification/verify": {
+      "post": {
+        "description": "Check a code. On success the address is verified and a session begins.\n\nThe session is the same kind a password sign-in issues, and it honours the\naccount's second factor: with MFA on, it is a half session and the answer\nsays `mfa_required`.",
+        "operationId": "verification_verify_api_auth_verification_verify_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CodeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Verification Verify Api Auth Verification Verify Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Verification Verify",
         "tags": [
           "auth"
         ]

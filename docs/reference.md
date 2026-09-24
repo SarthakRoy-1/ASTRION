@@ -204,9 +204,13 @@ message — if a port is taken or `npm install` has not been run, rather than
 failing halfway up. It uses the repository's own `.venv` whether or not the
 environment is activated.
 
-Open <http://localhost:3000>, press **Sign in to the demo**, and ask something.
-The demo database, dataset and document index are built automatically on first
-sign-in, so the two ingestion commands above are optional.
+Open <http://localhost:3000>. It opens on the public landing page, whose
+**Sign in** and **Get Started** lead to the ordinary sign-in and registration
+forms. The one-click **Sign in to the demo** button is hidden from the public
+UI; set `PUBLIC_DEMO_SIGN_IN_ENABLED` in `app/frontend/src/lib/features.ts` to
+`true` to show it on the sign-in page, press it, and ask something. The demo
+database, dataset and document index are built automatically on first sign-in,
+so the two ingestion commands above are optional.
 
 Running the two services separately still works exactly as before, and is
 still the right choice when you want to restart one without the other:
@@ -813,6 +817,11 @@ default — **no `.env` is required** to run in deterministic mode.
 | `APP_ENV` / `CORS_ALLOW_ORIGINS` | Environment label; browser origins allowed to call the API |
 | `AUTH_SECRET_KEY` / `AUTH_TOKEN_TTL_MINUTES` | Reserved for the real identity provider; unused today |
 | `ENABLE_STATE_CHANGING_ACTIONS` | Kill switch: unregisters the preparation tools *and* closes the confirm endpoint |
+| `GOOGLE_OAUTH_CLIENT_ID` / `_SECRET`, `GITHUB_OAUTH_CLIENT_ID` / `_SECRET` | "Continue with Google / GitHub". Backend only. Callback URLs and console setup: [authentication.md](authentication.md#callback-urls-to-register) |
+| `API_PUBLIC_URL` / `FRONTEND_BASE_URL` | Public API origin (forms the OAuth callback) and the frontend origin the browser returns to |
+| `RESEND_API_KEY` / `EMAIL_FROM` | Email delivery for verification codes |
+| `EMAIL_OUTBOX_DIR` | Development only: write mail (and its code) to files. Refused in production; `dev.py` sets `data/outbox` |
+| `OTP_TTL_MINUTES`, `OTP_MAX_ATTEMPTS`, `OTP_RESEND_COOLDOWN_SECONDS`, `OTP_MAX_SENDS_PER_WINDOW`, `OTP_SEND_WINDOW_MINUTES`, `VERIFICATION_TTL_MINUTES` | Email-code policy; see [authentication.md](authentication.md#environment-variables-added) |
 | `NEXT_PUBLIC_API_BASE_URL` | Frontend → backend base URL. Set in `app/frontend/.env.local`, not in the backend `.env` — it is a browser-visible value and must never hold a secret. |
 
 ## Project layout

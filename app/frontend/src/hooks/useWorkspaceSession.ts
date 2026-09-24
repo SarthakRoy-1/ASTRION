@@ -12,6 +12,8 @@
  *     loading      still asking the server
  *     demo         this deployment has no real auth (AUTH_MODE=demo_header)
  *     signed-out   nobody is signed in
+ *     mfa-required a password or provider sign-in, awaiting the second factor
+ *     verify-email proving an address with an emailed code, before any session
  *     onboarding   signed in, belongs to no workspace
  *     ready        signed in, in a workspace
  *
@@ -29,16 +31,26 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   activateWorkspace as apiActivate,
+  cancelVerification as apiCancelVerification,
   createWorkspace as apiCreate,
   demoSignIn as apiDemoSignIn,
-  fetchCurrentUser,
+  fetchSessionState,
   listWorkspaces,
   signIn as apiSignIn,
   signOut as apiSignOut,
   submitMfaCode as apiSubmitMfa,
+  verificationFrom,
 } from "@/lib/auth-client";
 import { ApiError } from "@/lib/client";
-import type { AuthMode, CurrentUser, Workspace } from "@/lib/auth-types";
+import { writeSessionHint } from "@/lib/session-hint";
+import type {
+  AuthMode,
+  CurrentUser,
+  LoginResult,
+  OAuthProvider,
+  VerificationStatus,
+  Workspace,
+} from "@/lib/auth-types";
 import type { HealthResponse } from "@/lib/types";
 
 export type SessionStage =
@@ -46,6 +58,7 @@ export type SessionStage =
   | "demo"
   | "signed-out"
   | "mfa-required"
+  | "verify-email"
   | "onboarding"
   | "ready";
 
@@ -63,6 +76,10 @@ export interface WorkspaceSession {
    * which is exactly the failure the credential used to be published to avoid.
    */
   demoAvailable: boolean;
+  /** Which "Continue with …" providers the server has credentials for. */
+  oauthProviders: OAuthProvider[];
+  /** The address being proven, while `stage` is `verify-email`. */
+  verification: VerificationStatus | null;
   error: string | null;
   busy: boolean;
 
@@ -70,6 +87,12 @@ export interface WorkspaceSession {
   /** Enter the public demo. Sends no credential; the server holds its own. */
   signInToDemo(): Promise<void>;
   submitMfaCode(code: string): Promise<void>;
+  /** Registration succeeded: the address is next. */
+  beginVerification(verification: VerificationStatus): void;
+  /** A code was accepted and the server started a session. */
+  completeVerification(result: LoginResult): Promise<void>;
+  /** Leave the code screen and return to signing in. */
+  abandonVerification(): Promise<void>;
   signOut(): Promise<void>;
   createWorkspace(name: string): Promise<void>;
   switchWorkspace(workspaceId: string): Promise<void>;
@@ -116,6 +139,7 @@ export function useWorkspaceSession(
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [authMode, setAuthMode] = useState<AuthMode | null>(null);
+  const [verification, setVerification] = useState<VerificationStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -137,17 +161,28 @@ export function useWorkspaceSession(
       return;
     }
 
-    const current = await fetchCurrentUser();
+    const state = await fetchSessionState();
     if (!alive.current) return;
 
-    if (current === null) {
+    if (state.kind !== "user") {
       setUser(null);
       setWorkspaces([]);
       setActiveId(null);
-      setStage("signed-out");
+      // The refusal from `/me` says which kind of "not signed in" this is, so
+      // a reload in the middle of a second factor or a code lands back on
+      // that screen rather than on a sign-in form that would start over.
+      if (state.kind === "verification") {
+        setVerification(state.verification);
+        setStage("verify-email");
+      } else {
+        setVerification(null);
+        setStage(state.kind === "mfa" ? "mfa-required" : "signed-out");
+      }
       return;
     }
 
+    setVerification(null);
+    const current = state.user;
     setUser(current);
     const listing = await listWorkspaces();
     if (!alive.current) return;
@@ -219,7 +254,19 @@ export function useWorkspaceSession(
   const signIn = useCallback(
     (email: string, password: string) =>
       run(async () => {
-        const result = await apiSignIn(email, password);
+        let result: LoginResult;
+        try {
+          result = await apiSignIn(email, password);
+        } catch (cause) {
+          // The right password for an address never proven: the server has
+          // sent a code. That is the next screen, not an error.
+          const pending = verificationFrom(cause);
+          if (pending === null) throw cause;
+          if (!alive.current) return;
+          setVerification(pending);
+          setStage("verify-email");
+          return;
+        }
         if (!alive.current) return;
         if (result.mfa_required) {
           setStage("mfa-required");
@@ -228,6 +275,40 @@ export function useWorkspaceSession(
         await load("session");
       }),
     [load, run],
+  );
+
+  const beginVerification = useCallback((pending: VerificationStatus) => {
+    setError(null);
+    setVerification(pending);
+    setStage("verify-email");
+  }, []);
+
+  const completeVerification = useCallback(
+    (result: LoginResult) =>
+      run(async () => {
+        setVerification(null);
+        if (result.mfa_required) {
+          setStage("mfa-required");
+          return;
+        }
+        await load("session");
+      }),
+    [load, run],
+  );
+
+  const abandonVerification = useCallback(
+    () =>
+      run(async () => {
+        try {
+          await apiCancelVerification();
+        } finally {
+          if (alive.current) {
+            setVerification(null);
+            setStage("signed-out");
+          }
+        }
+      }),
+    [run],
   );
 
   const submitMfaCode = useCallback(
@@ -277,6 +358,17 @@ export function useWorkspaceSession(
     [authMode, load, run],
   );
 
+  // Remember, as a presentation hint only, whether this browser is signed in —
+  // see `lib/session-hint.ts`. Written when the server has answered and never
+  // while it is still loading, so a slow backend cannot erase it.
+  useEffect(() => {
+    if (stage === "ready" || stage === "onboarding" || stage === "demo") {
+      writeSessionHint(true);
+    } else if (stage === "signed-out") {
+      writeSessionHint(false);
+    }
+  }, [stage]);
+
   const activeWorkspace = useMemo(
     () => workspaces.find((w) => w.workspace_id === activeId) ?? null,
     [workspaces, activeId],
@@ -295,11 +387,18 @@ export function useWorkspaceSession(
     activeWorkspace,
     authMode,
     demoAvailable: health?.demo_login_enabled ?? false,
+    oauthProviders: (health?.oauth_providers ?? []).filter(
+      (p): p is OAuthProvider => p === "google" || p === "github",
+    ),
+    verification,
     error,
     busy,
     signIn,
     signInToDemo,
     submitMfaCode,
+    beginVerification,
+    completeVerification,
+    abandonVerification,
     signOut,
     createWorkspace,
     switchWorkspace,

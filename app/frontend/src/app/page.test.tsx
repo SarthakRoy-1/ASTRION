@@ -14,6 +14,7 @@ import { describe, expect, it } from "vitest";
 import SupportPage from "./page";
 import { chatCalls, confirmCalls, fixtures, stubApi } from "@/test/helpers";
 import { renderApp } from "@/test/render";
+import { writeSessionHint } from "@/lib/session-hint";
 import type { ChatResponse } from "@/lib/types";
 
 /**
@@ -948,6 +949,9 @@ describe("cold start", () => {
   it(
     "waits out a sleeping backend instead of calling it unreachable",
     async () => {
+      // Someone returning to the product. A first-time visitor to `/` is shown
+      // the public landing page during the wait instead (`landing.test.tsx`).
+      writeSessionHint(true);
       const stub = stubApi({ sleeping: 2 });
       renderApp(<SupportPage />);
 

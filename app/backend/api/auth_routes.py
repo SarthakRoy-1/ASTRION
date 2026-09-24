@@ -249,25 +249,29 @@ def _attempt_send_verification(
 @auth_router.post("/register")
 def register(
     request: Request,
+    response: Response,
     payload: RegisterRequest,
     conn: sqlite3.Connection = DbDep,
 ) -> dict:
-    """Create an account and send a verification email.
+    """Create an account and email a one-time code to verify its address.
 
     The response is identical whether or not the address was already
     registered, so this endpoint cannot be used to test which addresses have
-    accounts.
+    accounts: a taken address gets a *decoy* verification that looks and
+    behaves like a real one and can never succeed.
 
-    Email delivery is attempted but does not gate account creation: if Resend
-    is not configured (or fails), registration still succeeds and the frontend
-    receives `email_sent: false` along with the token — but only in non-
-    production, where returning the token is acceptable for developer testing.
+    The code itself never appears in the response, in any environment. It goes
+    to the address, or — in local development with `EMAIL_OUTBOX_DIR` set — to
+    a file on the developer's own disk.
     """
+    from app.backend.api.identity_routes import start_account_verification
+    from app.backend.auth.verification import mask_email
+
     settings = _settings(request)
     _reject_in_demo_mode(settings)
 
     try:
-        user_id, token = auth_service.register_user(
+        user_id, created = auth_service.register_user(
             conn,
             email=payload.email,
             password=payload.password,
@@ -280,29 +284,28 @@ def register(
         # refused simply tries another one that fails the same way.
         raise InvalidRequestError(str(exc)) from exc
 
-    email_sent = False
-    if token:
-        email_sent = _attempt_send_verification(
-            settings, conn, user_id, payload.email, payload.display_name, token
-        )
-
-    body: dict = {
+    normalized = repo.normalize_email(payload.email)
+    status = start_account_verification(
+        request,
+        response,
+        conn,
+        user_id=user_id if created else None,
+        email=normalized,
+        decoy=not created,
+    )
+    email_sent = bool(status.get("email_sent"))
+    hint = mask_email(normalized)
+    return {
         "status": "registration_received",
         "email_sent": email_sent,
         "message": (
-            "Your account has been created. Check your inbox for a verification link."
+            f"We've sent a verification code to {hint}."
             if email_sent
-            else "If that address is available, an account was created and a "
-            "verification link issued."
+            else "Your account is waiting for verification, but the code could "
+            "not be emailed. Try sending it again."
         ),
+        "verification": status,
     }
-    if token and not email_sent and _may_disclose_link(settings):
-        body["verification_token"] = token
-        body["note"] = (
-            "Email delivery is not configured, so the link is returned here. "
-            "It is withheld when APP_ENV is production."
-        )
-    return body
 
 
 @auth_router.post("/verify-email")
@@ -437,6 +440,12 @@ def login(
         )
     except auth_service.AccountLocked as exc:
         raise AuthenticationError(str(exc)) from exc
+    except auth_service.EmailVerificationRequired as exc:
+        # Only reachable with the correct password: send a code and route the
+        # owner to the verification screen instead of a dead end.
+        from app.backend.api.identity_routes import verification_required_response
+
+        return verification_required_response(request, conn, exc.user)
     except auth_service.AuthError as exc:
         raise AuthenticationError(str(exc)) from exc
 
@@ -625,7 +634,24 @@ def me(request: Request, conn: sqlite3.Connection = DbDep) -> dict:
     a client that lies to itself about this response gains nothing.
     """
     settings = _settings(request)
-    caller = authenticate(request, conn, settings)
+    try:
+        caller = authenticate(request, conn, settings)
+    except AuthenticationError as exc:
+        # Not signed in. If this browser is part-way through verifying an
+        # address, say so, so a reload returns to the code screen rather than
+        # to a sign-in form the verification would then have to restart.
+        if exc.details.get("mfa_required"):
+            raise
+        from app.backend.api.identity_routes import current_verification
+        from app.backend.auth.verification import OtpPolicy, status
+
+        pending = current_verification(request, conn)
+        if pending is None:
+            raise
+        raise AuthenticationError(
+            exc.message,
+            details={"verification": status(conn, pending, OtpPolicy.from_settings(settings))},
+        ) from None
     memberships = (
         []
         if caller.is_demo

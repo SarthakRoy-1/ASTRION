@@ -52,12 +52,46 @@ def secure_settings(full_db):
     )
 
 
+class CapturingEmailProvider:
+    """Records what would have been emailed, so a test can read the code."""
+
+    def __init__(self) -> None:
+        self.codes: list[tuple[str, str]] = []
+        self.links: list[tuple[str, str]] = []
+        self.fail = False
+
+    def send_verification_email(self, *, to_address, display_name, verification_url):
+        from app.backend.email.provider import EmailDeliveryError
+
+        if self.fail:
+            raise EmailDeliveryError("simulated outage")
+        self.links.append((to_address, verification_url))
+
+    def send_verification_code(self, *, to_address, display_name, code, expires_minutes):
+        from app.backend.email.provider import EmailDeliveryError
+
+        if self.fail:
+            raise EmailDeliveryError("simulated outage")
+        self.codes.append((to_address, code))
+
+    def last_code(self, to_address: str) -> str:
+        return [code for to, code in self.codes if to == to_address][-1]
+
+
 @pytest.fixture
 def secure_client(secure_settings):
     from app.backend.api.app import create_app
 
-    with TestClient(create_app(secure_settings)) as client:
+    app = create_app(secure_settings)
+    app.state.email_provider = CapturingEmailProvider()
+    with TestClient(app) as client:
         yield client
+
+
+def verify_with_emailed_code(client: TestClient, email: str):
+    """Enter the code that registration (or sign-in) just emailed."""
+    code = client.app.state.email_provider.last_code(email)
+    return client.post("/api/auth/verification/verify", json={"code": code})
 
 
 @pytest.fixture
@@ -165,11 +199,8 @@ def test_registration_accepts_an_eight_character_password(secure_client):
     )
     assert registered.status_code == 200
 
-    token = registered.json()["verification_token"]
-    assert (
-        secure_client.post("/api/auth/verify-email", json={"token": token}).status_code
-        == 200
-    )
+    assert verify_with_emailed_code(secure_client, "eight@example.com").status_code == 200
+    secure_client.post("/api/auth/logout")
     assert sign_in(secure_client, "eight@example.com", "eightchr").status_code == 200
 
 
@@ -283,16 +314,15 @@ def test_an_unverified_account_cannot_sign_in(secure_client, db):
     assert sign_in(secure_client, "unverified@example.com").status_code == 401
 
 
-def test_a_verification_link_works_once(secure_client):
-    registered = secure_client.post(
-        "/api/auth/register",
-        json={
-            "email": "verify@example.com",
-            "password": GOOD_PASSWORD,
-            "display_name": "V",
-        },
-    ).json()
-    token = registered["verification_token"]
+def test_a_verification_link_works_once(secure_client, db):
+    """Links sent before verification moved to codes still redeem — once."""
+    user_id = make_user(db, "verify@example.com", verified=False)
+    token = repo.issue_auth_token(
+        db,
+        user_id=user_id,
+        purpose=auth_service.VERIFICATION_PURPOSE,
+        ttl_minutes=repo.EMAIL_VERIFICATION_TTL_HOURS * 60,
+    )
 
     assert secure_client.post("/api/auth/verify-email", json={"token": token}).status_code == 200
     replayed = secure_client.post("/api/auth/verify-email", json={"token": token})
@@ -316,15 +346,13 @@ def test_registering_and_verifying_lets_the_account_sign_in(secure_client):
         },
     ).json()
 
+    assert registered["status"] == "registration_received"
+
     # Before verifying, even the correct password is refused.
     assert sign_in(secure_client, "chain@example.com").status_code == 401
 
-    assert (
-        secure_client.post(
-            "/api/auth/verify-email", json={"token": registered["verification_token"]}
-        ).status_code
-        == 200
-    )
+    assert verify_with_emailed_code(secure_client, "chain@example.com").status_code == 200
+    secure_client.post("/api/auth/logout")
 
     signed_in = sign_in(secure_client, "chain@example.com")
     assert signed_in.status_code == 200
@@ -341,15 +369,13 @@ def test_an_unknown_verification_token_is_refused(secure_client):
 
 def test_an_expired_verification_token_is_refused(secure_client, db):
     """Expiry is enforced on redemption, not merely recorded at issue."""
-    registered = secure_client.post(
-        "/api/auth/register",
-        json={
-            "email": "stale@example.com",
-            "password": GOOD_PASSWORD,
-            "display_name": "Stale",
-        },
-    ).json()
-    token = registered["verification_token"]
+    user_id = make_user(db, "stale@example.com", verified=False)
+    token = repo.issue_auth_token(
+        db,
+        user_id=user_id,
+        purpose=auth_service.VERIFICATION_PURPOSE,
+        ttl_minutes=repo.EMAIL_VERIFICATION_TTL_HOURS * 60,
+    )
 
     # Age the row rather than the clock: the token itself is unchanged, so what
     # is under test is the expiry check and nothing else.
@@ -401,9 +427,17 @@ def test_production_never_returns_a_verification_token(full_db):
     assert body["status"] == "registration_received"
     # The whole response, so a token cannot reappear later under another name.
     # email_sent is always present (False in production when Resend is unconfigured).
-    assert set(body) == {"status", "message", "email_sent"}
+    assert set(body) == {"status", "message", "email_sent", "verification"}
     assert body["email_sent"] is False
     assert "verification_token" not in body
+    # The verification block is display state only: when, how many, to where
+    # (masked). No token and no code under any name.
+    assert set(body["verification"]) <= {
+        "purpose", "email_hint", "needs_email", "provider",
+        "code_expires_in_seconds", "code_ttl_seconds", "attempts_remaining",
+        "resend_in_seconds", "sends_remaining", "expires_in_seconds", "email_sent",
+    }
+    assert body["verification"]["email_hint"] == "p••••@example.com"
 
 
 def test_production_never_returns_a_password_reset_token(full_db, db):

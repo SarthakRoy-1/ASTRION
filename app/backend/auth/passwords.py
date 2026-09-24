@@ -119,6 +119,11 @@ def verify_password(password: str, encoded: str) -> bool:
         return False
     if len(password) > MAX_PASSWORD_LENGTH:
         return False
+    if encoded == UNUSABLE_PASSWORD:
+        # Spend the same work a real hash costs, so a sign-in attempt cannot
+        # tell "this account has no password" from "wrong password" by timing.
+        waste_time()
+        return False
     try:
         algorithm, n_raw, r_raw, p_raw, salt_raw, hash_raw = encoded.split("$")
         if algorithm != ALGORITHM:
@@ -160,6 +165,13 @@ def needs_rehash(encoded: str, *, n: int = SCRYPT_N, r: int = SCRYPT_R) -> bool:
         return int(n_raw) < n or int(r_raw) < r
     except ValueError:
         return True
+
+
+#: Stored for an account that has no password — one created through Google or
+#: GitHub, or one whose unproven password was discarded when a provider proved
+#: the address belonged to somebody else. It is not a valid encoding, so no
+#: input can ever match it; the owner sets a password with a reset link.
+UNUSABLE_PASSWORD = "!no-password"
 
 
 #: A hash of a password nobody holds, used to equalise the timing of a login
