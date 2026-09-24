@@ -1,5 +1,7 @@
 import type { ConnectionState } from "@/hooks/useConversation";
 
+import { LoadingTruck } from "./LoadingTruck";
+
 import styles from "./ConnectionNotice.module.css";
 
 /**
@@ -22,7 +24,7 @@ export function ConnectionNotice({ state }: { state: ConnectionState }) {
 
   return (
     <p className={styles.notice} role="status">
-      <span className={styles.pulse} aria-hidden="true" />
+      <LoadingTruck />
       {message}
     </p>
   );

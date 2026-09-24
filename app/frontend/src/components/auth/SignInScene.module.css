@@ -1,0 +1,234 @@
+/* The sign-in page: the landing page's header over the brand background, the
+   sign-in card on the left and the "Welcome Back" headline beside it. Desktop is composed at 1434 × 840, and the sizes that set the
+   composition scale with the viewport so its proportions hold. */
+
+.scene {
+  composes: site from "../site/site.module.css";
+
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
+  overflow: hidden;
+  background: var(--landing-bg);
+  color: var(--landing-text);
+}
+
+/* --- background ------------------------------------------------------------ */
+
+/* The artwork, its positioning and its tagline are shared with the landing
+   page: see `site/SiteBackdrop`. */
+
+/* --- hero -------------------------------------------------------------------- */
+
+.stage {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex: 1;
+  align-items: center;
+  padding: 16px var(--landing-gutter) 40px;
+}
+
+/* The card and the headline, side by side. The card comes first on the page
+   (visually) so the form sits where the eye lands; the headline comes first in
+   the document so a screen reader announces the page before its form. */
+.hero {
+  display: flex;
+  align-items: flex-start;
+  gap: clamp(40px, 4vw, 80px);
+}
+
+/* Beside the card, never beneath it: its own stacking layer sits over the
+   card's, so neither the blur nor the tint can ever reach a letter of it. */
+.headline {
+  position: relative;
+  z-index: 2;
+  order: 2;
+  margin: clamp(4px, 1.2vw, 20px) 0 0;
+  font-size: clamp(56px, 6.4vw, 124px);
+  font-weight: 400;
+  line-height: 1.02;
+  letter-spacing: -0.03em;
+  color: var(--landing-text);
+  /* Where a narrower window brings the flare under the words, a soft shade
+     behind the letters keeps them legible without dimming the artwork. */
+  text-shadow:
+    0 2px 28px rgba(4, 9, 14, 0.6),
+    0 0 3px rgba(4, 9, 14, 0.3);
+  pointer-events: none;
+}
+
+.headline span {
+  display: block;
+  white-space: nowrap;
+}
+
+/* Glass: dark enough to hold the form, clear enough that the sky still shows
+   through it. */
+.card {
+  position: relative;
+  z-index: 1;
+  order: 1;
+  flex: none;
+  width: 362px;
+  max-width: 100%;
+  padding: 34px 30px 28px;
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: 22px;
+  background: rgba(20, 22, 28, 0.6);
+  box-shadow:
+    0 24px 60px rgba(0, 0, 0, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  -webkit-backdrop-filter: blur(22px) saturate(120%);
+  backdrop-filter: blur(22px) saturate(120%);
+
+  /* The product's components take their colours from these tokens, so the
+     form, its errors and its notices restyle themselves for dark glass. */
+  --text-primary: #f2eee7;
+  --text-secondary: rgba(236, 232, 225, 0.78);
+  --text-muted: rgba(236, 232, 225, 0.56);
+  --surface-raised: rgba(255, 255, 255, 0.06);
+  --surface-sunken: rgba(255, 255, 255, 0.04);
+  --border-subtle: rgba(255, 255, 255, 0.12);
+  --border-default: rgba(255, 255, 255, 0.16);
+  --border-strong: rgba(255, 255, 255, 0.32);
+  --accent: #ebe2d6;
+  --accent-hover: #f5eee4;
+  --on-accent: #0a0f14;
+  --accent-soft: rgba(255, 255, 255, 0.06);
+  --accent-border: rgba(255, 255, 255, 0.16);
+  --fail: #f0a6a0;
+  --fail-soft: rgba(214, 92, 84, 0.14);
+  --fail-border: rgba(240, 166, 160, 0.34);
+
+  color: var(--text-primary);
+}
+
+/* The connection notice keeps a light surface of its own: the supplied truck
+   animation is drawn in a dark ink that would vanish on dark glass. */
+.card [role="status"] {
+  --accent: #101a23;
+  --accent-soft: rgba(235, 226, 214, 0.92);
+  --accent-border: rgba(235, 226, 214, 0.5);
+  --text-secondary: #3a434c;
+}
+
+/* An error's glyph is drawn in the surface colour, which on glass is nearly
+   transparent; give it the card's own dark instead. */
+.card [role="alert"] {
+  --surface-raised: #16181d;
+}
+
+.waiting {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.waitingTitle {
+  font-size: 24px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+
+/* --- footer -------------------------------------------------------------------- */
+
+.footer {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 0 var(--landing-gutter) 30px;
+}
+
+.links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 30px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 13px;
+  color: rgba(236, 232, 225, 0.6);
+}
+
+.mark {
+  display: block;
+  width: 30px;
+  height: auto;
+  opacity: 0.55;
+}
+
+/* --- tablet and below: the headline above, the card beneath it ------------------ */
+
+@media (max-width: 900px) {
+  .stage {
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: flex-start;
+    padding-top: 28px;
+  }
+
+  /* Stacked: the headline above, the card beneath it. */
+  .hero {
+    flex-direction: column;
+    gap: 28px;
+    /* The stage's width, so the card's own `max-width: 100%` is measured
+       against the page rather than against a hero sized to the card. */
+    width: 100%;
+  }
+
+  .headline {
+    order: 0;
+    margin: 0;
+    font-size: clamp(40px, 8vw, 64px);
+  }
+
+  .card {
+    order: 0;
+  }
+}
+
+@media (max-width: 640px) {
+  .stage {
+    padding-top: 20px;
+    padding-bottom: 32px;
+  }
+
+  .hero {
+    align-items: stretch;
+    gap: 22px;
+  }
+
+  .headline {
+    font-size: 40px;
+  }
+
+  .card {
+    padding: 28px 22px 24px;
+    border-radius: 20px;
+  }
+
+  .footer {
+    padding-bottom: 24px;
+  }
+
+  .links {
+    gap: 8px 20px;
+    font-size: 12px;
+  }
+
+  .mark {
+    width: 24px;
+  }
+}
+
+@media (max-width: 380px) {
+  .headline {
+    font-size: 34px;
+  }
+}

@@ -1,0 +1,20 @@
+/* The public site's shared palette and focus style: the landing page and the
+   sign-in page are two views of one website, so they draw on one set of
+   tokens. A page root composes `.site` to get them. */
+
+.site {
+  --landing-bg: #04090e;
+  --landing-text: #f2eee7;
+  --landing-text-soft: rgba(236, 232, 225, 0.78);
+  --landing-text-muted: #8d8a85;
+  --landing-cream: #ebe2d6;
+  --landing-cream-hover: #f5eee4;
+  --landing-ink: #0a0f14;
+  --landing-line: rgba(236, 230, 220, 0.4);
+  --landing-gutter: clamp(20px, 5vw, 96px);
+}
+
+.site :focus-visible {
+  outline: 2px solid var(--brand-sand);
+  outline-offset: 3px;
+}

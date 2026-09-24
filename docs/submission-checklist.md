@@ -47,6 +47,10 @@ are docs-only changes on top of it.
 - [x] **Agent link**: **verified.**
   - <https://astrion-app.vercel.app/> → **Sign in to the demo** signs in with
     one click as the demo operations member. No password is needed.
+  - Since the public landing page was added, that button is hidden from the
+    public UI (`PUBLIC_DEMO_SIGN_IN_ENABLED` in
+    `app/frontend/src/lib/features.ts`); the backend endpoint and demo tenant
+    are unchanged.
 - [x] **README**: **verified.**
   - Shows the live URL as the primary link.
   - No stale ParcelPilot URL is presented as primary.
