@@ -2,7 +2,7 @@
 .top { flex:none; background:#091117; border-bottom:1px solid rgba(255,255,255,.1); }
 .topInner { display:flex; align-items:center; gap:var(--space-4); max-width:var(--shell-width); margin:0 auto; padding:10px var(--space-5); min-height:var(--header-height); }
 .brand { display:flex; align-items:center; flex:none; line-height:0; }
-.brand img { display:block; width:176px; height:auto; filter:brightness(0) invert(1); }
+.brand img { display:block; width:176px; height:auto; }
 .brandDivider { flex:none; width:1px; height:24px; background:rgba(255,255,255,.18); }
 .workspace { display:flex; align-items:center; min-width:0; }
 .spacer { flex:1; }

@@ -8,6 +8,10 @@ Every prompt, label and result below was checked against the live deployment:
 
 ## Before recording
 
+- **Show the demo button.** The public UI no longer offers **Sign in to the
+  demo**; it is hidden behind `PUBLIC_DEMO_SIGN_IN_ENABLED` in
+  `app/frontend/src/lib/features.ts`. Record from a build with the flag set
+  to `true`. The steps below assume it.
 - **Wake the backend.** Open the app and press **Sign in to the demo** once,
   1–2 minutes before recording.
   - The API sleeps when idle, and a cold start can take several seconds.

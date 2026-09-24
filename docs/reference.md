@@ -204,9 +204,13 @@ message — if a port is taken or `npm install` has not been run, rather than
 failing halfway up. It uses the repository's own `.venv` whether or not the
 environment is activated.
 
-Open <http://localhost:3000>, press **Sign in to the demo**, and ask something.
-The demo database, dataset and document index are built automatically on first
-sign-in, so the two ingestion commands above are optional.
+Open <http://localhost:3000>. It opens on the public landing page, whose
+**Sign in** and **Get Started** lead to the ordinary sign-in and registration
+forms. The one-click **Sign in to the demo** button is hidden from the public
+UI; set `PUBLIC_DEMO_SIGN_IN_ENABLED` in `app/frontend/src/lib/features.ts` to
+`true` to show it on the sign-in page, press it, and ask something. The demo
+database, dataset and document index are built automatically on first sign-in,
+so the two ingestion commands above are optional.
 
 Running the two services separately still works exactly as before, and is
 still the right choice when you want to restart one without the other:

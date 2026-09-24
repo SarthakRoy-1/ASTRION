@@ -62,8 +62,6 @@
   display: block;
   width: 182px;
   height: auto;
-  filter: brightness(0) invert(1);
-  opacity: 0.96;
 }
 
 .sections ul {
@@ -419,8 +417,10 @@
     font-size: 30px;
   }
 
+  /* The lockup's ink runs edge to edge, so it is sized to leave the two
+     ways in their full width beside it at 320px. */
   .brand img {
-    width: 112px;
+    width: 88px;
   }
 
   .account {

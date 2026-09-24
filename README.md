@@ -16,14 +16,22 @@ confidence, and every state change stops at a confirmation gate.
 
 ## Live demo
 
-**<https://astrion-app.vercel.app/>** — press **Sign in to the demo**. No
-account, no email, no password.
+**<https://astrion-app.vercel.app/>** — opens on the public landing page, with
+**Sign in** and **Get Started** leading to the ordinary sign-in and
+registration forms.
 
-You enter a shared workspace, **ASTRION Demo**, as its **operations** member:
-you can ask the agent anything, have it prepare an action, confirm that action
-yourself, and read the resulting audit trail. All data is the synthetic
-ParcelPilot assessment pack — six policy documents and a structured snapshot of
-accounts, orders and tickets. There is no real customer data anywhere.
+The one-click **Sign in to the demo** button is hidden from the public UI
+(`PUBLIC_DEMO_SIGN_IN_ENABLED` in `app/frontend/src/lib/features.ts`). The
+demo tenant, its seed and `POST /api/auth/demo-login` are unchanged on the
+backend; setting the flag to `true` restores the button on the sign-in page,
+where it still appears only when `/health` reports `demo_login_enabled`.
+
+With the button shown, you enter a shared workspace, **ASTRION Demo**, as its
+**operations** member: you can ask the agent anything, have it prepare an
+action, confirm that action yourself, and read the resulting audit trail. All
+data is the synthetic ParcelPilot assessment pack — six policy documents and a
+structured snapshot of accounts, orders and tickets. There is no real customer
+data anywhere.
 
 The API sleeps when idle, so the first visit can take a few seconds while the
 backend wakes and, if its disk was recycled, rebuilds the demo database from
@@ -43,7 +51,7 @@ Try:
 | | |
 | --- | --- |
 | ![Public demo sign-in](docs/screenshots/01-demo-sign-in.png) | ![Agreement precedence in an answer](docs/screenshots/02-agreement-precedence.png) |
-| **One click in.** The credential never reaches the browser. | **The contract wins, visibly.** Outcome, rule, calculation and the precedence decision. |
+| **One click in** (now hidden from the public UI). The credential never reaches the browser. | **The contract wins, visibly.** Outcome, rule, calculation and the precedence decision. |
 | ![Proposed action awaiting confirmation](docs/screenshots/04-action-awaiting-confirmation.png) | ![Confirmed action](docs/screenshots/05-action-confirmed.png) |
 | **Prepared, not performed.** Nothing has changed yet. | **Confirmed, executed, receipted.** |
 | ![Investigation steps and sources](docs/screenshots/03-investigation-and-sources.png) | ![Audit trail](docs/screenshots/08-audit-trail.png) |
@@ -260,8 +268,12 @@ python dev.py
 ```
 
 `dev.py` starts the API on <http://127.0.0.1:8000> and the UI on
-<http://localhost:3000>. Open the UI and press **Sign in to the demo**; the
-database, document index and demo workspace are built on first use.
+<http://localhost:3000>. The database, document index and demo workspace are
+built on first use. The UI opens on the landing page; **Get Started** registers
+an account (with no mail configured, the verification link is shown in place),
+and **Sign in** opens the sign-in form. For the one-click demo account, set
+`PUBLIC_DEMO_SIGN_IN_ENABLED` in `app/frontend/src/lib/features.ts` to `true`
+and press **Sign in to the demo** on the sign-in page.
 
 ```powershell
 python -m pytest -q                         # backend
