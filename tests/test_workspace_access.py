@@ -258,7 +258,11 @@ def test_a_weak_workspace_password_is_refused(owner, db):
     assert response.status_code == 400
     assert "at least" in response.json()["error"]["message"]
     assert db.execute("SELECT COUNT(*) AS n FROM workspace_access").fetchone()["n"] == 0
-    assert db.execute("SELECT COUNT(*) AS n FROM organizations").fetchone()["n"] == 0
+    # No new workspace (the fixture database holds only the legacy dataset's).
+    assert db.execute(
+        "SELECT COUNT(*) AS n FROM organizations WHERE org_id != ?",
+        ("ORG-legacy-assessment",),
+    ).fetchone()["n"] == 0
 
 
 def test_creating_a_workspace_needs_a_session(app):

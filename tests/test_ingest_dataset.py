@@ -3,6 +3,7 @@ from datetime import timezone, timedelta
 import pytest
 
 from app.backend.services.database import get_connection
+from app.backend.tenancy import LEGACY_ORG_ID
 from conftest import SAMPLE_CONTRACT_FILE, default_sheets, write_workbook
 from scripts import ingest_dataset
 
@@ -279,7 +280,9 @@ def test_dataset_metadata_is_captured(tmp_path):
 
     conn = get_connection(db_path)
     try:
-        row = conn.execute("SELECT * FROM dataset_metadata WHERE id = 1").fetchone()
+        row = conn.execute(
+            "SELECT * FROM dataset_metadata WHERE org_id = ?", (LEGACY_ORG_ID,)
+        ).fetchone()
         assert row["dataset_snapshot_raw"] == "2026-01-10 09:00 Asia/Kolkata"
         assert row["dataset_snapshot_at"] == "2026-01-10T09:00:00+05:30"
         assert row["dataset_timezone"] == "Asia/Kolkata"

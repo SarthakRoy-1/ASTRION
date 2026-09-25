@@ -11,6 +11,10 @@ class DocumentMetadataResponse(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     document_id: str
+    #: True for platform knowledge that belongs to no workspace and that every
+    #: workspace's assistant may cite; False for a workspace's own document. The
+    #: owning workspace's id is deliberately not part of the response.
+    is_system_document: bool = False
     source_file: str
     title: str
     document_type: str

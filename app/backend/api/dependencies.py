@@ -94,18 +94,6 @@ def get_db(request: Request) -> Iterator[sqlite3.Connection]:
         conn.close()
 
 
-def require_dataset(conn: sqlite3.Connection) -> None:
-    """Refuse to answer against an empty database rather than answering badly."""
-    try:
-        load_evaluation_context(conn)
-    except PolicyDataError as exc:
-        logger.error(
-            "the dataset has not been ingested, so no time-based question can be "
-            "answered. Run `python scripts/ingest_dataset.py`."
-        )
-        raise DataUnavailableError(DATA_UNAVAILABLE_MESSAGE) from exc
-
-
 def resolve_principal(
     body_user_id: str | None, header_user_id: str | None
 ) -> Principal:
@@ -134,11 +122,11 @@ def resolve_context(
 
 
 def build_orchestrator(
-    conn: sqlite3.Connection, settings: Settings
+    conn: sqlite3.Connection, settings: Settings, org_id: str | None
 ) -> AgentOrchestrator:
     """Assemble the agent for one request, under the configured provider."""
     try:
-        reference_time = load_evaluation_context(conn).reference_time
+        reference_time = load_evaluation_context(conn, org_id).reference_time
     except PolicyDataError:
         reference_time = None
 

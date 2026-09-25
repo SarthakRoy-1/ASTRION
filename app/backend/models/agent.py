@@ -17,6 +17,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.backend.models.actions import ExecutedAction, ProposedAction
 from app.backend.models.documents import Evidence
 from app.backend.models.policy import PolicyDecision
+from app.backend.tenancy import Scope
 
 
 class Role(StrEnum):
@@ -47,9 +48,10 @@ class Role(StrEnum):
 class AgentContext(BaseModel):
     """Who is asking, and what they are permitted to see.
 
-    `allowed_account_ids = None` means unrestricted, matching the existing
-    Phase 2/3 convention for a caller with no scoping applied. An empty set
-    means authorized for no customer-specific data at all.
+    `org_id` is the tenant: every read and write is made within that workspace
+    (see `scope()`). `allowed_account_ids` optionally *narrows* within it:
+    `None` means every account the workspace has, and an empty set means no
+    customer-specific data at all.
 
     Frozen, and never derived from model output: the orchestrator receives
     this from its caller and passes the same instance to every tool.
@@ -139,9 +141,15 @@ class AgentContext(BaseModel):
             return "propose_action" in self.permissions
         return self.role in (Role.SUPPORT_AGENT, Role.SUPPORT_MANAGER)
 
-    def scope(self) -> set[str] | None:
-        """The value to hand to Phase 2/3 repository functions."""
-        return None if self.allowed_account_ids is None else set(self.allowed_account_ids)
+    def scope(self) -> Scope:
+        """The tenant scope to hand to every repository function.
+
+        The workspace comes from `org_id`, which is set from the authenticated
+        session. A context built without one yields a scope that matches
+        nothing -- it does not fall back to "everything" -- so a caller that
+        forgot its workspace reads no data instead of all of it.
+        """
+        return Scope.of(self.org_id, self.allowed_account_ids)
 
 
 class ToolStatus(StrEnum):

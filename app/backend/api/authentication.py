@@ -29,6 +29,7 @@ from dataclasses import dataclass
 
 from fastapi import Request
 
+from app.backend.tenancy import LEGACY_ORG_ID, Scope
 from app.backend.auth import repository as repo
 from app.backend.auth.permissions import Permission, permissions_for
 from app.backend.auth.principals import MOCK_PRINCIPALS, get_principal
@@ -80,6 +81,17 @@ class AuthenticatedCaller:
     def has(self, permission: Permission) -> bool:
         return permission in self.permissions
 
+    def scope(self) -> Scope:
+        """The tenant scope this caller's reads and writes are made within.
+
+        A signed-in member's workspace is the boundary; `allowed_account_ids`
+        (None for a member, which means every account the workspace has) only
+        narrows within it. The development demo personas act in the one fixed
+        workspace. A caller with no workspace gets a scope that matches nothing.
+        """
+        org_id = self.org_id or (LEGACY_ORG_ID if self.is_demo else None)
+        return Scope.of(org_id, self.allowed_account_ids)
+
     def require(self, permission: Permission) -> None:
         """Raise unless the caller holds `permission`.
 
@@ -121,7 +133,7 @@ class AuthenticatedCaller:
             role=self.role,
             allowed_account_ids=scope,
             session_id=session_id,
-            org_id=self.org_id,
+            org_id=self.org_id or (LEGACY_ORG_ID if self.is_demo else None),
             # `None` for the demo path, so `AgentContext.may_change_state`
             # falls back to its original role mapping and Phase 4 behaviour is
             # preserved exactly.
@@ -241,8 +253,10 @@ def _authenticate_session(
         role=_ROLE_PROJECTION.get(membership.role.value, Role.READ_ONLY),
         org_role=membership.role.value,
         permissions=permissions_for(membership.role),
-        # The tenant boundary, derived from the organisation on the session.
-        allowed_account_ids=repo.accounts_for_org(conn, membership.org_id),
+        # The tenant boundary is the organisation on the session (`org_id`), and
+        # every query filters on it. `None` here means "every account that
+        # workspace has" -- no narrowing within it.
+        allowed_account_ids=None,
         auth_session_id=session.session_id,
         mfa_satisfied=session.mfa_satisfied,
     )

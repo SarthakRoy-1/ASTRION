@@ -17,6 +17,7 @@ import sqlite3
 from collections.abc import Collection
 from decimal import Decimal
 
+from app.backend.tenancy import Scope
 from app.backend.models.documents import Topic
 from app.backend.models.policy import (
     CancellationDecision,
@@ -50,7 +51,7 @@ def evaluate_cancellation(
     conn: sqlite3.Connection,
     order_id: str,
     *,
-    allowed_account_ids: Collection[str] | None = None,
+    scope: Scope,
     evaluation_context: PolicyEvaluationContext | None = None,
 ) -> CancellationDecision:
     """Decide whether `order_id` can be cancelled and what fee applies.
@@ -58,16 +59,16 @@ def evaluate_cancellation(
     Raises PolicyLookupError if the order does not exist or is outside the
     caller's scope — the two are indistinguishable by design.
     """
-    order = get_order(conn, order_id, allowed_account_ids=allowed_account_ids)
+    order = get_order(conn, order_id, scope=scope)
     if order is None:
         raise PolicyLookupError(f"order {order_id!r} not found or not in scope")
 
-    context = evaluation_context or load_evaluation_context(conn)
+    context = evaluation_context or load_evaluation_context(conn, scope.org_id)
     evidence, authority = gather_policy_evidence(
         conn,
         topic=Topic.CANCELLATION,
         account_id=order.account_id,
-        allowed_account_ids=allowed_account_ids,
+        scope=scope,
     )
     terms = extract_cancellation_terms(evidence)
     overrides = [note.reason for note in authority.overrides]
@@ -194,7 +195,7 @@ def evaluate_cancellation(
                 conn,
                 Topic.PRODUCT_KNOWN_ISSUES.value,
                 account_id=order.account_id,
-                allowed_account_ids=allowed_account_ids,
+                scope=scope,
             ),
             order.carrier,
         )

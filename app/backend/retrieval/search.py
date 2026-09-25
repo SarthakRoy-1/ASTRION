@@ -28,6 +28,7 @@ import sqlite3
 from collections import Counter
 from collections.abc import Collection, Sequence
 
+from app.backend.tenancy import Scope
 from app.backend.models.documents import AuthorityDecision, Evidence
 from app.backend.retrieval.authority import resolve_authority
 from app.backend.services.documents import (
@@ -93,7 +94,7 @@ def search_documents(
     query: str,
     *,
     account_id: str | None = None,
-    allowed_account_ids: Collection[str] | None = None,
+    scope: Scope,
     limit: int = DEFAULT_LIMIT,
     min_score: float = 0.0,
     include_non_authoritative: bool = True,
@@ -118,7 +119,7 @@ def search_documents(
     candidates = fetch_searchable_evidence(
         conn,
         account_id=account_id,
-        allowed_account_ids=allowed_account_ids,
+        scope=scope,
         include_non_authoritative=include_non_authoritative,
     )
     query_terms = set(tokenize(query))
@@ -160,7 +161,7 @@ def search_and_resolve(
     query: str,
     *,
     account_id: str | None = None,
-    allowed_account_ids: Collection[str] | None = None,
+    scope: Scope,
     limit: int = DEFAULT_LIMIT,
     min_score: float = 0.0,
     include_non_authoritative: bool = True,
@@ -181,7 +182,7 @@ def search_and_resolve(
         conn,
         query,
         account_id=account_id,
-        allowed_account_ids=allowed_account_ids,
+        scope=scope,
         limit=limit,
         min_score=min_score,
         include_non_authoritative=include_non_authoritative,
@@ -195,7 +196,7 @@ def get_document_evidence(
     chunk_ids: Sequence[str] | None = None,
     document_id: str | None = None,
     account_id: str | None = None,
-    allowed_account_ids: Collection[str] | None = None,
+    scope: Scope,
 ) -> list[Evidence]:
     """Fetch evidence by identity rather than by relevance.
 
@@ -212,11 +213,11 @@ def get_document_evidence(
             conn,
             document_id,
             account_id=account_id,
-            allowed_account_ids=allowed_account_ids,
+            scope=scope,
         )
     return get_evidence_by_chunk_ids(
         conn,
         chunk_ids or [],
         account_id=account_id,
-        allowed_account_ids=allowed_account_ids,
+        scope=scope,
     )

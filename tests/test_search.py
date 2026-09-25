@@ -9,6 +9,7 @@ that a particular fee or deadline is the answer, which is Phase 4's job.
 
 import pytest
 
+from app.backend.tenancy import LEGACY_ORG_ID, LEGACY_SCOPE, Scope  # noqa: F401
 from app.backend.models.documents import AuthorityTier, DocumentType, Topic
 from app.backend.retrieval.search import (
     get_document_evidence,
@@ -61,14 +62,14 @@ def test_tokenizer_keeps_meaning_bearing_short_words():
 
 
 def test_retrieves_current_support_policy_content(doc_conn):
-    results = search_documents(doc_conn, "P1 first response target for Enterprise plan")
+    results = search_documents(doc_conn, "P1 first response target for Enterprise plan", scope=LEGACY_SCOPE)
 
     assert results
     assert CURRENT_POLICY_PDF in files_of(results)
 
 
 def test_retrieves_cancellation_sop_content(doc_conn):
-    results = search_documents(doc_conn, "cancel a BOOKED shipment 30 minutes after booking")
+    results = search_documents(doc_conn, "cancel a BOOKED shipment 30 minutes after booking", scope=LEGACY_SCOPE)
 
     top = results[0]
     assert top.source_file == SOP_PDF
@@ -76,7 +77,7 @@ def test_retrieves_cancellation_sop_content(doc_conn):
 
 
 def test_retrieves_known_issue_by_identifier(doc_conn):
-    results = search_documents(doc_conn, "KI-208")
+    results = search_documents(doc_conn, "KI-208", scope=LEGACY_SCOPE)
 
     assert results
     assert "KI-208" in results[0].subsection_title
@@ -85,8 +86,7 @@ def test_retrieves_known_issue_by_identifier(doc_conn):
 def test_retrieves_northstar_agreement_content(doc_conn):
     results = search_documents(
         doc_conn, "Northstar cancellation of a booked shipment before pickup",
-        account_id=NORTHSTAR,
-    )
+        account_id=NORTHSTAR, scope=LEGACY_SCOPE)
 
     assert NORTHSTAR_PDF in files_of(results)
     agreement = next(e for e in results if e.source_file == NORTHSTAR_PDF)
@@ -96,8 +96,7 @@ def test_retrieves_northstar_agreement_content(doc_conn):
 
 def test_retrieves_lumenworks_agreement_content(doc_conn):
     results = search_documents(
-        doc_conn, "failed pickup credit threshold", account_id=LUMENWORKS
-    )
+        doc_conn, "failed pickup credit threshold", account_id=LUMENWORKS, scope=LEGACY_SCOPE)
 
     assert LUMENWORKS_PDF in files_of(results)
     agreement = next(e for e in results if e.source_file == LUMENWORKS_PDF)
@@ -105,22 +104,22 @@ def test_retrieves_lumenworks_agreement_content(doc_conn):
 
 
 def test_empty_query_returns_nothing(doc_conn):
-    assert search_documents(doc_conn, "") == []
-    assert search_documents(doc_conn, "   ") == []
+    assert search_documents(doc_conn, "", scope=LEGACY_SCOPE) == []
+    assert search_documents(doc_conn, "   ", scope=LEGACY_SCOPE) == []
 
 
 def test_query_matching_nothing_returns_nothing(doc_conn):
-    assert search_documents(doc_conn, "zzzqqqxyzzy") == []
+    assert search_documents(doc_conn, "zzzqqqxyzzy", scope=LEGACY_SCOPE) == []
 
 
 def test_limit_is_respected(doc_conn):
-    results = search_documents(doc_conn, "cancellation credit policy shipment", limit=3)
+    results = search_documents(doc_conn, "cancellation credit policy shipment", limit=3, scope=LEGACY_SCOPE)
 
     assert len(results) <= 3
 
 
 def test_results_are_ordered_by_descending_score(doc_conn):
-    results = search_documents(doc_conn, "service credit carrier fault pickup")
+    results = search_documents(doc_conn, "service credit carrier fault pickup", scope=LEGACY_SCOPE)
 
     scores = [e.score for e in results]
     assert scores == sorted(scores, reverse=True)
@@ -128,8 +127,8 @@ def test_results_are_ordered_by_descending_score(doc_conn):
 
 def test_search_is_deterministic(doc_conn):
     query = "cancellation fee after 30 minutes"
-    first = search_documents(doc_conn, query)
-    second = search_documents(doc_conn, query)
+    first = search_documents(doc_conn, query, scope=LEGACY_SCOPE)
+    second = search_documents(doc_conn, query, scope=LEGACY_SCOPE)
 
     assert [(e.chunk_id, e.score) for e in first] == [(e.chunk_id, e.score) for e in second]
 
@@ -138,7 +137,7 @@ def test_search_is_deterministic(doc_conn):
 
 
 def test_evidence_carries_complete_provenance(doc_conn):
-    results = search_documents(doc_conn, "failed pickup service credit", limit=5)
+    results = search_documents(doc_conn, "failed pickup service credit", limit=5, scope=LEGACY_SCOPE)
 
     assert results
     for evidence in results:
@@ -157,7 +156,7 @@ def test_evidence_carries_complete_provenance(doc_conn):
 
 
 def test_evidence_citation_names_file_page_and_section(doc_conn):
-    results = search_documents(doc_conn, "cancel a BOOKED shipment before pickup")
+    results = search_documents(doc_conn, "cancel a BOOKED shipment before pickup", scope=LEGACY_SCOPE)
     top = next(e for e in results if e.section_path)
 
     assert top.source_file in top.citation
@@ -166,7 +165,7 @@ def test_evidence_citation_names_file_page_and_section(doc_conn):
 
 
 def test_evidence_section_provenance_present_where_document_has_sections(doc_conn):
-    results = search_documents(doc_conn, "order cancellation")
+    results = search_documents(doc_conn, "order cancellation", scope=LEGACY_SCOPE)
     sop = next(e for e in results if e.source_file == SOP_PDF and e.section_number)
 
     assert sop.section_number == "1"
@@ -178,13 +177,13 @@ def test_evidence_section_provenance_present_where_document_has_sections(doc_con
 
 def test_deprecated_policy_is_retrievable(doc_conn):
     """It must stay findable — explaining that a rule changed needs it."""
-    results = search_documents(doc_conn, "Enterprise P1 response target 1 hour", limit=10)
+    results = search_documents(doc_conn, "Enterprise P1 response target 1 hour", limit=10, scope=LEGACY_SCOPE)
 
     assert DEPRECATED_POLICY_PDF in files_of(results)
 
 
 def test_deprecated_policy_is_flagged_non_authoritative(doc_conn):
-    results = search_documents(doc_conn, "Enterprise P1 response target 1 hour", limit=10)
+    results = search_documents(doc_conn, "Enterprise P1 response target 1 hour", limit=10, scope=LEGACY_SCOPE)
     deprecated = next(e for e in results if e.source_file == DEPRECATED_POLICY_PDF)
 
     assert deprecated.is_deprecated is True
@@ -193,14 +192,14 @@ def test_deprecated_policy_is_flagged_non_authoritative(doc_conn):
 
 
 def test_deprecated_policy_never_governs(doc_conn):
-    decision = search_and_resolve(doc_conn, "Enterprise P1 first response target", limit=10)
+    decision = search_and_resolve(doc_conn, "Enterprise P1 first response target", limit=10, scope=LEGACY_SCOPE)
 
     assert DEPRECATED_POLICY_PDF not in files_of(decision.governing)
     assert DEPRECATED_POLICY_PDF in files_of(decision.contextual)
 
 
 def test_current_policy_governs_support_response(doc_conn):
-    decision = search_and_resolve(doc_conn, "Enterprise P1 first response target", limit=10)
+    decision = search_and_resolve(doc_conn, "Enterprise P1 first response target", limit=10, scope=LEGACY_SCOPE)
     governing = decision.governing_for(Topic.SUPPORT_RESPONSE)
 
     assert governing
@@ -212,8 +211,7 @@ def test_include_non_authoritative_false_excludes_deprecated_entirely(doc_conn):
         doc_conn,
         "Enterprise P1 response target",
         limit=10,
-        include_non_authoritative=False,
-    )
+        include_non_authoritative=False, scope=LEGACY_SCOPE)
 
     assert DEPRECATED_POLICY_PDF not in files_of(results)
 
@@ -221,10 +219,10 @@ def test_include_non_authoritative_false_excludes_deprecated_entirely(doc_conn):
 def test_deprecated_can_outrank_current_on_relevance_yet_never_on_authority(doc_conn):
     """Guards the separation directly: whatever relevance says, the governing
     set is decided by stated document metadata."""
-    results = search_documents(doc_conn, "Superseded by Support Policy v3", limit=10)
+    results = search_documents(doc_conn, "Superseded by Support Policy v3", limit=10, scope=LEGACY_SCOPE)
     assert DEPRECATED_POLICY_PDF in files_of(results)
 
-    decision = search_and_resolve(doc_conn, "Superseded by Support Policy v3", limit=10)
+    decision = search_and_resolve(doc_conn, "Superseded by Support Policy v3", limit=10, scope=LEGACY_SCOPE)
     assert DEPRECATED_POLICY_PDF not in files_of(decision.governing)
 
 
@@ -236,8 +234,7 @@ def test_northstar_agreement_governs_cancellation_for_northstar(doc_conn):
         doc_conn,
         "cancellation fee for a BOOKED shipment not yet picked up",
         account_id=NORTHSTAR,
-        limit=10,
-    )
+        limit=10, scope=LEGACY_SCOPE)
     governing = decision.governing_for(Topic.CANCELLATION)
 
     assert [e.source_file for e in governing] == [NORTHSTAR_PDF]
@@ -249,8 +246,7 @@ def test_northstar_cancellation_override_names_both_sources(doc_conn):
         doc_conn,
         "cancellation fee for a BOOKED shipment not yet picked up",
         account_id=NORTHSTAR,
-        limit=10,
-    )
+        limit=10, scope=LEGACY_SCOPE)
     override = next(o for o in decision.overrides if o.topic is Topic.CANCELLATION)
 
     assert override.winning_source_file == NORTHSTAR_PDF
@@ -266,8 +262,7 @@ def test_general_sop_still_governs_cancellation_for_an_account_without_an_agreem
         doc_conn,
         "cancellation fee for a BOOKED shipment not yet picked up",
         account_id="ACCT-003",
-        limit=10,
-    )
+        limit=10, scope=LEGACY_SCOPE)
     governing = decision.governing_for(Topic.CANCELLATION)
 
     assert [e.source_file for e in governing] == [SOP_PDF]
@@ -278,8 +273,7 @@ def test_general_sop_still_governs_cancellation_for_an_account_without_an_agreem
 def test_unscoped_cancellation_question_is_governed_by_the_sop(doc_conn):
     """No account named: no customer agreement may decide the answer."""
     decision = search_and_resolve(
-        doc_conn, "cancellation fee for a BOOKED shipment not yet picked up", limit=10
-    )
+        doc_conn, "cancellation fee for a BOOKED shipment not yet picked up", limit=10, scope=LEGACY_SCOPE)
     governing = decision.governing_for(Topic.CANCELLATION)
 
     assert [e.source_file for e in governing] == [SOP_PDF]
@@ -293,8 +287,7 @@ def test_lumenworks_agreement_governs_service_credit_for_lumenworks(doc_conn):
         doc_conn,
         "failed pickup service credit carrier at fault",
         account_id=LUMENWORKS,
-        limit=10,
-    )
+        limit=10, scope=LEGACY_SCOPE)
     governing = decision.governing_for(Topic.SERVICE_CREDIT)
 
     assert [e.source_file for e in governing] == [LUMENWORKS_PDF]
@@ -306,8 +299,7 @@ def test_lumenworks_credit_override_supersedes_the_sop_default(doc_conn):
         doc_conn,
         "failed pickup service credit carrier at fault",
         account_id=LUMENWORKS,
-        limit=10,
-    )
+        limit=10, scope=LEGACY_SCOPE)
     override = next(o for o in decision.overrides if o.topic is Topic.SERVICE_CREDIT)
 
     assert override.winning_source_file == LUMENWORKS_PDF
@@ -325,8 +317,7 @@ def test_northstar_has_no_service_credit_amount_override_of_its_own(doc_conn):
     The agreement still governs the topic for Northstar — the *reasoning* about
     what its text means is the agent's job, not this layer's."""
     decision = search_and_resolve(
-        doc_conn, "service credit cap", account_id=NORTHSTAR, limit=10
-    )
+        doc_conn, "service credit cap", account_id=NORTHSTAR, limit=10, scope=LEGACY_SCOPE)
     governing = decision.governing_for(Topic.SERVICE_CREDIT)
 
     assert governing
@@ -342,8 +333,7 @@ def test_northstar_scope_never_exposes_lumenworks_agreement(doc_conn):
         doc_conn,
         "LumenWorks fixed INR 300 credit 4 hours Growth plan agreement",
         account_id=NORTHSTAR,
-        limit=50,
-    )
+        limit=50, scope=LEGACY_SCOPE)
 
     assert LUMENWORKS_PDF not in files_of(results)
     assert all(e.account_id in (None, NORTHSTAR) for e in results)
@@ -354,8 +344,7 @@ def test_lumenworks_scope_never_exposes_northstar_agreement(doc_conn):
         doc_conn,
         "Northstar Logistics Enterprise 15 minutes P1 no cancellation fee",
         account_id=LUMENWORKS,
-        limit=50,
-    )
+        limit=50, scope=LEGACY_SCOPE)
 
     assert NORTHSTAR_PDF not in files_of(results)
     assert all(e.account_id in (None, LUMENWORKS) for e in results)
@@ -363,8 +352,7 @@ def test_lumenworks_scope_never_exposes_northstar_agreement(doc_conn):
 
 def test_account_scope_still_returns_general_documents(doc_conn):
     results = search_documents(
-        doc_conn, "cancellation credit severity policy", account_id=NORTHSTAR, limit=50
-    )
+        doc_conn, "cancellation credit severity policy", account_id=NORTHSTAR, limit=50, scope=LEGACY_SCOPE)
     general = {e.source_file for e in results if e.account_id is None}
 
     assert SOP_PDF in general
@@ -375,9 +363,8 @@ def test_allowed_account_ids_restricts_visible_agreements(doc_conn):
     results = search_documents(
         doc_conn,
         "agreement terms cancellation credit",
-        allowed_account_ids={NORTHSTAR},
-        limit=50,
-    )
+        scope=Scope.of(LEGACY_ORG_ID, {NORTHSTAR}),
+        limit=50)
 
     assert LUMENWORKS_PDF not in files_of(results)
     assert all(e.account_id in (None, NORTHSTAR) for e in results)
@@ -385,7 +372,7 @@ def test_allowed_account_ids_restricts_visible_agreements(doc_conn):
 
 def test_empty_allowed_account_ids_hides_all_agreements(doc_conn):
     results = search_documents(
-        doc_conn, "agreement terms cancellation credit", allowed_account_ids=set(), limit=50
+        doc_conn, "agreement terms cancellation credit", scope=Scope.of(LEGACY_ORG_ID, set()), limit=50
     )
 
     assert all(e.account_id is None for e in results)
@@ -400,9 +387,8 @@ def test_authorization_and_query_scope_compose(doc_conn):
         doc_conn,
         "agreement credit terms",
         account_id=LUMENWORKS,
-        allowed_account_ids={NORTHSTAR},
-        limit=50,
-    )
+        scope=Scope.of(LEGACY_ORG_ID, {NORTHSTAR}),
+        limit=50)
 
     assert all(e.account_id is None for e in results)
 
@@ -411,7 +397,7 @@ def test_unscoped_search_can_see_all_agreements(doc_conn):
     """No auth layer exists yet; an unrestricted caller sees everything, and
     precedence — not visibility — is what stops one customer's terms from
     governing another's question."""
-    results = search_documents(doc_conn, "agreement terms cancellation credit", limit=50)
+    results = search_documents(doc_conn, "agreement terms cancellation credit", limit=50, scope=LEGACY_SCOPE)
 
     assert NORTHSTAR_PDF in files_of(results)
     assert LUMENWORKS_PDF in files_of(results)
@@ -422,7 +408,7 @@ def test_no_cross_account_leakage_across_the_whole_corpus(doc_conn):
     broad = "astrion policy agreement cancellation credit pickup support shipment"
 
     for scope, forbidden in ((NORTHSTAR, LUMENWORKS_PDF), (LUMENWORKS, NORTHSTAR_PDF)):
-        results = search_documents(doc_conn, broad, account_id=scope, limit=100)
+        results = search_documents(doc_conn, broad, account_id=scope, limit=100, scope=LEGACY_SCOPE)
         assert forbidden not in files_of(results)
 
 
@@ -430,7 +416,7 @@ def test_no_cross_account_leakage_across_the_whole_corpus(doc_conn):
 
 
 def test_get_document_evidence_by_document_returns_ordered_chunks(doc_conn):
-    evidence = get_document_evidence(doc_conn, document_id=CURRENT_POLICY_DOC_ID)
+    evidence = get_document_evidence(doc_conn, document_id=CURRENT_POLICY_DOC_ID, scope=LEGACY_SCOPE)
 
     assert evidence
     assert all(e.source_file == CURRENT_POLICY_PDF for e in evidence)
@@ -440,41 +426,39 @@ def test_get_document_evidence_by_document_returns_ordered_chunks(doc_conn):
 
 
 def test_get_document_evidence_by_chunk_ids_round_trips(doc_conn):
-    found = search_documents(doc_conn, "order cancellation 30 minutes", limit=3)
+    found = search_documents(doc_conn, "order cancellation 30 minutes", limit=3, scope=LEGACY_SCOPE)
     ids = [e.chunk_id for e in found]
 
-    refetched = get_document_evidence(doc_conn, chunk_ids=ids)
+    refetched = get_document_evidence(doc_conn, chunk_ids=ids, scope=LEGACY_SCOPE)
 
     assert {e.chunk_id for e in refetched} == set(ids)
     assert all(e.score is None for e in refetched)  # identity fetch, not ranked
 
 
 def test_get_document_evidence_respects_account_scope(doc_conn):
-    lumenworks_chunks = get_document_evidence(doc_conn, document_id=LUMENWORKS_DOC_ID)
+    lumenworks_chunks = get_document_evidence(doc_conn, document_id=LUMENWORKS_DOC_ID, scope=LEGACY_SCOPE)
     assert lumenworks_chunks
 
     blocked = get_document_evidence(
-        doc_conn, document_id=LUMENWORKS_DOC_ID, account_id=NORTHSTAR
-    )
+        doc_conn, document_id=LUMENWORKS_DOC_ID, account_id=NORTHSTAR, scope=LEGACY_SCOPE)
     assert blocked == []
 
     blocked_by_id = get_document_evidence(
-        doc_conn, chunk_ids=[lumenworks_chunks[0].chunk_id], account_id=NORTHSTAR
-    )
+        doc_conn, chunk_ids=[lumenworks_chunks[0].chunk_id], account_id=NORTHSTAR, scope=LEGACY_SCOPE)
     assert blocked_by_id == []
 
 
 def test_get_document_evidence_unknown_ids_return_empty(doc_conn):
-    assert get_document_evidence(doc_conn, document_id="no_such_document") == []
-    assert get_document_evidence(doc_conn, chunk_ids=["no#such#chunk"]) == []
-    assert get_document_evidence(doc_conn, chunk_ids=[]) == []
+    assert get_document_evidence(doc_conn, document_id="no_such_document", scope=LEGACY_SCOPE) == []
+    assert get_document_evidence(doc_conn, chunk_ids=["no#such#chunk"], scope=LEGACY_SCOPE) == []
+    assert get_document_evidence(doc_conn, chunk_ids=[], scope=LEGACY_SCOPE) == []
 
 
 def test_get_document_evidence_requires_exactly_one_selector(doc_conn):
     with pytest.raises(ValueError, match="exactly one"):
-        get_document_evidence(doc_conn)
+        get_document_evidence(doc_conn, scope=LEGACY_SCOPE)
     with pytest.raises(ValueError, match="exactly one"):
-        get_document_evidence(doc_conn, document_id="x", chunk_ids=["y"])
+        get_document_evidence(doc_conn, document_id="x", chunk_ids=["y"], scope=LEGACY_SCOPE)
 
 
 # --- untrusted input safety -------------------------------------------------------------------------
@@ -491,7 +475,7 @@ def test_get_document_evidence_requires_exactly_one_selector(doc_conn):
     ],
 )
 def test_injection_payloads_in_query_are_inert(doc_conn, payload):
-    search_documents(doc_conn, payload, account_id=NORTHSTAR, limit=10)
+    search_documents(doc_conn, payload, account_id=NORTHSTAR, limit=10, scope=LEGACY_SCOPE)
 
     # Tables survive and still hold their rows.
     assert doc_conn.execute("SELECT COUNT(*) FROM documents").fetchone()[0] == 6
@@ -503,8 +487,7 @@ def test_injection_payload_cannot_widen_account_scope(doc_conn):
         doc_conn,
         "LumenWorks' OR account_id='ACCT-002",
         account_id=NORTHSTAR,
-        limit=50,
-    )
+        limit=50, scope=LEGACY_SCOPE)
 
     assert LUMENWORKS_PDF not in files_of(results)
 
@@ -513,7 +496,7 @@ def test_injection_payload_cannot_widen_account_scope(doc_conn):
     "payload", ["ACCT-001' OR '1'='1", "'; DROP TABLE documents; --", "ACCT-%"]
 )
 def test_injection_payloads_in_account_id_are_inert(doc_conn, payload):
-    results = search_documents(doc_conn, "cancellation credit", account_id=payload, limit=50)
+    results = search_documents(doc_conn, "cancellation credit", account_id=payload, limit=50, scope=LEGACY_SCOPE)
 
     # Treated as a literal (non-matching) account id: general documents only.
     assert all(e.account_id is None for e in results)
@@ -521,11 +504,11 @@ def test_injection_payloads_in_account_id_are_inert(doc_conn, payload):
 
 
 def test_injection_payload_in_chunk_id_is_inert(doc_conn):
-    assert get_document_evidence(doc_conn, chunk_ids=["x'; DROP TABLE documents; --"]) == []
+    assert get_document_evidence(doc_conn, chunk_ids=["x'; DROP TABLE documents; --"], scope=LEGACY_SCOPE) == []
     assert doc_conn.execute("SELECT COUNT(*) FROM documents").fetchone()[0] == 6
 
 
 def test_very_long_query_is_handled(doc_conn):
-    results = search_documents(doc_conn, "cancellation " * 5000, limit=5)
+    results = search_documents(doc_conn, "cancellation " * 5000, limit=5, scope=LEGACY_SCOPE)
 
     assert isinstance(results, list)

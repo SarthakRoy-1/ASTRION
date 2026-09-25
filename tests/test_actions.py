@@ -9,6 +9,7 @@ from datetime import timedelta
 
 import pytest
 
+from app.backend.tenancy import LEGACY_ORG_ID, LEGACY_SCOPE, Scope  # noqa: F401
 from app.backend.models.actions import ActionStatus, ActionType
 from app.backend.services.actions import (
     ActionError,
@@ -37,8 +38,7 @@ def prepare_escalation(conn, ticket_id="TKT-501", account_id=NORTHSTAR_ACCOUNT, 
         requested_by_role="support_agent",
         account_id=account_id,
         evidence_chunk_ids=["chunk-a", "chunk-b"],
-        **kwargs,
-    )
+        **kwargs, org_id=LEGACY_ORG_ID)
 
 
 # --- preparation is inert ----------------------------------------------------
@@ -55,8 +55,8 @@ def test_prepare_creates_pending_state(conn):
 def test_prepare_does_not_mutate_anything(conn):
     prepare_escalation(conn)
 
-    assert get_ticket_escalations(conn, "TKT-501") == []
-    assert get_ticket_notes(conn, "TKT-501") == []
+    assert get_ticket_escalations(conn, "TKT-501", org_id=LEGACY_ORG_ID) == []
+    assert get_ticket_notes(conn, "TKT-501", org_id=LEGACY_ORG_ID) == []
 
 
 def test_prepare_does_not_touch_the_source_derived_ticket(conn):
@@ -85,14 +85,13 @@ def test_prepare_rejects_missing_required_parameters(conn):
             target_id="TKT-501",
             parameters={},
             requested_by="agent.test",
-            requested_by_role="support_agent",
-        )
+            requested_by_role="support_agent", org_id=LEGACY_ORG_ID)
 
 
 def test_prepared_actions_are_listed_as_pending(conn):
     action = prepare_escalation(conn)
 
-    pending = list_pending_actions(conn)
+    pending = list_pending_actions(conn, scope=LEGACY_SCOPE)
 
     assert [p.action_id for p in pending] == [action.action_id]
 
@@ -103,10 +102,10 @@ def test_prepared_actions_are_listed_as_pending(conn):
 def test_execution_creates_the_effect(conn):
     action = prepare_escalation(conn)
 
-    audit = execute_action(conn, action.action_id, confirmed_by="manager.test")
+    audit = execute_action(conn, action.action_id, confirmed_by="manager.test", scope=LEGACY_SCOPE)
 
     assert audit.status is ActionStatus.EXECUTED
-    escalations = get_ticket_escalations(conn, "TKT-501")
+    escalations = get_ticket_escalations(conn, "TKT-501", org_id=LEGACY_ORG_ID)
     assert len(escalations) == 1
     assert escalations[0]["reason"] == "Complete outage reported"
 
@@ -114,7 +113,7 @@ def test_execution_creates_the_effect(conn):
 def test_execution_records_the_full_audit_trail(conn):
     action = prepare_escalation(conn)
 
-    audit = execute_action(conn, action.action_id, confirmed_by="manager.test")
+    audit = execute_action(conn, action.action_id, confirmed_by="manager.test", scope=LEGACY_SCOPE)
 
     assert audit.requested_by == "agent.test"
     assert audit.requested_by_role == "support_agent"
@@ -129,17 +128,17 @@ def test_execution_records_the_full_audit_trail(conn):
 
 def test_execution_is_single_use(conn):
     action = prepare_escalation(conn)
-    execute_action(conn, action.action_id, confirmed_by="manager.test")
+    execute_action(conn, action.action_id, confirmed_by="manager.test", scope=LEGACY_SCOPE)
 
     with pytest.raises(ActionStateError, match="not pending confirmation"):
-        execute_action(conn, action.action_id, confirmed_by="manager.test")
+        execute_action(conn, action.action_id, confirmed_by="manager.test", scope=LEGACY_SCOPE)
 
-    assert len(get_ticket_escalations(conn, "TKT-501")) == 1
+    assert len(get_ticket_escalations(conn, "TKT-501", org_id=LEGACY_ORG_ID)) == 1
 
 
 def test_execution_of_unknown_action_fails(conn):
     with pytest.raises(ActionNotFound):
-        execute_action(conn, "ACT-nope", confirmed_by="manager.test")
+        execute_action(conn, "ACT-nope", confirmed_by="manager.test", scope=LEGACY_SCOPE)
 
 
 def test_expired_action_cannot_execute(conn):
@@ -152,10 +151,10 @@ def test_expired_action_cannot_execute(conn):
     conn.commit()
 
     with pytest.raises(ActionStateError, match="expired"):
-        execute_action(conn, action.action_id, confirmed_by="manager.test")
+        execute_action(conn, action.action_id, confirmed_by="manager.test", scope=LEGACY_SCOPE)
 
-    assert get_ticket_escalations(conn, "TKT-501") == []
-    assert get_action(conn, action.action_id).status is ActionStatus.EXPIRED
+    assert get_ticket_escalations(conn, "TKT-501", org_id=LEGACY_ORG_ID) == []
+    assert get_action(conn, action.action_id, scope=LEGACY_SCOPE).status is ActionStatus.EXPIRED
 
 
 def test_execution_revalidates_the_target(conn):
@@ -164,11 +163,10 @@ def test_execution_revalidates_the_target(conn):
 
     with pytest.raises(ActionStateError, match="no longer available"):
         execute_action(
-            conn, action.action_id, confirmed_by="manager.test", target_exists=False
-        )
+            conn, action.action_id, confirmed_by="manager.test", target_exists=False, scope=LEGACY_SCOPE)
 
-    assert get_ticket_escalations(conn, "TKT-501") == []
-    audit = get_action_audit(conn, action.action_id)
+    assert get_ticket_escalations(conn, "TKT-501", org_id=LEGACY_ORG_ID) == []
+    audit = get_action_audit(conn, action.action_id, scope=LEGACY_SCOPE)
     assert audit.status is ActionStatus.FAILED
     assert "no longer available" in audit.failure_reason
 
@@ -179,36 +177,36 @@ def test_execution_revalidates_the_target(conn):
 def test_rejection_is_terminal_and_performs_nothing(conn):
     action = prepare_escalation(conn)
 
-    audit = reject_action(conn, action.action_id, rejected_by="manager.test")
+    audit = reject_action(conn, action.action_id, rejected_by="manager.test", scope=LEGACY_SCOPE)
 
     assert audit.status is ActionStatus.REJECTED
     assert audit.rejected_at_utc is not None
-    assert get_ticket_escalations(conn, "TKT-501") == []
+    assert get_ticket_escalations(conn, "TKT-501", org_id=LEGACY_ORG_ID) == []
 
 
 def test_rejected_action_cannot_be_executed(conn):
     action = prepare_escalation(conn)
-    reject_action(conn, action.action_id, rejected_by="manager.test")
+    reject_action(conn, action.action_id, rejected_by="manager.test", scope=LEGACY_SCOPE)
 
     with pytest.raises(ActionStateError):
-        execute_action(conn, action.action_id, confirmed_by="manager.test")
+        execute_action(conn, action.action_id, confirmed_by="manager.test", scope=LEGACY_SCOPE)
 
-    assert get_ticket_escalations(conn, "TKT-501") == []
+    assert get_ticket_escalations(conn, "TKT-501", org_id=LEGACY_ORG_ID) == []
 
 
 def test_executed_action_cannot_be_rejected(conn):
     action = prepare_escalation(conn)
-    execute_action(conn, action.action_id, confirmed_by="manager.test")
+    execute_action(conn, action.action_id, confirmed_by="manager.test", scope=LEGACY_SCOPE)
 
     with pytest.raises(ActionStateError):
-        reject_action(conn, action.action_id, rejected_by="manager.test")
+        reject_action(conn, action.action_id, rejected_by="manager.test", scope=LEGACY_SCOPE)
 
 
 def test_rejected_action_leaves_the_pending_list(conn):
     action = prepare_escalation(conn)
-    reject_action(conn, action.action_id, rejected_by="manager.test")
+    reject_action(conn, action.action_id, rejected_by="manager.test", scope=LEGACY_SCOPE)
 
-    assert list_pending_actions(conn) == []
+    assert list_pending_actions(conn, scope=LEGACY_SCOPE) == []
 
 
 # --- note actions -------------------------------------------------------------------
@@ -223,13 +221,12 @@ def test_ticket_note_action_lifecycle(conn):
         parameters={"note": "Matches a documented known issue."},
         requested_by="agent.test",
         requested_by_role="support_agent",
-        account_id=LUMENWORKS_ACCOUNT,
-    )
-    assert get_ticket_notes(conn, "TKT-502") == []
+        account_id=LUMENWORKS_ACCOUNT, org_id=LEGACY_ORG_ID)
+    assert get_ticket_notes(conn, "TKT-502", org_id=LEGACY_ORG_ID) == []
 
-    execute_action(conn, action.action_id, confirmed_by="manager.test")
+    execute_action(conn, action.action_id, confirmed_by="manager.test", scope=LEGACY_SCOPE)
 
-    notes = get_ticket_notes(conn, "TKT-502")
+    notes = get_ticket_notes(conn, "TKT-502", org_id=LEGACY_ORG_ID)
     assert len(notes) == 1
     assert notes[0]["note"] == "Matches a documented known issue."
 
@@ -240,8 +237,8 @@ def test_ticket_note_action_lifecycle(conn):
 def test_action_is_invisible_outside_its_account_scope(conn):
     action = prepare_escalation(conn, ticket_id="TKT-502", account_id=LUMENWORKS_ACCOUNT)
 
-    assert get_action(conn, action.action_id, allowed_account_ids={NORTHSTAR_ACCOUNT}) is None
-    assert list_pending_actions(conn, allowed_account_ids={NORTHSTAR_ACCOUNT}) == []
+    assert get_action(conn, action.action_id, scope=Scope.of(LEGACY_ORG_ID, {NORTHSTAR_ACCOUNT})) is None
+    assert list_pending_actions(conn, scope=Scope.of(LEGACY_ORG_ID, {NORTHSTAR_ACCOUNT})) == []
 
 
 def test_out_of_scope_action_cannot_be_executed(conn):
@@ -252,10 +249,9 @@ def test_out_of_scope_action_cannot_be_executed(conn):
             conn,
             action.action_id,
             confirmed_by="ns.agent",
-            allowed_account_ids={NORTHSTAR_ACCOUNT},
-        )
+            scope=Scope.of(LEGACY_ORG_ID, {NORTHSTAR_ACCOUNT}))
 
-    assert get_ticket_escalations(conn, "TKT-502") == []
+    assert get_ticket_escalations(conn, "TKT-502", org_id=LEGACY_ORG_ID) == []
 
 
 def test_out_of_scope_action_cannot_be_rejected(conn):
@@ -266,5 +262,4 @@ def test_out_of_scope_action_cannot_be_rejected(conn):
             conn,
             action.action_id,
             rejected_by="ns.agent",
-            allowed_account_ids={NORTHSTAR_ACCOUNT},
-        )
+            scope=Scope.of(LEGACY_ORG_ID, {NORTHSTAR_ACCOUNT}))

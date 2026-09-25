@@ -43,11 +43,10 @@ from app.backend.retrieval.extraction import (  # noqa: E402
     ExtractedDocument,
     extract_document,
 )
-from app.backend.services.database import (  # noqa: E402
-    DEFAULT_DB_PATH,
-    get_connection,
-    initialize_schema,
-)
+from app.backend.auth.repository import ensure_organization  # noqa: E402
+from app.backend.db import open_connection  # noqa: E402
+from app.backend.services.database import initialize_schema  # noqa: E402
+from app.backend.tenancy import LEGACY_ORG_ID  # noqa: E402
 from app.backend.services.document_ingestion import (  # noqa: E402
     load_into_db,
     validate_account_links,
@@ -77,25 +76,40 @@ def extract_all(source_dir: Path) -> list[ExtractedDocument]:
 
 
 def ingest(
-    source_dir: Path = DEFAULT_SOURCE_DIR, db_path: Path = DEFAULT_DB_PATH
+    source_dir: Path = DEFAULT_SOURCE_DIR,
+    db_path: Path | None = None,
+    org_id: str | None = LEGACY_ORG_ID,
 ) -> dict[str, Any]:
+    """Load the source pack: general documents as system documents, agreements
+    for `org_id`.
+
+    Pass `org_id=None` to load system documents only (a production deployment,
+    where no workspace owns the assessment agreements); the customer-specific
+    agreements are then skipped rather than attached to anyone.
+    """
     source_dir = Path(source_dir)
-    db_path = Path(db_path)
 
     extracted = extract_all(source_dir)
+    if org_id is None:
+        extracted = [e for e in extracted if e.document.account_id is None]
 
-    conn = get_connection(db_path)
+    conn = open_connection(db_path)
     try:
         initialize_schema(conn)
-        notes = validate_account_links(conn, [e.document for e in extracted])
-        counts = load_into_db(conn, extracted, source_dir=source_dir)
+        if org_id == LEGACY_ORG_ID:
+            ensure_organization(
+                conn, org_id=org_id, name="Assessment dataset (legacy)", slug="assessment-legacy"
+            )
+        notes = validate_account_links(conn, [e.document for e in extracted], org_id)
+        counts = load_into_db(conn, extracted, source_dir=source_dir, org_id=org_id)
     finally:
         conn.close()
 
     return {
         "ok": True,
         "source_dir": str(source_dir),
-        "database": str(db_path),
+        "database": str(db_path) if db_path is not None else "DATABASE_URL",
+        "org_id": org_id,
         "counts": counts,
         "account_link_notes": notes,
         "documents": [
@@ -119,12 +133,28 @@ def ingest(
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--source-dir", type=Path, default=DEFAULT_SOURCE_DIR)
-    parser.add_argument("--db", type=Path, default=DEFAULT_DB_PATH)
+    parser.add_argument(
+        "--db", type=Path, default=None,
+        help="A SQLite file. Omit to use DATABASE_URL (PostgreSQL in production).",
+    )
+    parser.add_argument(
+        "--org-id", default=LEGACY_ORG_ID,
+        help="The workspace that owns the customer agreements in the pack.",
+    )
+    parser.add_argument(
+        "--system-only", action="store_true",
+        help="Load only the general documents, as system documents visible to "
+             "every workspace. Skips the customer-specific agreements.",
+    )
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args(argv)
 
     try:
-        result = ingest(source_dir=args.source_dir, db_path=args.db)
+        result = ingest(
+            source_dir=args.source_dir,
+            db_path=args.db,
+            org_id=None if args.system_only else args.org_id,
+        )
     except DocumentIngestionError as exc:
         if args.json:
             print(json.dumps({"ok": False, "error": str(exc)}, indent=2))

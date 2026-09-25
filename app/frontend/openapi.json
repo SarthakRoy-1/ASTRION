@@ -630,6 +630,11 @@
             "title": "Is Deprecated",
             "type": "boolean"
           },
+          "is_system_document": {
+            "default": false,
+            "title": "Is System Document",
+            "type": "boolean"
+          },
           "page_count": {
             "title": "Page Count",
             "type": "integer"

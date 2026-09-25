@@ -137,7 +137,7 @@ def list_signals(
 
     report = build_report(
         conn,
-        allowed_account_ids=caller.allowed_account_ids,
+        scope=caller.scope(),
         limit=max(1, min(int(limit), MAX_LIMIT)),
     )
     elapsed_ms = int((time.perf_counter() - started) * 1000)
@@ -177,7 +177,7 @@ def signal_detail(
     caller = _authorize(request, conn)
 
     signal = get_signal(
-        conn, signal_id, allowed_account_ids=caller.allowed_account_ids
+        conn, signal_id, scope=caller.scope()
     )
     if signal is None:
         raise NotFoundError("That signal was not found.")

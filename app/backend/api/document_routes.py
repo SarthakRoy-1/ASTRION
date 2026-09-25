@@ -9,12 +9,12 @@ that names no `Account:` — is read by every tenant's agent, and a general
 document with `Status: CURRENT` titled as a support policy would outrank the
 supplied support policy for all of them. So:
 
-- **Uploads must be customer-specific, and inside the caller's scope.** An
-  uploaded agreement for an account the caller's workspace owns affects that
-  workspace only, because account ownership is exclusive. General documents
-  come from the supplied source pack and nowhere else.
-- **The supplied source pack cannot be deleted through the API.** It is the
-  authority every workspace's answers rest on.
+- **An upload belongs to the workspace that made it.** It is stored with the
+  caller's `org_id`, so it is visible to that workspace and to no other. If it
+  names an `Account:`, that account must be one the workspace has. It never
+  becomes a system document: those come only from the platform's own loader.
+- **System documents cannot be deleted through the API.** They are the platform
+  knowledge every workspace's answers rest on, and no workspace owns them.
 - **Management requires a real workspace session.** The demo identity header
   carries no permissions to check, and a customer persona must not be able to
   delete a policy.
@@ -30,6 +30,7 @@ from pathlib import Path
 from fastapi import APIRouter, File, Request, UploadFile
 
 from app.backend.api.authentication import AuthenticatedCaller, audit_denial, authenticate
+from app.backend.services.records import get_account
 from app.backend.api.dependencies import DbDep
 from app.backend.api.document_schemas import (
     DocumentChunksResponse,
@@ -45,17 +46,11 @@ from app.backend.retrieval.authority import UnknownAuthorityError
 from app.backend.retrieval.extraction import DocumentIngestionError, extract_document
 from app.backend.services import documents
 from app.backend.services.document_ingestion import ingest_single_document
-from scripts.inspect_sources import PDF_FILES
 from scripts.verify_source_pack import sha256_of
 
 logger = logging.getLogger("astrion.documents")
 
 router = APIRouter(prefix="/api/documents", tags=["documents"])
-
-#: The supplied source pack. Every workspace's answers rest on these, so no
-#: workspace may remove one.
-CANONICAL_SOURCE_FILES = frozenset(PDF_FILES)
-
 
 def _settings(request: Request) -> Settings:
     return request.app.state.settings
@@ -112,19 +107,27 @@ def _require_management(
     return caller
 
 
-def _require_in_scope(caller: AuthenticatedCaller, account_id: str | None) -> None:
-    """A managed document must belong to an account this workspace owns."""
-    if caller.allowed_account_ids is None:
-        return
-    if account_id is None:
+def _require_workspace(caller: AuthenticatedCaller) -> str:
+    """The workspace a managed document belongs to. A caller with none has none."""
+    if caller.org_id is None:
         raise AuthorizationError(
-            "General documents apply to every workspace and come only from the "
-            "supplied source pack. An uploaded document must state an Account: "
-            "that belongs to this workspace."
+            "Create or join a workspace before managing documents."
         )
-    if account_id not in caller.allowed_account_ids:
+    return caller.org_id
+
+
+def _require_account_in_workspace(
+    conn: sqlite3.Connection, caller: AuthenticatedCaller, account_id: str | None
+) -> None:
+    """A document that names an account must name one this workspace has.
+
+    A document that names none is the workspace's own general document.
+    """
+    if account_id is None:
+        return
+    if get_account(conn, account_id, scope=caller.scope()) is None:
         raise AuthorizationError(
-            "Cannot manage a document for an account outside your scope."
+            "That document names an account that is not in this workspace."
         )
 
 
@@ -152,9 +155,7 @@ def _remove(path: Path) -> None:
 def list_documents(request: Request, conn: sqlite3.Connection = DbDep) -> DocumentListResponse:
     caller = _require(request, conn, Permission.READ_DOCUMENTS)
 
-    docs = documents.list_documents(
-        conn, allowed_account_ids=caller.allowed_account_ids
-    )
+    docs = documents.list_documents(conn, scope=caller.scope())
     return DocumentListResponse(documents=[
         DocumentMetadataResponse.model_validate(d, from_attributes=True)
         for d in docs
@@ -175,9 +176,7 @@ def get_ingestion_status(request: Request, conn: sqlite3.Connection = DbDep) -> 
 def get_document(request: Request, document_id: str, conn: sqlite3.Connection = DbDep) -> DocumentMetadataResponse:
     caller = _require(request, conn, Permission.READ_DOCUMENTS)
 
-    doc = documents.get_document(
-        conn, document_id, allowed_account_ids=caller.allowed_account_ids
-    )
+    doc = documents.get_document(conn, document_id, scope=caller.scope())
     if not doc:
         raise NotFoundError(f"Document {document_id} not found")
     return DocumentMetadataResponse.model_validate(doc, from_attributes=True)
@@ -187,14 +186,10 @@ def get_document(request: Request, document_id: str, conn: sqlite3.Connection = 
 def get_document_chunks(request: Request, document_id: str, conn: sqlite3.Connection = DbDep) -> DocumentChunksResponse:
     caller = _require(request, conn, Permission.READ_DOCUMENTS)
 
-    chunks = documents.get_document_chunks(
-        conn, document_id, allowed_account_ids=caller.allowed_account_ids
-    )
+    chunks = documents.get_document_chunks(conn, document_id, scope=caller.scope())
     if not chunks:
         # Differentiate between empty chunks and not found document
-        doc = documents.get_document(
-            conn, document_id, allowed_account_ids=caller.allowed_account_ids
-        )
+        doc = documents.get_document(conn, document_id, scope=caller.scope())
         if not doc:
             raise NotFoundError(f"Document {document_id} not found")
 
@@ -208,6 +203,7 @@ def upload_document(
     file: UploadFile = File(...),
 ) -> dict:
     caller = _require_management(request, conn)
+    org_id = _require_workspace(caller)
 
     try:
         content_bytes = file.file.read()
@@ -229,8 +225,10 @@ def upload_document(
 
     try:
         extracted = extract_document(dest_path, source_sha256=sha256_of(dest_path))
-        _require_in_scope(caller, extracted.document.account_id)
-        result = ingest_single_document(conn, extracted, str(uploads_dir))
+        _require_account_in_workspace(conn, caller, extracted.document.account_id)
+        result = ingest_single_document(
+            conn, extracted, str(uploads_dir), org_id=org_id
+        )
     except AuthorizationError:
         _remove(dest_path)
         raise
@@ -251,21 +249,15 @@ def upload_document(
 @router.delete("/{document_id}")
 def delete_document(request: Request, document_id: str, conn: sqlite3.Connection = DbDep) -> dict:
     caller = _require_management(request, conn)
+    _require_workspace(caller)
 
-    doc = documents.get_document(
-        conn, document_id, allowed_account_ids=caller.allowed_account_ids
-    )
+    doc = documents.get_document(conn, document_id, scope=caller.scope())
     if not doc:
         raise NotFoundError(f"Document {document_id} not found")
-    if doc.source_file in CANONICAL_SOURCE_FILES:
-        raise AuthorizationError(
-            "Documents from the supplied source pack cannot be deleted."
-        )
-    _require_in_scope(caller, doc.account_id)
+    if doc.org_id is None:
+        raise AuthorizationError("System documents cannot be deleted.")
 
-    deleted = documents.delete_document(
-        conn, document_id, allowed_account_ids=caller.allowed_account_ids
-    )
+    deleted = documents.delete_document(conn, document_id, scope=caller.scope())
     if not deleted:
         raise NotFoundError(f"Document {document_id} not found")
 
@@ -282,14 +274,21 @@ def reindex_documents(request: Request, conn: sqlite3.Connection = DbDep) -> dic
     neither rewrite another's documents nor be stopped by another's file.
     """
     caller = _require_management(request, conn)
+    org_id = _require_workspace(caller)
     uploads_dir = _settings(request).uploads_dir
 
     counts = {"documents": 0, "chunks": 0, "skipped": 0}
     if not uploads_dir.exists():
         return {"ok": True, "counts": counts}
 
-    for path in sorted(uploads_dir.glob("*.pdf")):
+    # Driven by this workspace's own documents, not by whatever files happen to
+    # be in the directory: a file belonging to another workspace is never opened.
+    for doc in documents.list_documents(conn, scope=caller.scope()):
+        if doc.org_id != org_id:
+            continue
+        path = uploads_dir / Path(doc.source_file).name
         if not path.is_file():
+            counts["skipped"] += 1
             continue
         try:
             extracted = extract_document(path, source_sha256=sha256_of(path))
@@ -297,12 +296,9 @@ def reindex_documents(request: Request, conn: sqlite3.Connection = DbDep) -> dic
             logger.warning("reindex skipped %s: %s", path.name, exc)
             counts["skipped"] += 1
             continue
-        account_id = extracted.document.account_id
-        if caller.allowed_account_ids is not None and (
-            account_id is None or account_id not in caller.allowed_account_ids
-        ):
-            continue
-        result = ingest_single_document(conn, extracted, str(uploads_dir))
+        result = ingest_single_document(
+            conn, extracted, str(uploads_dir), org_id=org_id
+        )
         counts["documents"] += result["documents"]
         counts["chunks"] += result["chunks"]
 

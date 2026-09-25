@@ -36,7 +36,6 @@ from app.backend.api.dependencies import (
     build_orchestrator,
     new_session_id,
     now_utc,
-    require_dataset,
 )
 from app.backend.api.ratelimit import client_address
 from app.backend.api.schemas import (
@@ -60,13 +59,13 @@ from app.backend.core.config import Settings
 from app.backend.core.errors import AuthorizationError, NotFoundError
 from app.backend.models.agent import AgentRequest
 from app.backend.services.actions import ActionForbidden, get_action_audit
+from app.backend.services.records import effective_account_ids
 from app.backend.services.audit import (
     AuditEvent,
     AuditOutcome,
     hash_identifier,
     record_event,
 )
-from app.backend.services.records import get_dataset_metadata
 
 router = APIRouter()
 
@@ -97,12 +96,15 @@ def health(request: Request) -> HealthResponse:
         conn: sqlite3.Connection | None = None
         try:
             conn = database.connect()
-            metadata = get_dataset_metadata(conn)
-            if metadata is not None:
-                snapshot = metadata.dataset_snapshot_raw
-            row = conn.execute("SELECT COUNT(*) AS n FROM documents").fetchone()
+            # Ready means the shared knowledge base is loaded: the system
+            # documents (org_id IS NULL) every workspace's assistant cites. It
+            # says nothing about any workspace's own data, which this
+            # unauthenticated endpoint must not count or reveal.
+            row = conn.execute(
+                "SELECT COUNT(*) AS n FROM documents WHERE org_id IS NULL"
+            ).fetchone()
             documents = int(row["n"]) if row else 0
-            database_ready = metadata is not None and documents > 0
+            database_ready = documents > 0
         except DatabaseError:
             database_ready = False
         finally:
@@ -150,7 +152,6 @@ def chat(
     request.state.body_user_id = payload.user_id
 
     settings = _settings(request)
-    require_dataset(conn)
 
     caller = authenticate(request, conn, settings)
     if not caller.is_demo:
@@ -180,7 +181,7 @@ def chat(
         session_id=session_id, account_scope=payload.account_scope
     )
 
-    orchestrator = build_orchestrator(conn, settings)
+    orchestrator = build_orchestrator(conn, settings, context.org_id)
     started = time.perf_counter()
     response = orchestrator.handle(
         AgentRequest(message=payload.message, context=context, request_id=request_id)
@@ -258,7 +259,7 @@ def chat(
         session_id=session_id,
         user_id=caller.user_id,
         role=caller.role,
-        account_scope=sorted(context.allowed_account_ids or []),
+        account_scope=effective_account_ids(conn, context.scope()),
         responded_at_utc=now_utc(),
     )
 
@@ -299,8 +300,6 @@ def confirm_action(
         raise AuthorizationError(
             "State-changing actions are disabled on this deployment."
         )
-    require_dataset(conn)
-
     caller = authenticate(request, conn, settings)
     approve = payload.decision is ConfirmationDecision.APPROVE
 
@@ -338,7 +337,7 @@ def confirm_action(
 
     context = caller.agent_context(session_id=payload.session_id)
 
-    orchestrator = build_orchestrator(conn, settings)
+    orchestrator = build_orchestrator(conn, settings, context.org_id)
     try:
         executed = orchestrator.confirm_action(
             action_id,
@@ -428,7 +427,7 @@ def pending_actions(
     caller = authenticate(request, conn, settings)
     context = caller.agent_context(session_id=None)
 
-    orchestrator = build_orchestrator(conn, settings)
+    orchestrator = build_orchestrator(conn, settings, context.org_id)
     actions = orchestrator.pending_actions(context)
     return PendingActionsResponse(
         count=len(actions),
@@ -456,7 +455,7 @@ def action_detail(
     caller = authenticate(request, conn, _settings(request))
     context = caller.agent_context(session_id=None)
 
-    audit = get_action_audit(conn, action_id, allowed_account_ids=context.scope())
+    audit = get_action_audit(conn, action_id, scope=context.scope())
     if audit is None:
         raise NotFoundError(f"action {action_id!r} was not found within your scope")
     return ActionDetailResponse(

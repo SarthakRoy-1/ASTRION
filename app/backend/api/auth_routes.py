@@ -53,6 +53,7 @@ from app.backend.core.errors import (
     NotFoundError,
 )
 from app.backend.email.provider import EmailDeliveryError
+from app.backend.services.records import effective_account_ids
 from app.backend.services.audit import (
     AuditEvent,
     list_events,
@@ -686,7 +687,7 @@ def me(request: Request, conn: sqlite3.Connection = DbDep) -> dict:
         "org_name": caller.org_name,
         "role": caller.org_role or caller.role.value,
         "permissions": sorted(p.value for p in caller.permissions),
-        "account_scope": sorted(caller.allowed_account_ids or []),
+        "account_scope": effective_account_ids(conn, caller.scope()),
         "memberships": memberships,
         "auth_mode": settings.auth_mode.value,
     }

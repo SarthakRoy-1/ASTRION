@@ -28,6 +28,7 @@ import uuid
 from collections.abc import Collection
 from datetime import datetime, timedelta, timezone
 
+from app.backend.tenancy import Scope
 from app.backend.models.actions import (
     ActionStatus,
     ActionType,
@@ -94,6 +95,7 @@ def _now() -> datetime:
 def _row_to_proposed(row: sqlite3.Row) -> ProposedAction:
     return ProposedAction(
         action_id=row["action_id"],
+        org_id=row["org_id"],
         action_type=row["action_type"],
         status=row["status"],
         account_id=row["account_id"],
@@ -114,6 +116,7 @@ def _row_to_proposed(row: sqlite3.Row) -> ProposedAction:
 def _row_to_executed(row: sqlite3.Row) -> ExecutedAction:
     return ExecutedAction(
         action_id=row["action_id"],
+        org_id=row["org_id"],
         action_type=row["action_type"],
         status=row["status"],
         account_id=row["account_id"],
@@ -167,6 +170,7 @@ def _build_preview(
 def prepare_action(
     conn: sqlite3.Connection,
     *,
+    org_id: str,
     action_type: ActionType,
     target_type: str,
     target_id: str,
@@ -183,8 +187,12 @@ def prepare_action(
 
     Callers are responsible for having already checked that `target_id` is
     visible to `requested_by` — the tool layer does this via the scoped
-    repositories before calling here.
+    repositories before calling here. `org_id` is the workspace the action
+    belongs to; it is stored with the action and is what every later read,
+    rejection and execution is checked against.
     """
+    if not org_id:
+        raise ActionError("an action must belong to a workspace")
     missing = [
         key for key in _REQUIRED_PARAMETERS[action_type] if not parameters.get(key)
     ]
@@ -196,6 +204,7 @@ def prepare_action(
     prepared_at = _now()
     proposed = ProposedAction(
         action_id=f"ACT-{uuid.uuid4().hex[:12]}",
+        org_id=org_id,
         action_type=action_type,
         status=ActionStatus.PENDING_CONFIRMATION,
         account_id=account_id,
@@ -216,14 +225,15 @@ def prepare_action(
         conn.execute(
             """
             INSERT INTO agent_actions
-                (action_id, action_type, status, account_id, target_type, target_id,
-                 parameters_json, preview, reason, evidence_chunk_ids_json,
+                (action_id, org_id, action_type, status, account_id, target_type,
+                 target_id, parameters_json, preview, reason, evidence_chunk_ids_json,
                  requested_by, requested_by_role, session_id, prepared_at_utc,
                  expires_at_utc)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 proposed.action_id,
+                proposed.org_id,
                 proposed.action_type.value,
                 proposed.status.value,
                 proposed.account_id,
@@ -243,59 +253,55 @@ def prepare_action(
     return proposed
 
 
-def get_action(
-    conn: sqlite3.Connection,
-    action_id: str,
-    *,
-    allowed_account_ids: Collection[str] | None = None,
-) -> ProposedAction | None:
+def _visible_row(conn: sqlite3.Connection, action_id: str, scope: Scope):
+    """The action's row, if it belongs to the caller's workspace and is in scope.
+
+    The workspace is part of the lookup, so another workspace's action is not
+    fetched and then rejected: it is not found. An account-narrowed caller
+    additionally cannot see an action tied to an account outside its narrowing;
+    an action tied to no account is the workspace's, and visible within it.
+    """
+    if scope.org_id is None:
+        return None
     row = conn.execute(
-        "SELECT * FROM agent_actions WHERE action_id = ?", (action_id,)
+        "SELECT * FROM agent_actions WHERE action_id = ? AND org_id = ?",
+        (action_id, scope.org_id),
     ).fetchone()
     if row is None:
         return None
-    if (
-        allowed_account_ids is not None
-        and row["account_id"] is not None
-        and row["account_id"] not in allowed_account_ids
-    ):
+    if row["account_id"] is not None and not scope.allows_account(row["account_id"]):
         return None
-    return _row_to_proposed(row)
+    return row
+
+
+def get_action(
+    conn: sqlite3.Connection, action_id: str, *, scope: Scope
+) -> ProposedAction | None:
+    row = _visible_row(conn, action_id, scope)
+    return None if row is None else _row_to_proposed(row)
 
 
 def get_action_audit(
-    conn: sqlite3.Connection,
-    action_id: str,
-    *,
-    allowed_account_ids: Collection[str] | None = None,
+    conn: sqlite3.Connection, action_id: str, *, scope: Scope
 ) -> ExecutedAction | None:
     """The full audit record: who, what, which evidence, and every timestamp."""
-    row = conn.execute(
-        "SELECT * FROM agent_actions WHERE action_id = ?", (action_id,)
-    ).fetchone()
-    if row is None:
-        return None
-    if (
-        allowed_account_ids is not None
-        and row["account_id"] is not None
-        and row["account_id"] not in allowed_account_ids
-    ):
-        return None
-    return _row_to_executed(row)
+    row = _visible_row(conn, action_id, scope)
+    return None if row is None else _row_to_executed(row)
 
 
 def list_pending_actions(
-    conn: sqlite3.Connection, *, allowed_account_ids: Collection[str] | None = None
+    conn: sqlite3.Connection, *, scope: Scope
 ) -> list[ProposedAction]:
+    if scope.org_id is None:
+        return []
     rows = conn.execute(
-        "SELECT * FROM agent_actions WHERE status = ? ORDER BY prepared_at_utc",
-        (ActionStatus.PENDING_CONFIRMATION.value,),
+        "SELECT * FROM agent_actions WHERE org_id = ? AND status = ? "
+        "ORDER BY prepared_at_utc",
+        (scope.org_id, ActionStatus.PENDING_CONFIRMATION.value),
     ).fetchall()
     actions = [_row_to_proposed(r) for r in rows]
-    if allowed_account_ids is None:
-        return actions
     return [
-        a for a in actions if a.account_id is None or a.account_id in allowed_account_ids
+        a for a in actions if a.account_id is None or scope.allows_account(a.account_id)
     ]
 
 
@@ -304,10 +310,10 @@ def reject_action(
     action_id: str,
     *,
     rejected_by: str,
-    allowed_account_ids: Collection[str] | None = None,
+    scope: Scope,
 ) -> ExecutedAction:
     """Decline a pending action. Terminal — it can never be executed after."""
-    action = get_action(conn, action_id, allowed_account_ids=allowed_account_ids)
+    action = get_action(conn, action_id, scope=scope)
     if action is None:
         raise ActionNotFound(f"action {action_id!r} not found or not in scope")
     if action.status is not ActionStatus.PENDING_CONFIRMATION:
@@ -330,7 +336,7 @@ def reject_action(
                 ActionStatus.PENDING_CONFIRMATION.value,
             ),
         )
-    audit = get_action_audit(conn, action_id, allowed_account_ids=allowed_account_ids)
+    audit = get_action_audit(conn, action_id, scope=scope)
     assert audit is not None
     return audit
 
@@ -340,7 +346,7 @@ def execute_action(
     action_id: str,
     *,
     confirmed_by: str,
-    allowed_account_ids: Collection[str] | None = None,
+    scope: Scope,
     target_exists: bool = True,
 ) -> ExecutedAction:
     """Perform a confirmed action. The only function here that mutates state.
@@ -350,7 +356,7 @@ def execute_action(
     left the caller's scope between preparation and confirmation fails rather
     than executing against a stale premise.
     """
-    action = get_action(conn, action_id, allowed_account_ids=allowed_account_ids)
+    action = get_action(conn, action_id, scope=scope)
     if action is None:
         raise ActionNotFound(f"action {action_id!r} not found or not in scope")
 
@@ -421,7 +427,7 @@ def execute_action(
             (json.dumps(result, sort_keys=True), action_id),
         )
 
-    audit = get_action_audit(conn, action_id, allowed_account_ids=allowed_account_ids)
+    audit = get_action_audit(conn, action_id, scope=scope)
     assert audit is not None
     return audit
 
@@ -435,12 +441,13 @@ def _apply_effect(
         conn.execute(
             """
             INSERT INTO ticket_escalations
-                (escalation_id, action_id, ticket_id, account_id, severity, reason,
-                 created_by, created_at_utc)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                (escalation_id, org_id, action_id, ticket_id, account_id, severity,
+                 reason, created_by, created_at_utc)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 escalation_id,
+                action.org_id,
                 action.action_id,
                 action.target_id,
                 action.account_id,
@@ -457,12 +464,13 @@ def _apply_effect(
         conn.execute(
             """
             INSERT INTO service_credits
-                (credit_id, action_id, order_id, account_id, amount, currency,
+                (credit_id, org_id, action_id, order_id, account_id, amount, currency,
                  required_manager_approval, approved_by, created_at_utc)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 credit_id,
+                action.org_id,
                 action.action_id,
                 action.target_id,
                 action.account_id,
@@ -484,11 +492,13 @@ def _apply_effect(
     conn.execute(
         """
         INSERT INTO ticket_notes
-            (note_id, action_id, ticket_id, account_id, note, created_by, created_at_utc)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+            (note_id, org_id, action_id, ticket_id, account_id, note, created_by,
+             created_at_utc)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             note_id,
+            action.org_id,
             action.action_id,
             action.target_id,
             action.account_id,
@@ -500,25 +510,40 @@ def _apply_effect(
     return {"note_id": note_id, "ticket_id": action.target_id}
 
 
-def get_ticket_escalations(conn: sqlite3.Connection, ticket_id: str) -> list[dict]:
+def get_ticket_escalations(
+    conn: sqlite3.Connection, ticket_id: str, *, org_id: str | None
+) -> list[dict]:
+    if org_id is None:
+        return []
     rows = conn.execute(
-        "SELECT * FROM ticket_escalations WHERE ticket_id = ? ORDER BY created_at_utc",
-        (ticket_id,),
+        "SELECT * FROM ticket_escalations WHERE org_id = ? AND ticket_id = ? "
+        "ORDER BY created_at_utc",
+        (org_id, ticket_id),
     ).fetchall()
     return [dict(r) for r in rows]
 
 
-def get_ticket_notes(conn: sqlite3.Connection, ticket_id: str) -> list[dict]:
+def get_ticket_notes(
+    conn: sqlite3.Connection, ticket_id: str, *, org_id: str | None
+) -> list[dict]:
+    if org_id is None:
+        return []
     rows = conn.execute(
-        "SELECT * FROM ticket_notes WHERE ticket_id = ? ORDER BY created_at_utc",
-        (ticket_id,),
+        "SELECT * FROM ticket_notes WHERE org_id = ? AND ticket_id = ? "
+        "ORDER BY created_at_utc",
+        (org_id, ticket_id),
     ).fetchall()
     return [dict(r) for r in rows]
 
 
-def get_order_service_credits(conn: sqlite3.Connection, order_id: str) -> list[dict]:
+def get_order_service_credits(
+    conn: sqlite3.Connection, order_id: str, *, org_id: str | None
+) -> list[dict]:
+    if org_id is None:
+        return []
     rows = conn.execute(
-        "SELECT * FROM service_credits WHERE order_id = ? ORDER BY created_at_utc",
-        (order_id,),
+        "SELECT * FROM service_credits WHERE org_id = ? AND order_id = ? "
+        "ORDER BY created_at_utc",
+        (org_id, order_id),
     ).fetchall()
     return [dict(row) for row in rows]

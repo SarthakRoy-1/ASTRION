@@ -472,8 +472,8 @@ def test_an_audit_write_does_not_commit_a_callers_open_transaction(conn):
     """
     conn.execute("BEGIN IMMEDIATE")
     conn.execute(
-        "INSERT INTO tickets (ticket_id, account_id, subject, status) "
-        "VALUES ('TKT-rollback', 'ACCT-001', 'not committed', 'OPEN')"
+        "INSERT INTO tickets (org_id, ticket_id, account_id, subject, status) "
+        "VALUES ('ORG-legacy-assessment', 'TKT-rollback', 'ACCT-001', 'not committed', 'OPEN')"
     )
     record_event(conn, AuditEvent.LOGIN_SUCCEEDED, actor_user_id="USR-x")
     conn.rollback()

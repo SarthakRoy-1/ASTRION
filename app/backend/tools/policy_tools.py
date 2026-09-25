@@ -36,7 +36,7 @@ def _evaluate_cancellation(
 
     try:
         decision = evaluate_cancellation(
-            conn, order_id, allowed_account_ids=context.scope()
+            conn, order_id, scope=context.scope()
         )
     except PolicyLookupError as exc:
         return ToolResult(status=ToolStatus.NOT_FOUND, message=str(exc))
@@ -65,7 +65,7 @@ def _evaluate_service_credit(
 
     try:
         decision = evaluate_service_credit(
-            conn, order_id, allowed_account_ids=context.scope()
+            conn, order_id, scope=context.scope()
         )
     except PolicyLookupError as exc:
         return ToolResult(status=ToolStatus.NOT_FOUND, message=str(exc))
@@ -104,7 +104,7 @@ def _evaluate_sla(
             conn,
             ticket_id,
             severity=severity,
-            allowed_account_ids=context.scope(),
+            scope=context.scope(),
         )
     except PolicyLookupError as exc:
         return ToolResult(status=ToolStatus.NOT_FOUND, message=str(exc))

@@ -20,6 +20,7 @@ from conftest import (
     SUPPORT_MANAGER,
     post_chat,
 )
+from app.backend.tenancy import LEGACY_ORG_ID, LEGACY_SCOPE, Scope  # noqa: F401
 
 
 def ask(client, message, user_id=SUPPORT_AGENT, **extra):
@@ -478,7 +479,7 @@ def test_scenario_5_stops_at_pending_confirmation(client, conn):
 
     assert body["outcome"] == "needs_confirmation"
     assert body["action_status"] == "pending_confirmation"
-    assert get_ticket_escalations(conn, "TKT-501") == []
+    assert get_ticket_escalations(conn, "TKT-501", org_id=LEGACY_ORG_ID) == []
 
 
 def test_scenario_5_the_proposal_carries_its_evidence(client):
@@ -509,7 +510,7 @@ def test_scenario_5_confirmation_executes_exactly_once(client, conn):
     assert confirmation.status_code == 200
     assert confirmation.json()["action_status"] == "executed"
 
-    escalations = get_ticket_escalations(conn, "TKT-501")
+    escalations = get_ticket_escalations(conn, "TKT-501", org_id=LEGACY_ORG_ID)
     assert len(escalations) == 1
     assert escalations[0]["created_by"] == SUPPORT_MANAGER
     assert escalations[0]["ticket_id"] == "TKT-501"

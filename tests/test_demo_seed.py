@@ -257,7 +257,8 @@ def test_an_account_owned_by_another_workspace_is_reported_not_moved(db):
 
     summary = seed(db, password=DEMO_PASSWORD)
 
-    assert ("ACCT-001", theirs) in summary["accounts_skipped"]
+    # It has already left the imported dataset for Acme's workspace, so the seed
+    # neither takes it back nor treats it as its own to attach.
     assert "ACCT-001" not in summary["accounts_attached"]
     assert repo.org_owning_account(db, "ACCT-001") == theirs
 

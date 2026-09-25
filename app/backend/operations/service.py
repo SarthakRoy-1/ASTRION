@@ -17,6 +17,8 @@ from __future__ import annotations
 import sqlite3
 from collections.abc import Collection
 
+from app.backend.services.records import effective_account_ids
+from app.backend.tenancy import Scope
 from app.backend.models.signals import Signal, SignalReport
 from app.backend.operations.detection import detect_signals
 from app.backend.operations.ranking import rank
@@ -25,7 +27,7 @@ from app.backend.operations.ranking import rank
 def build_report(
     conn: sqlite3.Connection,
     *,
-    allowed_account_ids: Collection[str] | None,
+    scope: Scope,
     limit: int | None = None,
 ) -> SignalReport:
     """Detect and rank every signal visible under one tenant scope.
@@ -34,7 +36,7 @@ def build_report(
     the three most urgent rather than the first three detected.
     """
     signals, reference_time = detect_signals(
-        conn, allowed_account_ids=allowed_account_ids
+        conn, scope=scope
     )
     ordered = rank(signals)
     if limit is not None:
@@ -43,9 +45,7 @@ def build_report(
     return SignalReport(
         signals=ordered,
         reference_time=reference_time,
-        scope_account_ids=(
-            sorted(allowed_account_ids) if allowed_account_ids is not None else []
-        ),
+        scope_account_ids=effective_account_ids(conn, scope),
     )
 
 
@@ -53,7 +53,7 @@ def get_signal(
     conn: sqlite3.Connection,
     signal_id: str,
     *,
-    allowed_account_ids: Collection[str] | None,
+    scope: Scope,
 ) -> Signal | None:
     """One signal by id, or None.
 
@@ -67,7 +67,7 @@ def get_signal(
     None means "not found within your scope", indistinguishable from "does not
     exist" — the same refusal shape the record layer uses, for the same reason.
     """
-    report = build_report(conn, allowed_account_ids=allowed_account_ids)
+    report = build_report(conn, scope=scope)
     for signal in report.signals:
         if signal.signal_id == signal_id:
             return signal

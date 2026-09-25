@@ -39,7 +39,7 @@ def _prepare_for_ticket(
     if error is not None:
         return error
 
-    ticket = get_ticket(conn, ticket_id, allowed_account_ids=context.scope())
+    ticket = get_ticket(conn, ticket_id, scope=context.scope())
     if ticket is None:
         return ToolResult(
             status=ToolStatus.NOT_FOUND,
@@ -70,6 +70,7 @@ def _prepare_for_ticket(
     try:
         proposed = prepare_action(
             conn,
+            org_id=context.org_id,
             action_type=action_type,
             target_type="ticket",
             target_id=ticket.ticket_id,
@@ -163,7 +164,7 @@ def _prepare_service_credit(
 
     try:
         decision = evaluate_service_credit(
-            conn, order_id, allowed_account_ids=context.scope()
+            conn, order_id, scope=context.scope()
         )
     except PolicyLookupError as exc:
         return ToolResult(status=ToolStatus.NOT_FOUND, message=str(exc))
@@ -214,6 +215,7 @@ def _prepare_service_credit(
     try:
         proposed = prepare_action(
             conn,
+            org_id=context.org_id,
             action_type=ActionType.ISSUE_SERVICE_CREDIT,
             target_type="order",
             target_id=decision.order_id,

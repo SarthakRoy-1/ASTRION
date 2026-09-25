@@ -30,8 +30,12 @@ def test_get_connection_row_factory_allows_column_access(tmp_path):
     try:
         db.initialize_schema(conn)
         conn.execute(
-            "INSERT INTO accounts (account_id, account_name) VALUES (?, ?)",
-            ("ACCT-X", "Test Account"),
+            "INSERT INTO organizations (org_id, name, slug, created_at_utc) "
+            "VALUES ('ORG-X', 'X', 'x', 't')"
+        )
+        conn.execute(
+            "INSERT INTO accounts (org_id, account_id, account_name) VALUES (?, ?, ?)",
+            ("ORG-X", "ACCT-X", "Test Account"),
         )
         row = conn.execute("SELECT * FROM accounts").fetchone()
         assert row["account_id"] == "ACCT-X"
@@ -130,35 +134,38 @@ def test_strict_table_rejects_wrong_type(tmp_path):
         conn.close()
 
 
-def test_dataset_metadata_rejects_second_row(tmp_path):
+def test_dataset_metadata_holds_one_row_per_workspace(tmp_path):
     conn = db.get_connection(tmp_path / "test.db")
     try:
         db.initialize_schema(conn)
-        conn.execute(
-            """
-            INSERT INTO dataset_metadata
-                (id, dataset_snapshot_raw, dataset_snapshot_at, dataset_timezone,
-                 source_workbook_filename, source_workbook_sha256, source_sheet_names,
-                 ingested_at_utc, ingestion_script_version)
-            VALUES (1, 'x', 'x', 'x', 'x', 'x', '[]', 'x', 'x')
-            """
-        )
-        conn.commit()
-        raised = False
-        try:
+        for org in ("ORG-1", "ORG-2"):
+            conn.execute(
+                "INSERT INTO organizations (org_id, name, slug, created_at_utc) "
+                "VALUES (?, ?, ?, 't')",
+                (org, org, org.lower()),
+            )
+
+        def insert(org):
             conn.execute(
                 """
                 INSERT INTO dataset_metadata
-                    (id, dataset_snapshot_raw, dataset_snapshot_at, dataset_timezone,
+                    (org_id, dataset_snapshot_raw, dataset_snapshot_at, dataset_timezone,
                      source_workbook_filename, source_workbook_sha256, source_sheet_names,
                      ingested_at_utc, ingestion_script_version)
-                VALUES (2, 'y', 'y', 'y', 'y', 'y', '[]', 'y', 'y')
-                """
+                VALUES (?, 'x', 'x', 'x', 'x', 'x', '[]', 'x', 'x')
+                """,
+                (org,),
             )
             conn.commit()
+
+        insert("ORG-1")
+        insert("ORG-2")  # another workspace may have its own snapshot
+        raised = False
+        try:
+            insert("ORG-1")  # but a workspace has only one
         except sqlite3.IntegrityError:
             raised = True
-        assert raised, "dataset_metadata must only ever hold id = 1"
+        assert raised, "dataset_metadata must hold at most one row per workspace"
     finally:
         conn.close()
 

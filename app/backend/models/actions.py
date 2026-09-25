@@ -68,6 +68,9 @@ class ProposedAction(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     action_id: str
+    #: The workspace this action belongs to. Set from the preparing caller's
+    #: session, never from a request or model output.
+    org_id: str | None = None
     action_type: ActionType
     status: ActionStatus
     account_id: str | None
@@ -124,6 +127,9 @@ class ExecutedAction(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     action_id: str
+    #: The workspace this action belongs to. Set from the preparing caller's
+    #: session, never from a request or model output.
+    org_id: str | None = None
     action_type: ActionType
     status: ActionStatus
     account_id: str | None

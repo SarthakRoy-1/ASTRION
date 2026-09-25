@@ -106,7 +106,7 @@ def _get_operational_signals(
         )
 
     wanted_type = arguments.get("signal_type")
-    report = build_report(conn, allowed_account_ids=context.scope())
+    report = build_report(conn, scope=context.scope())
 
     signals = report.signals
     if wanted_type:
@@ -148,7 +148,7 @@ def _investigate_signal(
     if error is not None:
         return error
 
-    signal = get_signal(conn, signal_id, allowed_account_ids=context.scope())
+    signal = get_signal(conn, signal_id, scope=context.scope())
     if signal is None:
         # Identical wording whether the signal is unknown or merely outside this
         # workspace — the same refusal shape the record layer uses, so this tool

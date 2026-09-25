@@ -42,6 +42,7 @@ import sqlite3
 from collections.abc import Collection
 from decimal import Decimal
 
+from app.backend.tenancy import Scope
 from app.backend.models.documents import Topic
 from app.backend.models.policy import (
     PolicyEvaluationContext,
@@ -65,23 +66,23 @@ def evaluate_sla(
     ticket_id: str,
     *,
     severity: str | None = None,
-    allowed_account_ids: Collection[str] | None = None,
+    scope: Scope,
     evaluation_context: PolicyEvaluationContext | None = None,
 ) -> SlaDecision:
     """Decide the first-response target for `ticket_id` and whether it is breached."""
-    ticket = get_ticket(conn, ticket_id, allowed_account_ids=allowed_account_ids)
+    ticket = get_ticket(conn, ticket_id, scope=scope)
     if ticket is None:
         raise PolicyLookupError(f"ticket {ticket_id!r} not found or not in scope")
 
-    account = get_account(conn, ticket.account_id, allowed_account_ids=allowed_account_ids)
+    account = get_account(conn, ticket.account_id, scope=scope)
     plan = account.plan if account else None
 
-    context = evaluation_context or load_evaluation_context(conn)
+    context = evaluation_context or load_evaluation_context(conn, scope.org_id)
     evidence, authority = gather_policy_evidence(
         conn,
         topic=Topic.SUPPORT_RESPONSE,
         account_id=ticket.account_id,
-        allowed_account_ids=allowed_account_ids,
+        scope=scope,
     )
     targets = extract_response_targets(evidence, plan=plan)
     overrides = [note.reason for note in authority.overrides]

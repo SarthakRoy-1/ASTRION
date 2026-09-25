@@ -11,45 +11,24 @@ counted. This module is that layer, and it follows exactly the rules
 - **Scoping is compiled into the WHERE clause**, not filtered afterwards. An
   out-of-scope row is never loaded into the process at all, so there is no
   filtered-out object in memory for a later bug to leak.
-- **`allowed_account_ids=None` means unrestricted**, matching the existing
-  convention — used by scripts and by the policy engine's own tests, never by
-  an HTTP caller, whose scope is always resolved from their workspace.
+- **The workspace is always in the WHERE clause.** Every function takes a
+  `Scope` (app/backend/tenancy.py), whose workspace predicate is compiled into
+  the query. There is no "unrestricted" caller: a script that wants every
+  workspace's rows asks for each in turn.
 
-The one thing worth stating that is *not* obvious: an empty collection means
-"authorized for no accounts", which must return nothing. That is a different
-case from `None`, and conflating the two would turn a user with no workspace
-into a user who can see everything.
+An empty scope -- no workspace, or a workspace narrowed to no accounts -- must
+return nothing. That is a different case from "the whole workspace", and
+conflating the two would turn a user with no workspace into a user who can see
+everything.
 """
 
 from __future__ import annotations
 
 import sqlite3
-from collections.abc import Collection
 
 from app.backend.models.records import Order, Ticket
+from app.backend.tenancy import Scope
 from app.backend.services.records import _row_to_order, _row_to_ticket
-
-
-def _scope_clause(
-    allowed_account_ids: Collection[str] | None, alias: str = ""
-) -> tuple[str, list[str]]:
-    """The WHERE fragment implementing account scoping, and its parameters.
-
-    Returned as (clause, params) so callers can AND it into any query, exactly
-    as `services/documents.py::visibility_sql` does for the document layer.
-
-    An empty collection compiles to a predicate that matches nothing rather
-    than to no predicate at all — the difference between "authorized for no
-    accounts" and "unrestricted".
-    """
-    prefix = f"{alias}." if alias else ""
-    if allowed_account_ids is None:
-        return "1 = 1", []
-    ordered = sorted(set(allowed_account_ids))
-    if not ordered:
-        return "1 = 0", []
-    placeholders = ",".join("?" * len(ordered))
-    return f"{prefix}account_id IN ({placeholders})", ordered
 
 
 # --- tickets ----------------------------------------------------------------
@@ -58,7 +37,7 @@ def _scope_clause(
 def list_tickets(
     conn: sqlite3.Connection,
     *,
-    allowed_account_ids: Collection[str] | None = None,
+    scope: Scope,
     open_only: bool = False,
 ) -> list[Ticket]:
     """Every ticket in scope, oldest first.
@@ -68,7 +47,7 @@ def list_tickets(
     detector that missed `Open` while matching `open` would silently under-
     report exactly the tickets that matter most.
     """
-    clause, params = _scope_clause(allowed_account_ids)
+    clause, params = scope.clause()
     sql = f"SELECT * FROM tickets WHERE {clause}"
     if open_only:
         sql += " AND LOWER(COALESCE(status, '')) = 'open'"
@@ -79,10 +58,10 @@ def list_tickets(
 def list_orders(
     conn: sqlite3.Connection,
     *,
-    allowed_account_ids: Collection[str] | None = None,
+    scope: Scope,
 ) -> list[Order]:
     """Every order in scope, oldest first."""
-    clause, params = _scope_clause(allowed_account_ids)
+    clause, params = scope.clause()
     return [
         _row_to_order(row)
         for row in conn.execute(
@@ -94,7 +73,7 @@ def list_orders(
 def account_names(
     conn: sqlite3.Connection,
     *,
-    allowed_account_ids: Collection[str] | None = None,
+    scope: Scope,
 ) -> dict[str, str]:
     """Account id -> display name, for labelling signals.
 
@@ -102,7 +81,7 @@ def account_names(
     labelled an out-of-scope account would leak the one field most obviously
     identifying it.
     """
-    clause, params = _scope_clause(allowed_account_ids)
+    clause, params = scope.clause()
     return {
         row["account_id"]: row["account_name"] or row["account_id"]
         for row in conn.execute(
@@ -117,11 +96,11 @@ def account_names(
 def count_tickets_by_account(
     conn: sqlite3.Connection,
     *,
-    allowed_account_ids: Collection[str] | None = None,
+    scope: Scope,
     open_only: bool = True,
 ) -> dict[str, int]:
     """Open ticket counts per account, for volume comparison."""
-    clause, params = _scope_clause(allowed_account_ids)
+    clause, params = scope.clause()
     sql = f"SELECT account_id, COUNT(*) AS n FROM tickets WHERE {clause}"
     if open_only:
         sql += " AND LOWER(COALESCE(status, '')) = 'open'"
@@ -132,7 +111,7 @@ def count_tickets_by_account(
 def count_orders_by_carrier(
     conn: sqlite3.Connection,
     *,
-    allowed_account_ids: Collection[str] | None = None,
+    scope: Scope,
 ) -> dict[str, dict[str, int]]:
     """Per carrier: how many orders, and across how many distinct accounts.
 
@@ -140,7 +119,7 @@ def count_orders_by_carrier(
     concern rather than one customer's bad luck, so it is computed in SQL
     rather than inferred from a list the caller might have filtered.
     """
-    clause, params = _scope_clause(allowed_account_ids)
+    clause, params = scope.clause()
     rows = conn.execute(
         f"""
         SELECT COALESCE(carrier, '(unknown)') AS carrier,

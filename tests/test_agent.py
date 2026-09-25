@@ -10,6 +10,7 @@ from decimal import Decimal
 
 import pytest
 
+from app.backend.tenancy import LEGACY_ORG_ID, LEGACY_SCOPE, Scope  # noqa: F401
 from app.backend.agent.orchestrator import AgentOrchestrator
 from app.backend.agent.provider import (
     DeterministicPlanner,
@@ -274,7 +275,7 @@ def test_natural_language_request_never_executes(orchestrator, agent_context):
     assert response.outcome is ResponseOutcome.NEEDS_CONFIRMATION
     assert response.pending_action.status is ActionStatus.PENDING_CONFIRMATION
     assert response.executed_action is None
-    assert get_ticket_escalations(orchestrator._conn, "TKT-501") == []
+    assert get_ticket_escalations(orchestrator._conn, "TKT-501", org_id=LEGACY_ORG_ID) == []
 
 
 def test_answer_states_that_nothing_has_happened_yet(orchestrator, agent_context):
@@ -293,7 +294,7 @@ def test_explicit_confirmation_executes(orchestrator, agent_context, manager_con
 
     assert executed.status is ActionStatus.EXECUTED
     assert executed.confirmed_by == manager_context.user_id
-    assert len(get_ticket_escalations(orchestrator._conn, "TKT-501")) == 1
+    assert len(get_ticket_escalations(orchestrator._conn, "TKT-501", org_id=LEGACY_ORG_ID)) == 1
 
 
 def test_rejection_leaves_state_untouched(orchestrator, agent_context, manager_context):
@@ -304,7 +305,7 @@ def test_rejection_leaves_state_untouched(orchestrator, agent_context, manager_c
     )
 
     assert rejected.status is ActionStatus.REJECTED
-    assert get_ticket_escalations(orchestrator._conn, "TKT-501") == []
+    assert get_ticket_escalations(orchestrator._conn, "TKT-501", org_id=LEGACY_ORG_ID) == []
 
 
 def test_readonly_role_cannot_prepare_or_confirm(orchestrator, readonly_context, agent_context):
@@ -368,7 +369,7 @@ def test_scoped_caller_cannot_prepare_an_action_on_another_account(
     response = ask(orchestrator, "Escalate TKT-502 immediately.", northstar_context)
 
     assert response.pending_action is None
-    assert get_ticket_escalations(orchestrator._conn, "TKT-502") == []
+    assert get_ticket_escalations(orchestrator._conn, "TKT-502", org_id=LEGACY_ORG_ID) == []
 
 
 def test_a_malicious_planner_cannot_widen_scope(conn, northstar_context):
@@ -566,15 +567,26 @@ def test_context_is_immutable(agent_context):
         agent_context.allowed_account_ids = frozenset({"ACCT-999"})
 
 
-def test_unrestricted_context_reports_no_scope():
-    assert AgentContext(user_id="u").scope() is None
-    assert AgentContext(user_id="u", allowed_account_ids=frozenset()).scope() == set()
+def test_a_contexts_scope_is_its_workspace_narrowed_by_its_accounts():
+    # No account narrowing: the whole workspace.
+    assert AgentContext(user_id="u", org_id="ORG-1").scope() == Scope("ORG-1", None)
+    # Narrowed to no accounts, and to some.
     assert AgentContext(
-        user_id="u", allowed_account_ids=frozenset({"ACCT-001"})
-    ).scope() == {"ACCT-001"}
+        user_id="u", allowed_account_ids=frozenset(), org_id="ORG-1"
+    ).scope() == Scope("ORG-1", frozenset())
+    assert AgentContext(
+        user_id="u", allowed_account_ids=frozenset({"ACCT-001"}), org_id="ORG-1"
+    ).scope() == Scope("ORG-1", frozenset({"ACCT-001"}))
+
+
+def test_a_context_with_no_workspace_can_reach_nothing():
+    """The failure mode that matters: forgetting the workspace must not mean 'all of them'."""
+    scope = AgentContext(user_id="u").scope()
+    assert scope.is_empty
+    assert scope.clause() == ("1 = 0", [])
 
 
 def test_role_governs_state_change_permission():
-    assert AgentContext(user_id="u", role=Role.SUPPORT_AGENT).may_change_state
-    assert AgentContext(user_id="u", role=Role.SUPPORT_MANAGER).may_change_state
-    assert not AgentContext(user_id="u", role=Role.READ_ONLY).may_change_state
+    assert AgentContext(user_id="u", role=Role.SUPPORT_AGENT, org_id=LEGACY_ORG_ID).may_change_state
+    assert AgentContext(user_id="u", role=Role.SUPPORT_MANAGER, org_id=LEGACY_ORG_ID).may_change_state
+    assert not AgentContext(user_id="u", role=Role.READ_ONLY, org_id=LEGACY_ORG_ID).may_change_state

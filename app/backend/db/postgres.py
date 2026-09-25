@@ -310,12 +310,12 @@ class PostgresDatabase:
             conn.close()
         self._ready = True
 
-    def migrate(self) -> list[str]:
+    def migrate(self, *, up_to: str | None = None) -> list[str]:
         from app.backend.db.migrations import apply_migrations
 
         conn = self.connect()
         try:
-            applied = apply_migrations(conn, "postgres")
+            applied = apply_migrations(conn, "postgres", up_to=up_to)
         finally:
             conn.close()
         self._ready = True

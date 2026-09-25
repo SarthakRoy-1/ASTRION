@@ -16,6 +16,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from app.backend.tenancy import LEGACY_ORG_ID, LEGACY_SCOPE, Scope  # noqa: F401
 from app.backend.agent.openai_provider import (
     OpenAIPlanningProvider,
     serialise_tool_result,
@@ -189,7 +190,7 @@ def test_the_system_prompt_states_the_boundaries_without_the_answers(
 def test_the_prompt_carries_the_dataset_reference_time_not_today(conn, agent_context):
     from app.backend.policies.base import load_evaluation_context
 
-    reference = load_evaluation_context(conn).reference_time
+    reference = load_evaluation_context(conn, LEGACY_ORG_ID).reference_time
     _, client = run(
         conn,
         agent_context,
@@ -415,7 +416,7 @@ def test_the_model_can_only_prepare_an_action(conn, agent_context):
     )
 
     assert response.pending_action.status is ActionStatus.PENDING_CONFIRMATION
-    assert get_ticket_escalations(conn, "TKT-501") == []
+    assert get_ticket_escalations(conn, "TKT-501", org_id=LEGACY_ORG_ID) == []
 
 
 def test_a_prepared_action_is_labelled_as_not_yet_performed(conn, agent_context):
@@ -554,8 +555,7 @@ def test_the_context_block_marks_an_external_customer(conn):
 
     block = build_context_block(
         AgentContext(
-            user_id="c", role=Role.CUSTOMER, allowed_account_ids=frozenset({"ACCT-001"})
-        )
+            user_id="c", role=Role.CUSTOMER, allowed_account_ids=frozenset({"ACCT-001"}), org_id=LEGACY_ORG_ID)
     )
 
     assert "external customer" in block

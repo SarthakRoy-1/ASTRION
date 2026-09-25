@@ -187,7 +187,7 @@ class AgentOrchestrator:
             pending_action=proposals[-1] if proposals else None,
             uncertainties=uncertainties,
             escalation_recommended=_should_escalate(history, uncertainties),
-            reference_time=self._reference_time(),
+            reference_time=self._reference_time(request.context),
             step_budget_exhausted=budget_exhausted,
             trust_status=assessment.status.value,
             trust_reasons=list(assessment.reasons),
@@ -230,7 +230,7 @@ class AgentOrchestrator:
             )
 
         scope = context.scope()
-        action = get_action(self._conn, action_id, allowed_account_ids=scope)
+        action = get_action(self._conn, action_id, scope=scope)
         if action is None:
             raise ActionNotFound(f"action {action_id!r} not found or not in scope")
 
@@ -238,7 +238,7 @@ class AgentOrchestrator:
 
         if not approve:
             return reject_action(
-                self._conn, action_id, rejected_by=context.user_id, allowed_account_ids=scope
+                self._conn, action_id, rejected_by=context.user_id, scope=scope
             )
 
         if expected_fingerprint is not None:
@@ -259,7 +259,7 @@ class AgentOrchestrator:
         target_exists = True
         if action.target_type == "ticket":
             target_exists = (
-                get_ticket(self._conn, action.target_id, allowed_account_ids=scope)
+                get_ticket(self._conn, action.target_id, scope=scope)
                 is not None
             )
 
@@ -267,7 +267,7 @@ class AgentOrchestrator:
             self._conn,
             action_id,
             confirmed_by=context.user_id,
-            allowed_account_ids=scope,
+            scope=scope,
             target_exists=target_exists,
         )
 
@@ -297,7 +297,7 @@ class AgentOrchestrator:
 
         try:
             decision = evaluate_service_credit(
-                self._conn, action.target_id, allowed_account_ids=context.scope()
+                self._conn, action.target_id, scope=context.scope()
             )
         except (PolicyLookupError, PolicyDataError) as exc:
             raise ActionStateError(
@@ -351,13 +351,13 @@ class AgentOrchestrator:
             )
 
     def pending_actions(self, context: AgentContext):
-        return list_pending_actions(self._conn, allowed_account_ids=context.scope())
+        return list_pending_actions(self._conn, scope=context.scope())
 
     # --- helpers ---------------------------------------------------------------
 
-    def _reference_time(self):
+    def _reference_time(self, context: AgentContext):
         try:
-            return load_evaluation_context(self._conn).reference_time
+            return load_evaluation_context(self._conn, context.org_id).reference_time
         except PolicyDataError:
             return None
 

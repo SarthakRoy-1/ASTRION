@@ -19,9 +19,10 @@ from __future__ import annotations
 
 import sqlite3
 from collections.abc import Collection
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 
+from app.backend.tenancy import Scope
 from app.backend.models.documents import AuthorityDecision, Evidence, Topic
 from app.backend.models.policy import PolicyEvaluationContext
 from app.backend.retrieval.authority import resolve_authority
@@ -42,13 +43,23 @@ class PolicyDataError(Exception):
     """Structured data the calculation depends on is internally inconsistent."""
 
 
-def load_evaluation_context(conn: sqlite3.Connection) -> PolicyEvaluationContext:
-    """Build the reference clock from the ingested dataset metadata."""
-    metadata = get_dataset_metadata(conn)
+def load_evaluation_context(
+    conn: sqlite3.Connection, org_id: str | None
+) -> PolicyEvaluationContext:
+    """Build the reference clock a workspace's time-based questions are judged by.
+
+    A workspace that imported a dataset is judged against that dataset's own
+    snapshot time, so an imported historical snapshot does not drift with the
+    wall clock. A workspace that did not -- the normal case for a workspace
+    built from its own records -- is judged against the current time, and says
+    so in `reference_time_source`, so nobody mistakes one for the other.
+    """
+    metadata = get_dataset_metadata(conn, org_id)
     if metadata is None:
-        raise PolicyDataError(
-            "dataset_metadata is empty — run scripts/ingest_dataset.py before "
-            "evaluating time-based policy"
+        return PolicyEvaluationContext(
+            reference_time=datetime.now(timezone.utc),
+            reference_time_source="the current time (this workspace has no imported snapshot)",
+            currency="INR",
         )
     return PolicyEvaluationContext(
         reference_time=metadata.dataset_snapshot_at,
@@ -65,7 +76,7 @@ def gather_policy_evidence(
     *,
     topic: Topic,
     account_id: str,
-    allowed_account_ids: Collection[str] | None,
+    scope: Scope,
 ) -> tuple[list[Evidence], AuthorityDecision]:
     """Collect the clauses governing `topic` for exactly one account.
 
@@ -88,13 +99,13 @@ def gather_policy_evidence(
     SOP for everything else it does not mention.
     """
     evidence = get_evidence_by_topic(
-        conn, topic.value, account_id=account_id, allowed_account_ids=allowed_account_ids
+        conn, topic.value, account_id=account_id, scope=scope
     )
     general = get_evidence_by_topic(
         conn,
         Topic.GENERAL.value,
         account_id=account_id,
-        allowed_account_ids=allowed_account_ids,
+        scope=scope,
     )
 
     seen: set[str] = set()

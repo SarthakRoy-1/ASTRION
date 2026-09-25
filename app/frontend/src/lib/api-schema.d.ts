@@ -1326,6 +1326,11 @@ export interface components {
             is_current: boolean;
             /** Is Deprecated */
             is_deprecated: boolean;
+            /**
+             * Is System Document
+             * @default false
+             */
+            is_system_document: boolean;
             /** Page Count */
             page_count: number;
             /** Plan */

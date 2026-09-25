@@ -12,24 +12,23 @@ SQLite database. Every function here:
 - returns None (single record) or [] (list) for "not found" — a record that
   exists but has null fields is still returned, just with those fields None
 
-Account scoping. Full authentication/authorization is not implemented yet
-(see docs/architecture.md, Phase 5). To avoid an interface change later,
-every function accepts an optional `allowed_account_ids` collection. When
-given, a record belonging to an account outside that collection is treated
-exactly like a record that does not exist — callers cannot distinguish
-"forbidden" from "not found", which avoids leaking account existence to a
-scope that shouldn't see it. When omitted (the default), no scoping is
-applied, which is correct for Phase 2's own tests and for any future
-internal/admin caller that is allowed to see everything.
+Tenant scoping. Every read takes a `Scope` (app/backend/tenancy.py): the
+workspace whose records these are, and optionally the accounts within it that
+the caller may see. The workspace is compiled into the WHERE clause, so a
+record belonging to another workspace is never selected at all, and an account
+outside the caller's narrowing is treated exactly like a record that does not
+exist -- callers cannot distinguish "forbidden" from "not found", which avoids
+leaking that a record exists. A scope with no workspace matches nothing.
 """
 
 from __future__ import annotations
 
 import json
 import sqlite3
-from collections.abc import Collection, Iterable
+from collections.abc import Iterable
 from typing import Any
 
+from app.backend.tenancy import Scope
 from app.backend.models.records import (
     Account,
     DatasetMetadata,
@@ -37,10 +36,6 @@ from app.backend.models.records import (
     SourceProvenance,
     Ticket,
 )
-
-
-def _in_scope(account_id: str, allowed_account_ids: Collection[str] | None) -> bool:
-    return allowed_account_ids is None or account_id in allowed_account_ids
 
 
 def _row_to_account(row: sqlite3.Row) -> Account:
@@ -89,96 +84,94 @@ def _row_to_ticket(row: sqlite3.Row) -> Ticket:
     )
 
 
-def get_all_account_ids(conn: sqlite3.Connection) -> list[str]:
-    """Every account id present in the ingested dataset, sorted.
+def get_all_account_ids(conn: sqlite3.Connection, scope: Scope) -> list[str]:
+    """Every account id the workspace has, sorted.
 
-    Used by the Phase 5 mock auth directory to give internal staff an explicit
-    account scope rather than an unrestricted one, without hard-coding a
-    single account id in application code. Deliberately ids only: this is an
-    authorization input, not a data read.
+    Deliberately ids only: this is an authorization input, not a data read.
     """
-    rows = conn.execute("SELECT account_id FROM accounts ORDER BY account_id").fetchall()
+    clause, params = scope.clause(by_account=False)
+    rows = conn.execute(
+        f"SELECT account_id FROM accounts WHERE {clause} ORDER BY account_id", params
+    ).fetchall()
     return [row["account_id"] for row in rows]
 
 
+def effective_account_ids(conn: sqlite3.Connection, scope: Scope) -> list[str]:
+    """The accounts a scope actually reaches: the workspace's, narrowed if the
+    scope narrows. For showing a caller what they can see, not for authorising."""
+    ids = get_all_account_ids(conn, Scope.of(scope.org_id))
+    if scope.account_ids is None:
+        return ids
+    return [a for a in ids if a in scope.account_ids]
+
+
 def get_account(
-    conn: sqlite3.Connection,
-    account_id: str,
-    *,
-    allowed_account_ids: Collection[str] | None = None,
+    conn: sqlite3.Connection, account_id: str, *, scope: Scope
 ) -> Account | None:
+    clause, params = scope.clause()
     row = conn.execute(
-        "SELECT * FROM accounts WHERE account_id = ?", (account_id,)
+        f"SELECT * FROM accounts WHERE account_id = ? AND {clause}",
+        [account_id, *params],
     ).fetchone()
-    if row is None:
-        return None
-    if not _in_scope(row["account_id"], allowed_account_ids):
-        return None
-    return _row_to_account(row)
+    return None if row is None else _row_to_account(row)
 
 
 def get_order(
-    conn: sqlite3.Connection,
-    order_id: str,
-    *,
-    allowed_account_ids: Collection[str] | None = None,
+    conn: sqlite3.Connection, order_id: str, *, scope: Scope
 ) -> Order | None:
+    clause, params = scope.clause()
     row = conn.execute(
-        "SELECT * FROM orders WHERE order_id = ?", (order_id,)
+        f"SELECT * FROM orders WHERE order_id = ? AND {clause}", [order_id, *params]
     ).fetchone()
-    if row is None:
-        return None
-    if not _in_scope(row["account_id"], allowed_account_ids):
-        return None
-    return _row_to_order(row)
+    return None if row is None else _row_to_order(row)
 
 
 def get_ticket(
-    conn: sqlite3.Connection,
-    ticket_id: str,
-    *,
-    allowed_account_ids: Collection[str] | None = None,
+    conn: sqlite3.Connection, ticket_id: str, *, scope: Scope
 ) -> Ticket | None:
+    clause, params = scope.clause()
     row = conn.execute(
-        "SELECT * FROM tickets WHERE ticket_id = ?", (ticket_id,)
+        f"SELECT * FROM tickets WHERE ticket_id = ? AND {clause}", [ticket_id, *params]
     ).fetchone()
-    if row is None:
-        return None
-    if not _in_scope(row["account_id"], allowed_account_ids):
-        return None
-    return _row_to_ticket(row)
+    return None if row is None else _row_to_ticket(row)
 
 
 def get_account_orders(
-    conn: sqlite3.Connection,
-    account_id: str,
-    *,
-    allowed_account_ids: Collection[str] | None = None,
+    conn: sqlite3.Connection, account_id: str, *, scope: Scope
 ) -> list[Order]:
-    if not _in_scope(account_id, allowed_account_ids):
-        return []
+    clause, params = scope.clause()
     rows = conn.execute(
-        "SELECT * FROM orders WHERE account_id = ? ORDER BY order_id", (account_id,)
+        f"SELECT * FROM orders WHERE account_id = ? AND {clause} ORDER BY order_id",
+        [account_id, *params],
     ).fetchall()
     return [_row_to_order(r) for r in rows]
 
 
 def get_account_tickets(
-    conn: sqlite3.Connection,
-    account_id: str,
-    *,
-    allowed_account_ids: Collection[str] | None = None,
+    conn: sqlite3.Connection, account_id: str, *, scope: Scope
 ) -> list[Ticket]:
-    if not _in_scope(account_id, allowed_account_ids):
-        return []
+    clause, params = scope.clause()
     rows = conn.execute(
-        "SELECT * FROM tickets WHERE account_id = ? ORDER BY ticket_id", (account_id,)
+        f"SELECT * FROM tickets WHERE account_id = ? AND {clause} ORDER BY ticket_id",
+        [account_id, *params],
     ).fetchall()
     return [_row_to_ticket(r) for r in rows]
 
 
-def get_dataset_metadata(conn: sqlite3.Connection) -> DatasetMetadata | None:
-    row = conn.execute("SELECT * FROM dataset_metadata WHERE id = 1").fetchone()
+def get_dataset_metadata(
+    conn: sqlite3.Connection, org_id: str | None
+) -> DatasetMetadata | None:
+    """The workspace's reference snapshot, or None if it has none.
+
+    None is a normal answer, not an error: a workspace that created its own data
+    has no imported snapshot, and the policy engine then judges it against the
+    current time.
+    """
+    if org_id is None:
+        return None
+    row = conn.execute(
+        "SELECT * FROM dataset_metadata WHERE org_id = ?", (org_id,)
+    ).fetchone()
     if row is None:
         return None
     return DatasetMetadata(
@@ -197,13 +190,16 @@ def get_dataset_metadata(conn: sqlite3.Connection) -> DatasetMetadata | None:
 
 
 def get_source_provenance(
-    conn: sqlite3.Connection, target_table: str, target_id: str
+    conn: sqlite3.Connection, target_table: str, target_id: str, *, org_id: str | None
 ) -> SourceProvenance | None:
     """Explain where a structured value came from: file, sheet, row, and the
     raw cell values as originally read (pre-parsing) for that row."""
+    if org_id is None:
+        return None
     row = conn.execute(
-        "SELECT * FROM source_provenance WHERE target_table = ? AND target_id = ?",
-        (target_table, target_id),
+        "SELECT * FROM source_provenance "
+        "WHERE org_id = ? AND target_table = ? AND target_id = ?",
+        (org_id, target_table, target_id),
     ).fetchone()
     if row is None:
         return None

@@ -65,6 +65,23 @@ def serialized(conn, key: str):
     return serialized_sqlite(conn, key)
 
 
+def open_connection(db_path=None):
+    """A connection for a script: the file named, or else the configured database.
+
+    Scripts (ingestion, imports) run against whatever `DATABASE_URL` says, so
+    the same command loads PostgreSQL in production and a local file in
+    development. Naming a file explicitly always means SQLite, which is what
+    tests and one-off local runs want.
+    """
+    if db_path is not None:
+        from app.backend.services.database import get_connection
+
+        return get_connection(db_path)
+    from app.backend.core.config import load_settings
+
+    return open_database(load_settings()).connect()
+
+
 def open_database(settings: "Settings") -> Database:
     """The `Database` these settings describe. Cheap; connections are lazy."""
     if _database_factory is not None:
@@ -87,6 +104,7 @@ __all__ = [
     "SchemaNotReadyError",
     "SqliteDatabase",
     "is_postgres_url",
+    "open_connection",
     "open_database",
     "serialized",
     "set_database_factory",

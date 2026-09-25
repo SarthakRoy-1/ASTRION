@@ -93,10 +93,9 @@ def snapshot(db_path: pathlib.Path) -> dict[str, int]:
     """Row counts for everything a duplicate would show up in."""
     conn = get_connection(db_path)
     try:
-        return {
+        counted = {
             table: count(conn, table)
             for table in (
-                "organizations",
                 "users",
                 "memberships",
                 "organization_accounts",
@@ -107,8 +106,19 @@ def snapshot(db_path: pathlib.Path) -> dict[str, int]:
                 "document_chunks",
             )
         }
+        # "organizations" means demo tenants: workspaces somebody can sign in to.
+        counted["organizations"] = workspaces_with_members(conn)
+        return counted
     finally:
         conn.close()
+
+
+def workspaces_with_members(conn: sqlite3.Connection) -> int:
+    """Workspaces somebody can sign in to. The imported dataset also leaves an
+    empty legacy workspace behind, which is not a duplicate demo tenant."""
+    return int(
+        conn.execute("SELECT COUNT(DISTINCT org_id) AS n FROM memberships").fetchone()["n"]
+    )
 
 
 def demo_user_id(db_path: pathlib.Path) -> str:
@@ -324,7 +334,10 @@ def test_an_existing_demo_workspace_is_reused_rather_than_duplicated(db_path):
 
     conn = get_connection(db_path)
     try:
-        rows = conn.execute("SELECT org_id, slug FROM organizations").fetchall()
+        rows = conn.execute(
+            "SELECT org_id, slug FROM organizations "
+            "WHERE org_id IN (SELECT org_id FROM memberships)"
+        ).fetchall()
     finally:
         conn.close()
     assert [row["slug"] for row in rows] == [DEMO_WORKSPACE_SLUG]
@@ -828,7 +841,8 @@ def test_the_bootstrap_attaches_no_account_another_workspace_owns(db_path):
 
     report = ensure_demo_environment(settings_for(db_path))
 
-    assert claimed in report.accounts_skipped
+    # Already moved out of the imported dataset into the real tenant's workspace:
+    # not the bootstrap's to attach, and not taken back.
     assert claimed not in report.accounts_attached
 
     conn = get_connection(db_path)

@@ -9,6 +9,7 @@ import shutil
 
 import pytest
 
+from app.backend.tenancy import LEGACY_ORG_ID, LEGACY_SCOPE, Scope  # noqa: F401
 from app.backend.services.database import get_connection, initialize_schema
 from app.backend.services.documents import get_latest_document_ingestion_run, list_documents
 from app.backend.retrieval.extraction import DocumentIngestionError
@@ -43,7 +44,7 @@ def test_ingests_all_six_pdfs(tmp_path):
 
 
 def test_every_expected_document_is_present(doc_conn):
-    documents = list_documents(doc_conn)
+    documents = list_documents(doc_conn, scope=LEGACY_SCOPE)
 
     assert len(documents) == EXPECTED_DOCUMENT_COUNT
     assert {d.source_file for d in documents} == {
@@ -183,7 +184,9 @@ def test_reloading_the_source_pack_keeps_uploaded_documents(tmp_path):
 
     conn = get_connection(db_path)
     try:
-        ingest_single_document(conn, extract_document(upload), str(uploads))
+        ingest_single_document(
+            conn, extract_document(upload), str(uploads), org_id=LEGACY_ORG_ID
+        )
     finally:
         conn.close()
 
@@ -307,17 +310,27 @@ def test_cross_check_is_skipped_when_accounts_are_absent(tmp_path):
     assert any("skipped" in note for note in result["account_link_notes"])
 
 
+def _legacy_workspace(conn) -> None:
+    """The workspace the cross-check reads the accounts of. Accounts belong to one."""
+    from app.backend.auth.repository import ensure_organization
+
+    ensure_organization(
+        conn, org_id=LEGACY_ORG_ID, name="Assessment dataset (legacy)", slug="assessment-legacy"
+    )
+
+
 def test_cross_check_confirms_matching_accounts(tmp_path):
     db_path = _fresh_db(tmp_path)
     conn = get_connection(db_path)
     initialize_schema(conn)
+    _legacy_workspace(conn)
     conn.execute(
-        "INSERT INTO accounts (account_id, contract_file) VALUES (?, ?)",
-        ("ACCT-001", NORTHSTAR_PDF),
+        "INSERT INTO accounts (org_id, account_id, contract_file) VALUES (?, ?, ?)",
+        (LEGACY_ORG_ID, "ACCT-001", NORTHSTAR_PDF),
     )
     conn.execute(
-        "INSERT INTO accounts (account_id, contract_file) VALUES (?, ?)",
-        ("ACCT-002", LUMENWORKS_PDF),
+        "INSERT INTO accounts (org_id, account_id, contract_file) VALUES (?, ?, ?)",
+        (LEGACY_ORG_ID, "ACCT-002", LUMENWORKS_PDF),
     )
     conn.commit()
     conn.close()
@@ -335,7 +348,11 @@ def test_cross_check_notes_but_allows_account_absent_from_workbook(tmp_path):
     db_path = _fresh_db(tmp_path)
     conn = get_connection(db_path)
     initialize_schema(conn)
-    conn.execute("INSERT INTO accounts (account_id, contract_file) VALUES ('ACCT-XYZ', NULL)")
+    _legacy_workspace(conn)
+    conn.execute(
+        "INSERT INTO accounts (org_id, account_id, contract_file) "
+        "VALUES ('ORG-legacy-assessment', 'ACCT-XYZ', NULL)"
+    )
     conn.commit()
     conn.close()
 
@@ -349,10 +366,15 @@ def test_cross_check_rejects_contract_file_disagreement(tmp_path):
     db_path = _fresh_db(tmp_path)
     conn = get_connection(db_path)
     initialize_schema(conn)
+    _legacy_workspace(conn)
     conn.execute(
-        "INSERT INTO accounts (account_id, contract_file) VALUES ('ACCT-001', 'some_other.pdf')"
+        "INSERT INTO accounts (org_id, account_id, contract_file) "
+        "VALUES ('ORG-legacy-assessment', 'ACCT-001', 'some_other.pdf')"
     )
-    conn.execute("INSERT INTO accounts (account_id, contract_file) VALUES ('ACCT-002', NULL)")
+    conn.execute(
+        "INSERT INTO accounts (org_id, account_id, contract_file) "
+        "VALUES ('ORG-legacy-assessment', 'ACCT-002', NULL)"
+    )
     conn.commit()
     conn.close()
 

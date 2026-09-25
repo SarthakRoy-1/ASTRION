@@ -99,14 +99,12 @@ SECURITY_SCHEMA_STATEMENTS: tuple[str, ...] = (
         password_changed_at_utc TEXT NOT NULL
     ) STRICT
     """,
-    """
-    CREATE TABLE IF NOT EXISTS organization_accounts (
-        org_id TEXT NOT NULL REFERENCES organizations (org_id),
-        account_id TEXT NOT NULL,
-        created_at_utc TEXT NOT NULL,
-        PRIMARY KEY (org_id, account_id)
-    ) STRICT
-    """,
+    # Which accounts a workspace has. Not a table any more: an account row
+    # carries its workspace (`accounts.org_id`), so the relationship is the
+    # account itself and a second table could only drift from it. Kept as a
+    # view for anything that reads it by this name.
+    "CREATE VIEW IF NOT EXISTS organization_accounts AS "
+    "SELECT org_id, account_id, created_at_utc FROM accounts",
     """
     CREATE TABLE IF NOT EXISTS sessions (
         session_id TEXT PRIMARY KEY,
@@ -316,13 +314,6 @@ SECURITY_SCHEMA_STATEMENTS: tuple[str, ...] = (
     "ON email_otps (verification_id, created_at_utc)",
     "CREATE INDEX IF NOT EXISTS idx_email_otps_email ON email_otps (email, created_at_utc)",
     "CREATE INDEX IF NOT EXISTS idx_user_identities_user ON user_identities (user_id)",
-    # At most ONE account may belong to ONE workspace. Without this, the same
-    # dataset account could be granted to two workspaces and each would see the
-    # other's orders, tickets and actions -- the composite primary key on
-    # (org_id, account_id) permits exactly that. This index is the tenant
-    # boundary expressed as a constraint rather than as a convention.
-    "CREATE UNIQUE INDEX IF NOT EXISTS uq_organization_accounts_account "
-    "ON organization_accounts (account_id)",
     # One *outstanding* invitation per address per workspace. Partial, so a
     # spent or revoked invitation does not block re-inviting someone, while two
     # simultaneous invites to the same address cannot both be created.
@@ -333,8 +324,6 @@ SECURITY_SCHEMA_STATEMENTS: tuple[str, ...] = (
     "CREATE INDEX IF NOT EXISTS idx_invitations_email ON invitations (email)",
     "CREATE INDEX IF NOT EXISTS idx_memberships_user ON memberships (user_id)",
     "CREATE INDEX IF NOT EXISTS idx_memberships_org ON memberships (org_id)",
-    "CREATE INDEX IF NOT EXISTS idx_org_accounts_account "
-    "ON organization_accounts (account_id)",
     "CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions (user_id)",
     "CREATE INDEX IF NOT EXISTS idx_auth_tokens_user ON auth_tokens (user_id, purpose)",
     "CREATE INDEX IF NOT EXISTS idx_login_attempts_lookup "

@@ -20,6 +20,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
 from app.backend.db import serialized
+from app.backend.tenancy import LEGACY_ORG_ID
 from app.backend.db.errors import IntegrityError
 from app.backend.auth.permissions import OrgRole, Permission, role_has
 from app.backend.auth.tokens import hash_token, new_id, new_token
@@ -388,6 +389,26 @@ def create_organization(
             (org_id, name.strip(), slug.strip().lower(), ACTIVE, _now().isoformat()),
         )
     return org_id, slug.strip().lower()
+
+
+def ensure_organization(
+    conn: sqlite3.Connection, *, org_id: str, name: str, slug: str
+) -> None:
+    """Create a workspace row with a caller-chosen id if it does not exist.
+
+    For imports and scripts that must address a workspace by a stable id (the
+    legacy assessment workspace). Idempotent: an existing row is left exactly as
+    it is. Creates no membership, so nobody can sign in to what this makes.
+    """
+    with conn:
+        conn.execute(
+            """
+            INSERT INTO organizations (org_id, name, slug, status, created_at_utc)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT DO NOTHING
+            """,
+            (org_id, name.strip(), slug.strip().lower(), ACTIVE, _now().isoformat()),
+        )
 
 
 def add_member(
@@ -795,63 +816,155 @@ def list_org_members(conn: sqlite3.Connection, org_id: str) -> list[dict]:
 
 
 class AccountAlreadyClaimedError(Exception):
-    """The dataset account already belongs to a different workspace."""
+    """The account is not available to move: it is not where it was expected."""
 
 
-def grant_account(conn: sqlite3.Connection, *, org_id: str, account_id: str) -> None:
-    """Give a workspace access to one dataset account.
+#: Everything that belongs to an account, and carries the workspace it is in.
+_ACCOUNT_OWNED_TABLES = (
+    "orders",
+    "tickets",
+    "documents",
+    "agent_actions",
+    "ticket_escalations",
+    "service_credits",
+    "ticket_notes",
+)
 
-    Raises `AccountAlreadyClaimedError` when another workspace already owns it.
-    An earlier version used `INSERT OR IGNORE`, which was safe — no cross-tenant
-    grant was ever created — but *silent*: an operator wiring up a workspace
-    would see the call succeed and the account never appear. Failing loudly is
-    the difference between a constraint and a trap.
 
-    Re-granting the same account to the same workspace is a no-op, because that
-    is genuinely idempotent rather than a conflict.
+def grant_account(
+    conn: sqlite3.Connection,
+    *,
+    org_id: str,
+    account_id: str,
+    from_org_id: str = LEGACY_ORG_ID,
+) -> None:
+    """Move an imported account, with everything under it, into a workspace.
+
+    An account belongs to the workspace in `accounts.org_id`; there is no
+    separate grant. This exists for the operator and test paths that import a
+    dataset into one workspace (the legacy one by default) and then hand parts
+    of it to others. It is a *move*: the account, its orders, tickets,
+    provenance, documents and prepared actions all change owner together, in
+    one transaction, and nothing is copied -- afterwards the source workspace no
+    longer has it.
+
+    Raises `AccountAlreadyClaimedError` when the source does not have the
+    account (it was already moved, or never existed) and when the destination
+    already has an account with that id -- two accounts cannot be merged by
+    accident. Moving an account to the workspace it is already in is a no-op.
+    Not exposed on the API.
     """
-    existing = org_owning_account(conn, account_id)
-    if existing == org_id:
+    if org_id == from_org_id:
         return
-    if existing is not None:
-        raise AccountAlreadyClaimedError(
-            f"Account {account_id!r} already belongs to another workspace. An "
-            f"account belongs to exactly one workspace."
-        )
-    try:
-        with conn:
-            conn.execute(
-                """
-                INSERT INTO organization_accounts
-                    (org_id, account_id, created_at_utc)
-                VALUES (?, ?, ?)
-                """,
-                (org_id, account_id, _now().isoformat()),
+    with serialized(conn, f"account:{account_id}"), conn:
+        source = conn.execute(
+            "SELECT 1 FROM accounts WHERE org_id = ? AND account_id = ?",
+            (from_org_id, account_id),
+        ).fetchone()
+        already = conn.execute(
+            "SELECT 1 FROM accounts WHERE org_id = ? AND account_id = ?",
+            (org_id, account_id),
+        ).fetchone()
+        if already is not None and source is None:
+            return  # idempotent: it is already where it was asked to be
+        if source is None:
+            raise AccountAlreadyClaimedError(
+                f"Account {account_id!r} is not in the workspace it was to be moved from."
             )
-    except IntegrityError as exc:
-        # Lost a race with a concurrent grant. The constraint held; report it.
-        raise AccountAlreadyClaimedError(
-            f"Account {account_id!r} already belongs to another workspace."
-        ) from exc
+        if already is not None:
+            raise AccountAlreadyClaimedError(
+                f"The destination workspace already has an account {account_id!r}."
+            )
+
+        conn.execute(
+            """
+            INSERT INTO accounts
+                (org_id, account_id, account_name, plan, status, csm, contract_file,
+                 premium_support, notes, created_at_utc)
+            SELECT ?, account_id, account_name, plan, status, csm, contract_file,
+                   premium_support, notes, ?
+              FROM accounts WHERE org_id = ? AND account_id = ?
+            """,
+            (org_id, _now().isoformat(), from_org_id, account_id),
+        )
+        # Provenance first: it finds its records through the *old* owner's rows.
+        # What the destination already recorded for the same targets is
+        # superseded by the import being moved in, so it goes first.
+        conn.execute(
+            """
+            DELETE FROM source_provenance
+             WHERE org_id = ? AND (
+                   (target_table = 'accounts' AND target_id = ?)
+                OR (target_table = 'orders' AND target_id IN
+                       (SELECT order_id FROM orders WHERE org_id = ? AND account_id = ?))
+                OR (target_table = 'tickets' AND target_id IN
+                       (SELECT ticket_id FROM tickets WHERE org_id = ? AND account_id = ?))
+             )
+            """,
+            (org_id, account_id, from_org_id, account_id, from_org_id, account_id),
+        )
+        conn.execute(
+            """
+            UPDATE source_provenance SET org_id = ?
+             WHERE org_id = ? AND (
+                   (target_table = 'accounts' AND target_id = ?)
+                OR (target_table = 'orders' AND target_id IN
+                       (SELECT order_id FROM orders WHERE org_id = ? AND account_id = ?))
+                OR (target_table = 'tickets' AND target_id IN
+                       (SELECT ticket_id FROM tickets WHERE org_id = ? AND account_id = ?))
+             )
+            """,
+            (org_id, from_org_id, account_id, from_org_id, account_id, from_org_id, account_id),
+        )
+        for table in _ACCOUNT_OWNED_TABLES:
+            conn.execute(
+                f"UPDATE {table} SET org_id = ? WHERE org_id = ? AND account_id = ?",
+                (org_id, from_org_id, account_id),
+            )
+        conn.execute(
+            "DELETE FROM accounts WHERE org_id = ? AND account_id = ?",
+            (from_org_id, account_id),
+        )
+        # An imported dataset is judged against its own snapshot time, and the
+        # snapshot belongs to the workspace, not the account. Give the
+        # destination the source's, unless it already has one.
+        conn.execute(
+            """
+            INSERT INTO dataset_metadata
+                (org_id, dataset_snapshot_raw, dataset_snapshot_at, dataset_timezone,
+                 currency, notes, important_note, source_workbook_filename,
+                 source_workbook_sha256, source_sheet_names, ingested_at_utc,
+                 ingestion_script_version)
+            SELECT ?, dataset_snapshot_raw, dataset_snapshot_at, dataset_timezone,
+                   currency, notes, important_note, source_workbook_filename,
+                   source_workbook_sha256, source_sheet_names, ingested_at_utc,
+                   ingestion_script_version
+              FROM dataset_metadata WHERE org_id = ?
+            ON CONFLICT DO NOTHING
+            """,
+            (org_id, from_org_id),
+        )
 
 
 def accounts_for_org(conn: sqlite3.Connection, org_id: str) -> frozenset[str]:
-    """Every dataset account this organisation owns.
-
-    This is the tenant boundary, expressed as data. The result becomes
-    `AgentContext.allowed_account_ids`, which every repository below the tool
-    layer already filters on — so tenancy is enforced by the same code path
-    that was already tested, rather than by a new one bolted alongside it.
-    """
+    """Every account this workspace has."""
     rows = conn.execute(
-        "SELECT account_id FROM organization_accounts WHERE org_id = ?", (org_id,)
+        "SELECT account_id FROM accounts WHERE org_id = ?", (org_id,)
     ).fetchall()
     return frozenset(row["account_id"] for row in rows)
 
 
 def org_owning_account(conn: sqlite3.Connection, account_id: str) -> str | None:
+    """The workspace that has an account with this id, if exactly one does.
+
+    An account id names a customer *within* a workspace, so several workspaces
+    can hold the same id and this is then ambiguous; it returns the first by
+    workspace id. Only for callers (operator scripts, tests) that know the id is
+    in one place. Never for authorisation -- that is `Scope`.
+    """
     row = conn.execute(
-        "SELECT org_id FROM organization_accounts WHERE account_id = ?", (account_id,)
+        "SELECT org_id FROM accounts WHERE account_id = ? ORDER BY org_id LIMIT 1",
+        (account_id,),
     ).fetchone()
     return None if row is None else row["org_id"]
 

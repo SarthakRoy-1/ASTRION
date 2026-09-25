@@ -37,8 +37,11 @@ DEFAULT_DB_PATH = REPO_ROOT / "data" / "processed" / "astrion.db"
 # reference; junction/audit tables last.
 SCHEMA_STATEMENTS: tuple[str, ...] = (
     """
+    -- One row per workspace: the reference time and currency the policy engine
+    -- judges that workspace's records against. A workspace with no row is judged
+    -- against the current time (see policies/base.py).
     CREATE TABLE IF NOT EXISTS dataset_metadata (
-        id INTEGER PRIMARY KEY CHECK (id = 1),
+        org_id TEXT PRIMARY KEY REFERENCES organizations (org_id),
         dataset_snapshot_raw TEXT NOT NULL,
         dataset_snapshot_at TEXT NOT NULL,
         dataset_timezone TEXT NOT NULL,
@@ -55,6 +58,7 @@ SCHEMA_STATEMENTS: tuple[str, ...] = (
     """
     CREATE TABLE IF NOT EXISTS ingestion_runs (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
+        org_id TEXT REFERENCES organizations (org_id),
         started_at_utc TEXT NOT NULL,
         finished_at_utc TEXT,
         source_workbook_path TEXT NOT NULL,
@@ -64,21 +68,29 @@ SCHEMA_STATEMENTS: tuple[str, ...] = (
     ) STRICT
     """,
     """
+    -- Business records belong to a workspace. An account id names a customer
+    -- *within* its workspace, so two workspaces may both have an ACCT-001 and
+    -- the key is the pair. This is the tenant boundary as a constraint: there is
+    -- no way to store an order for an account its workspace does not have.
     CREATE TABLE IF NOT EXISTS accounts (
-        account_id TEXT PRIMARY KEY,
+        org_id TEXT NOT NULL REFERENCES organizations (org_id),
+        account_id TEXT NOT NULL,
         account_name TEXT,
         plan TEXT,
         status TEXT,
         csm TEXT,
         contract_file TEXT,
         premium_support INTEGER,
-        notes TEXT
+        notes TEXT,
+        created_at_utc TEXT,
+        PRIMARY KEY (org_id, account_id)
     ) STRICT
     """,
     """
     CREATE TABLE IF NOT EXISTS orders (
-        order_id TEXT PRIMARY KEY,
-        account_id TEXT NOT NULL REFERENCES accounts (account_id),
+        org_id TEXT NOT NULL,
+        order_id TEXT NOT NULL,
+        account_id TEXT NOT NULL,
         carrier TEXT,
         status TEXT,
         booked_at TEXT,
@@ -89,13 +101,16 @@ SCHEMA_STATEMENTS: tuple[str, ...] = (
         carrier_fault INTEGER,
         customer_fault INTEGER,
         cancellation_requested_at TEXT,
-        notes TEXT
+        notes TEXT,
+        PRIMARY KEY (org_id, order_id),
+        FOREIGN KEY (org_id, account_id) REFERENCES accounts (org_id, account_id)
     ) STRICT
     """,
     """
     CREATE TABLE IF NOT EXISTS tickets (
-        ticket_id TEXT PRIMARY KEY,
-        account_id TEXT NOT NULL REFERENCES accounts (account_id),
+        org_id TEXT NOT NULL,
+        ticket_id TEXT NOT NULL,
+        account_id TEXT NOT NULL,
         created_at TEXT,
         status TEXT,
         subject TEXT,
@@ -103,12 +118,15 @@ SCHEMA_STATEMENTS: tuple[str, ...] = (
         channel TEXT,
         assigned_to TEXT,
         last_customer_message_at TEXT,
-        historical_resolution TEXT
+        historical_resolution TEXT,
+        PRIMARY KEY (org_id, ticket_id),
+        FOREIGN KEY (org_id, account_id) REFERENCES accounts (org_id, account_id)
     ) STRICT
     """,
     """
     CREATE TABLE IF NOT EXISTS source_provenance (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
+        org_id TEXT NOT NULL REFERENCES organizations (org_id),
         ingestion_run_id INTEGER NOT NULL REFERENCES ingestion_runs (id),
         target_table TEXT NOT NULL,
         target_id TEXT NOT NULL,
@@ -116,7 +134,7 @@ SCHEMA_STATEMENTS: tuple[str, ...] = (
         source_sheet TEXT NOT NULL,
         source_row_number INTEGER NOT NULL,
         raw_row_json TEXT NOT NULL,
-        UNIQUE (target_table, target_id)
+        UNIQUE (org_id, target_table, target_id)
     ) STRICT
     """,
     # --- Phase 3: document / evidence layer ---------------------------------
@@ -133,6 +151,7 @@ SCHEMA_STATEMENTS: tuple[str, ...] = (
     """
     CREATE TABLE IF NOT EXISTS document_ingestion_runs (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
+        org_id TEXT REFERENCES organizations (org_id),
         started_at_utc TEXT NOT NULL,
         finished_at_utc TEXT,
         source_dir TEXT NOT NULL,
@@ -143,9 +162,17 @@ SCHEMA_STATEMENTS: tuple[str, ...] = (
     ) STRICT
     """,
     """
+    -- Ownership: `org_id` names the workspace that owns the document, and NULL
+    -- means a system document -- platform knowledge (the support policy, the
+    -- cancellation SOP) that every workspace's assistant may cite. A system
+    -- document is never customer-specific: the CHECK below refuses one that
+    -- names an account, because an account id is only meaningful inside a
+    -- workspace and a system document naming ACCT-001 would be read as
+    -- belonging to every workspace's ACCT-001.
     CREATE TABLE IF NOT EXISTS documents (
         document_id TEXT PRIMARY KEY,
-        source_file TEXT NOT NULL UNIQUE,
+        org_id TEXT REFERENCES organizations (org_id),
+        source_file TEXT NOT NULL,
         source_sha256 TEXT NOT NULL,
         title TEXT NOT NULL,
         document_type TEXT NOT NULL,
@@ -169,7 +196,8 @@ SCHEMA_STATEMENTS: tuple[str, ...] = (
         superseded_by TEXT,
         page_count INTEGER NOT NULL,
         ingestion_run_id INTEGER NOT NULL
-            REFERENCES document_ingestion_runs (id)
+            REFERENCES document_ingestion_runs (id),
+        CHECK (org_id IS NOT NULL OR account_id IS NULL)
     ) STRICT
     """,
     """
@@ -206,6 +234,7 @@ SCHEMA_STATEMENTS: tuple[str, ...] = (
     """
     CREATE TABLE IF NOT EXISTS agent_actions (
         action_id TEXT PRIMARY KEY,
+        org_id TEXT NOT NULL REFERENCES organizations (org_id),
         action_type TEXT NOT NULL,
         status TEXT NOT NULL,
         account_id TEXT,
@@ -235,6 +264,7 @@ SCHEMA_STATEMENTS: tuple[str, ...] = (
     """
     CREATE TABLE IF NOT EXISTS ticket_escalations (
         escalation_id TEXT PRIMARY KEY,
+        org_id TEXT NOT NULL REFERENCES organizations (org_id),
         action_id TEXT NOT NULL REFERENCES agent_actions (action_id),
         ticket_id TEXT NOT NULL,
         account_id TEXT,
@@ -247,6 +277,7 @@ SCHEMA_STATEMENTS: tuple[str, ...] = (
     """
     CREATE TABLE IF NOT EXISTS service_credits (
         credit_id TEXT PRIMARY KEY,
+        org_id TEXT NOT NULL REFERENCES organizations (org_id),
         action_id TEXT NOT NULL REFERENCES agent_actions (action_id),
         order_id TEXT NOT NULL,
         account_id TEXT,
@@ -267,6 +298,7 @@ SCHEMA_STATEMENTS: tuple[str, ...] = (
     """
     CREATE TABLE IF NOT EXISTS ticket_notes (
         note_id TEXT PRIMARY KEY,
+        org_id TEXT NOT NULL REFERENCES organizations (org_id),
         action_id TEXT NOT NULL REFERENCES agent_actions (action_id),
         ticket_id TEXT NOT NULL,
         account_id TEXT,
@@ -275,13 +307,17 @@ SCHEMA_STATEMENTS: tuple[str, ...] = (
         created_at_utc TEXT NOT NULL
     ) STRICT
     """,
-    "CREATE INDEX IF NOT EXISTS idx_orders_account_id ON orders (account_id)",
-    "CREATE INDEX IF NOT EXISTS idx_tickets_account_id ON tickets (account_id)",
-    "CREATE INDEX IF NOT EXISTS idx_documents_account_id ON documents (account_id)",
+    "CREATE INDEX IF NOT EXISTS idx_orders_account ON orders (org_id, account_id)",
+    "CREATE INDEX IF NOT EXISTS idx_tickets_account ON tickets (org_id, account_id)",
+    "CREATE INDEX IF NOT EXISTS idx_documents_org ON documents (org_id, account_id)",
+    # One document per source file *per owner*. COALESCE because NULL (the
+    # system owner) never equals NULL in a unique index.
+    "CREATE UNIQUE INDEX IF NOT EXISTS uq_documents_owner_file "
+    "ON documents (COALESCE(org_id, ''), source_file)",
     "CREATE INDEX IF NOT EXISTS idx_chunks_document_id ON document_chunks (document_id)",
     "CREATE INDEX IF NOT EXISTS idx_chunks_topic ON document_chunks (topic)",
-    "CREATE INDEX IF NOT EXISTS idx_actions_status ON agent_actions (status)",
-    "CREATE INDEX IF NOT EXISTS idx_actions_target ON agent_actions (target_type, target_id)",
+    "CREATE INDEX IF NOT EXISTS idx_actions_status ON agent_actions (org_id, status)",
+    "CREATE INDEX IF NOT EXISTS idx_actions_target ON agent_actions (org_id, target_type, target_id)",
 )
 
 
@@ -364,45 +400,9 @@ def _apply_added_columns(conn: sqlite3.Connection) -> None:
 class SchemaMigrationError(RuntimeError):
     """The database cannot be brought to the current schema without a decision.
 
-    Raised rather than guessed at. Every case below is one where the safe
-    action would be to delete somebody's data, so the migration stops and says
-    what it found instead.
+    Raised rather than guessed at: a case where the safe action would be to
+    delete somebody's data stops and says what it found instead.
     """
-
-
-def _check_account_exclusivity(conn: sqlite3.Connection) -> None:
-    """Refuse to continue if one dataset account is claimed by two workspaces.
-
-    Phase 1 adds a UNIQUE index making an account belong to exactly one
-    workspace, because the composite key on (org_id, account_id) permitted the
-    same account in two — and each workspace would then see the other's orders,
-    tickets and actions.
-
-    Creating the index on a database that already holds a duplicate would raise
-    an IntegrityError on *every request*, since `initialize_schema` runs per
-    request. Detecting it first turns that into one clear message naming the
-    accounts involved. Resolving it means deciding which workspace owns the
-    account, which is not a decision a migration may take on an operator's
-    behalf.
-    """
-    try:
-        rows = conn.execute(
-            """
-            SELECT account_id, COUNT(DISTINCT org_id) AS orgs
-              FROM organization_accounts
-             GROUP BY account_id HAVING COUNT(DISTINCT org_id) > 1
-            """
-        ).fetchall()
-    except OperationalError:
-        return  # table not created yet; nothing to check
-    if rows:
-        offenders = ", ".join(str(row[0]) for row in rows)
-        raise SchemaMigrationError(
-            "Cannot apply the Phase 1 tenant-isolation constraint: these "
-            f"accounts are granted to more than one workspace: {offenders}. "
-            "Each account must belong to exactly one workspace. Remove the "
-            "unwanted grant(s) from organization_accounts, then restart."
-        )
 
 
 def initialize_schema(conn: sqlite3.Connection) -> None:
@@ -424,8 +424,6 @@ def initialize_schema(conn: sqlite3.Connection) -> None:
         # PostgreSQL's schema is owned by versioned migrations, applied by the
         # deploy step. It is never created from here, least of all per request.
         return
-
-    _check_account_exclusivity(conn)
 
     with conn:
         for statement in SCHEMA_STATEMENTS:

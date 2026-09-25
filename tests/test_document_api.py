@@ -217,23 +217,32 @@ def test_an_upload_for_another_workspaces_account_is_refused(session_client_for,
     assert list(uploads_dir.glob("*.pdf")) == []
 
 
-def test_a_general_document_cannot_be_uploaded_by_a_workspace(session_client_for, tmp_path, uploads_dir):
-    """The attack this rule exists for: a CURRENT support policy for everyone.
+def test_a_general_document_uploaded_by_a_workspace_is_that_workspaces_alone(
+    session_client_for, tmp_path, uploads_dir
+):
+    """The attack the old rule guarded against: a CURRENT support policy for everyone.
 
-    Before the rule, one workspace's upload became an authoritative tier-2
-    policy in every other workspace's retrieval.
+    A document is owned by the workspace that uploaded it. A general one (it names
+    no account) is now allowed -- it is the workspace's own policy -- but it is
+    stored with its owner, so it reaches that workspace's retrieval and nobody
+    else's. It can never become a system document.
     """
     owner_a, owner_b = session_client_for("a"), session_client_for("b")
-    before = ids(owner_b)
+    before, before_a = ids(owner_b), ids(owner_a)
     pdf = agreement_pdf(
         tmp_path / "Support_Policy_v4.pdf", account=None, title="ParcelPilot Support Policy v4", status="CURRENT"
     )
 
     response = upload(owner_a, pdf)
 
-    assert response.status_code == 403
-    assert ids(owner_b) == before
-    assert list(uploads_dir.glob("*.pdf")) == []
+    assert response.status_code == 200, response.text
+    assert ids(owner_b) == before  # nothing changed for anyone else
+    new = ids(owner_a) - before_a
+    assert len(new) == 1
+    (document_id,) = new
+    assert owner_b.get(f"/api/documents/{document_id}").status_code == 404
+    assert owner_a.get(f"/api/documents/{document_id}").json()["is_system_document"] is False
+    assert owner_a.get(f"/api/documents/{CURRENT_POLICY}").json()["is_system_document"] is True
 
 
 @pytest.mark.parametrize(
@@ -243,19 +252,28 @@ def test_a_general_document_cannot_be_uploaded_by_a_workspace(session_client_for
         "02_support_policy_v2_deprecated",
         "03_cancellation_and_service_credit_sop_v4",
         "04_product_operations_guide_and_known_issues",
-        "05_northstar_logistics_enterprise_agreement",
     ],
 )
-def test_the_supplied_source_pack_cannot_be_deleted(session_client_for, document_id):
-    """Including the agreement for the caller's *own* account: the pack is the
-    authority every answer rests on, not workspace-managed content."""
+def test_system_documents_cannot_be_deleted_by_any_workspace(session_client_for, document_id):
+    """The general documents in the supplied pack belong to no workspace: they are
+    the platform knowledge every answer rests on, and none may remove them."""
     owner_a, owner_b = session_client_for("a"), session_client_for("b")
 
     response = owner_a.delete(f"/api/documents/{document_id}")
 
     assert response.status_code == 403
     assert owner_b.get(f"/api/documents/{CURRENT_POLICY}").status_code == 200
-    assert owner_a.get(f"/api/documents/{document_id}").status_code == 200
+
+
+def test_a_workspace_may_delete_its_own_agreement_but_not_anothers(session_client_for):
+    """The customer agreements in the supplied pack belong to the workspace that has
+    those customers, so they are that workspace's to manage."""
+    owner_a, owner_b = session_client_for("a"), session_client_for("b")
+    document = "05_northstar_logistics_enterprise_agreement"
+
+    assert owner_b.delete(f"/api/documents/{document}").status_code == 404
+    assert owner_a.delete(f"/api/documents/{document}").status_code == 200
+    assert owner_a.get(f"/api/documents/{document}").status_code == 404
 
 
 @pytest.mark.parametrize("persona", [CUSTOMER_NORTHSTAR, SUPPORT_AGENT, SUPPORT_MANAGER])

@@ -221,7 +221,10 @@ def dataset_present(conn: sqlite3.Connection) -> bool:
     tables mean a run that died partway rather than a dataset.
     """
     try:
-        metadata = conn.execute("SELECT 1 FROM dataset_metadata WHERE id = 1").fetchone()
+        # Anywhere: the demo seed moves the imported accounts into the demo
+        # workspace, so "the dataset is present" cannot mean "in the workspace it
+        # was first imported into".
+        metadata = conn.execute("SELECT 1 FROM dataset_metadata LIMIT 1").fetchone()
         return bool(metadata) and all(
             _count(conn, table) > 0 for table in ("accounts", "orders", "tickets")
         )

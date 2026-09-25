@@ -44,11 +44,10 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from app.backend.services.database import (  # noqa: E402
-    DEFAULT_DB_PATH,
-    get_connection,
-    initialize_schema,
-)
+from app.backend.auth.repository import ensure_organization  # noqa: E402
+from app.backend.db import open_connection  # noqa: E402
+from app.backend.services.database import initialize_schema  # noqa: E402
+from app.backend.tenancy import LEGACY_ORG_ID  # noqa: E402
 from scripts.inspect_sources import PDF_FILES  # noqa: E402
 from scripts.verify_source_pack import sha256_of  # noqa: E402
 
@@ -425,95 +424,103 @@ def load_into_db(
     *,
     workbook_path: Path,
     workbook_sha256: str,
+    org_id: str = LEGACY_ORG_ID,
 ) -> dict[str, int]:
-    """Wipe and reload the data tables inside a single transaction.
+    """Wipe and reload one workspace's imported records in a single transaction.
 
-    ingestion_runs is append-only; every other data table reflects exactly
-    the dataset just built, nothing accumulated from prior runs.
+    ingestion_runs is append-only; the workspace's accounts, orders, tickets and
+    provenance reflect exactly the dataset just built, nothing accumulated from
+    prior runs. Only `org_id`'s rows are replaced: another workspace's data is
+    neither read nor touched.
     """
     now_utc = datetime.now(timezone.utc).isoformat()
+
+    if org_id == LEGACY_ORG_ID:
+        ensure_organization(
+            conn, org_id=org_id, name="Assessment dataset (legacy)", slug="assessment-legacy"
+        )
 
     with conn:
         cur = conn.execute(
             """
             INSERT INTO ingestion_runs
-                (started_at_utc, source_workbook_path, source_workbook_sha256,
+                (org_id, started_at_utc, source_workbook_path, source_workbook_sha256,
                  ingestion_script_version, status)
-            VALUES (?, ?, ?, ?, 'running')
+            VALUES (?, ?, ?, ?, ?, 'running')
             RETURNING id
             """,
-            (now_utc, str(workbook_path), workbook_sha256, INGESTION_SCRIPT_VERSION),
+            (org_id, now_utc, str(workbook_path), workbook_sha256, INGESTION_SCRIPT_VERSION),
         )
         run_id = cur.fetchall()[0]["id"]
 
-        conn.execute("DELETE FROM orders")
-        conn.execute("DELETE FROM tickets")
-        conn.execute("DELETE FROM source_provenance")
-        conn.execute("DELETE FROM accounts")
+        conn.execute("DELETE FROM orders WHERE org_id = ?", (org_id,))
+        conn.execute("DELETE FROM tickets WHERE org_id = ?", (org_id,))
+        conn.execute("DELETE FROM source_provenance WHERE org_id = ?", (org_id,))
+        conn.execute("DELETE FROM accounts WHERE org_id = ?", (org_id,))
 
         for rec in dataset.accounts:
             v = rec.values
             conn.execute(
                 """
                 INSERT INTO accounts
-                    (account_id, account_name, plan, status, csm, contract_file,
-                     premium_support, notes)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    (org_id, account_id, account_name, plan, status, csm, contract_file,
+                     premium_support, notes, created_at_utc)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
-                    v["account_id"], v["account_name"], v["plan"], v["status"], v["csm"],
-                    v["contract_file"], v["premium_support"], v["notes"],
+                    org_id, v["account_id"], v["account_name"], v["plan"], v["status"], v["csm"],
+                    v["contract_file"], v["premium_support"], v["notes"], now_utc,
                 ),
             )
-            _insert_provenance(conn, run_id, "accounts", v["account_id"], workbook_path.name, "accounts", rec)
+            _insert_provenance(conn, org_id, run_id, "accounts", v["account_id"], workbook_path.name, "accounts", rec)
 
         for rec in dataset.orders:
             v = rec.values
             conn.execute(
                 """
                 INSERT INTO orders
-                    (order_id, account_id, carrier, status, booked_at,
+                    (org_id, order_id, account_id, carrier, status, booked_at,
                      pickup_window_start, pickup_window_end, pickup_actual_at,
                      shipment_fee_inr, carrier_fault, customer_fault,
                      cancellation_requested_at, notes)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
-                    v["order_id"], v["account_id"], v["carrier"], v["status"],
+                    org_id, v["order_id"], v["account_id"], v["carrier"], v["status"],
                     _iso(v["booked_at"]), _iso(v["pickup_window_start"]), _iso(v["pickup_window_end"]),
                     _iso(v["pickup_actual_at"]), v["shipment_fee_inr"], v["carrier_fault"], v["customer_fault"],
                     _iso(v["cancellation_requested_at"]), v["notes"],
                 ),
             )
-            _insert_provenance(conn, run_id, "orders", v["order_id"], workbook_path.name, "orders", rec)
+            _insert_provenance(conn, org_id, run_id, "orders", v["order_id"], workbook_path.name, "orders", rec)
 
         for rec in dataset.tickets:
             v = rec.values
             conn.execute(
                 """
                 INSERT INTO tickets
-                    (ticket_id, account_id, created_at, status, subject, description,
+                    (org_id, ticket_id, account_id, created_at, status, subject, description,
                      channel, assigned_to, last_customer_message_at, historical_resolution)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
-                    v["ticket_id"], v["account_id"], _iso(v["created_at"]), v["status"], v["subject"],
+                    org_id, v["ticket_id"], v["account_id"], _iso(v["created_at"]), v["status"], v["subject"],
                     v["description"], v["channel"], v["assigned_to"],
                     _iso(v["last_customer_message_at"]), v["historical_resolution"],
                 ),
             )
-            _insert_provenance(conn, run_id, "tickets", v["ticket_id"], workbook_path.name, "tickets", rec)
+            _insert_provenance(conn, org_id, run_id, "tickets", v["ticket_id"], workbook_path.name, "tickets", rec)
 
         m = dataset.metadata
         conn.execute(
             """
             INSERT INTO dataset_metadata
-                (id, dataset_snapshot_raw, dataset_snapshot_at, dataset_timezone,
+                (org_id, dataset_snapshot_raw, dataset_snapshot_at, dataset_timezone,
                  currency, notes, important_note, source_workbook_filename,
                  source_workbook_sha256, source_sheet_names, ingested_at_utc,
                  ingestion_script_version)
-            VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT (id) DO UPDATE SET
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT (org_id) DO UPDATE SET
                 dataset_snapshot_raw = excluded.dataset_snapshot_raw,
                 dataset_snapshot_at = excluded.dataset_snapshot_at,
                 dataset_timezone = excluded.dataset_timezone,
@@ -527,6 +534,7 @@ def load_into_db(
                 ingestion_script_version = excluded.ingestion_script_version
             """,
             (
+                org_id,
                 m["dataset_snapshot_raw"], _iso(m["dataset_snapshot_at"]), m["dataset_timezone"],
                 m["currency"], m["notes"], m["important_note"], workbook_path.name, workbook_sha256,
                 json.dumps(m["source_sheet_names"]), now_utc, INGESTION_SCRIPT_VERSION,
@@ -547,6 +555,7 @@ def load_into_db(
 
 def _insert_provenance(
     conn: sqlite3.Connection,
+    org_id: str,
     run_id: int,
     target_table: str,
     target_id: str,
@@ -558,11 +567,11 @@ def _insert_provenance(
     conn.execute(
         """
         INSERT INTO source_provenance
-            (ingestion_run_id, target_table, target_id, source_file, source_sheet,
+            (org_id, ingestion_run_id, target_table, target_id, source_file, source_sheet,
              source_row_number, raw_row_json)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """,
-        (run_id, target_table, target_id, source_file, source_sheet, rec.row_number, json.dumps(raw_row, sort_keys=True)),
+        (org_id, run_id, target_table, target_id, source_file, source_sheet, rec.row_number, json.dumps(raw_row, sort_keys=True)),
     )
 
 
@@ -571,18 +580,24 @@ def _insert_provenance(
 
 def ingest(
     workbook_path: Path = DEFAULT_WORKBOOK_PATH,
-    db_path: Path = DEFAULT_DB_PATH,
+    db_path: Path | None = None,
+    org_id: str = LEGACY_ORG_ID,
 ) -> dict[str, Any]:
     workbook_path = Path(workbook_path)
-    db_path = Path(db_path)
 
     dataset = build_dataset(workbook_path)
     workbook_sha256 = sha256_of(workbook_path)
 
-    conn = get_connection(db_path)
+    conn = open_connection(db_path)
     try:
         initialize_schema(conn)
-        row_counts = load_into_db(conn, dataset, workbook_path=workbook_path, workbook_sha256=workbook_sha256)
+        row_counts = load_into_db(
+            conn,
+            dataset,
+            workbook_path=workbook_path,
+            workbook_sha256=workbook_sha256,
+            org_id=org_id,
+        )
     finally:
         conn.close()
 
@@ -590,7 +605,8 @@ def ingest(
         "ok": True,
         "workbook": str(workbook_path),
         "workbook_sha256": workbook_sha256,
-        "database": str(db_path),
+        "database": str(db_path) if db_path is not None else "DATABASE_URL",
+        "org_id": org_id,
         "row_counts": row_counts,
         "dataset_snapshot": dataset.metadata["dataset_snapshot_raw"],
     }
@@ -599,12 +615,20 @@ def ingest(
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--workbook", type=Path, default=DEFAULT_WORKBOOK_PATH)
-    parser.add_argument("--db", type=Path, default=DEFAULT_DB_PATH)
+    parser.add_argument(
+        "--db", type=Path, default=None,
+        help="A SQLite file. Omit to use DATABASE_URL (PostgreSQL in production).",
+    )
+    parser.add_argument(
+        "--org-id", default=LEGACY_ORG_ID,
+        help="The workspace to import into. Its rows are replaced; no other "
+             "workspace is touched.",
+    )
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args(argv)
 
     try:
-        result = ingest(workbook_path=args.workbook, db_path=args.db)
+        result = ingest(workbook_path=args.workbook, db_path=args.db, org_id=args.org_id)
     except IngestionError as exc:
         error = {"ok": False, "error": str(exc)}
         if args.json:

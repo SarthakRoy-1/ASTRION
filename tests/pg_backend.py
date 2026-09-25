@@ -42,6 +42,7 @@ URL = os.environ["ASTRION_TEST_DATABASE_URL"]
 #: Tables the ingestion scripts fill, in foreign-key order. `full_db` clones
 #: these from a template schema instead of re-running ingestion per test.
 DATA_TABLES = (
+    "organizations",
     "dataset_metadata",
     "ingestion_runs",
     "accounts",

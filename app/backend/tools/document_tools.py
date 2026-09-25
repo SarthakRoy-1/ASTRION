@@ -64,7 +64,7 @@ def _search_documents(
         conn,
         query,
         account_id=account_id,
-        allowed_account_ids=context.scope(),
+        scope=context.scope(),
         limit=limit,
     )
 
@@ -120,7 +120,7 @@ def _get_document_evidence(
         chunk_ids=chunk_ids,
         document_id=document_id,
         account_id=arguments.get("account_id"),
-        allowed_account_ids=context.scope(),
+        scope=context.scope(),
     )
     if not evidence:
         return ToolResult(

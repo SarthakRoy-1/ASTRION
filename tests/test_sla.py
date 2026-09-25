@@ -15,6 +15,7 @@ from decimal import Decimal
 
 import pytest
 
+from app.backend.tenancy import LEGACY_ORG_ID, LEGACY_SCOPE, Scope  # noqa: F401
 from app.backend.models.policy import PolicyOutcome, Severity
 from app.backend.models.agent import ToolStatus
 from app.backend.policies.base import PolicyLookupError
@@ -35,7 +36,7 @@ def registry():
 def test_plan_default_target_is_read_from_the_policy_table(conn):
     """ACCT-004 is an Enterprise account with no agreement in the pack, so the
     current policy's Enterprise row governs."""
-    decision = evaluate_sla(conn, "TKT-505", severity="P1")
+    decision = evaluate_sla(conn, "TKT-505", severity="P1", scope=LEGACY_SCOPE)
 
     assert decision.plan == "Enterprise"
     assert decision.target_minutes == 30
@@ -46,7 +47,7 @@ def test_plan_default_target_is_read_from_the_policy_table(conn):
 def test_customer_agreement_overrides_the_plan_default(conn):
     """Northstar's agreement replaces the Enterprise P1 target. The agreement
     must both win and be named as having won."""
-    decision = evaluate_sla(conn, "TKT-501", severity="P1")
+    decision = evaluate_sla(conn, "TKT-501", severity="P1", scope=LEGACY_SCOPE)
 
     assert decision.plan == "Enterprise"
     assert decision.target_minutes == 15
@@ -58,7 +59,7 @@ def test_agreement_override_is_per_severity_not_wholesale(conn):
     """An agreement overrides the severities it states. Northstar states all
     three, so each comes from the agreement rather than the plan table."""
     targets = {
-        severity: evaluate_sla(conn, "TKT-501", severity=severity).target_minutes
+        severity: evaluate_sla(conn, "TKT-501", severity=severity, scope=LEGACY_SCOPE).target_minutes
         for severity in ("P1", "P2")
     }
 
@@ -69,8 +70,8 @@ def test_agreement_override_is_per_severity_not_wholesale(conn):
 def test_another_accounts_agreement_never_supplies_a_target(conn):
     """ACCT-004 has no agreement; the Enterprise default must not be replaced
     by whichever agreement happens to sit in the corpus."""
-    northstar = evaluate_sla(conn, "TKT-501", severity="P1")
-    axis = evaluate_sla(conn, "TKT-505", severity="P1")
+    northstar = evaluate_sla(conn, "TKT-501", severity="P1", scope=LEGACY_SCOPE)
+    axis = evaluate_sla(conn, "TKT-505", severity="P1", scope=LEGACY_SCOPE)
 
     assert northstar.target_minutes == 15
     assert axis.target_minutes == 30
@@ -81,7 +82,7 @@ def test_another_accounts_agreement_never_supplies_a_target(conn):
 
 
 def test_breach_is_measured_against_the_dataset_snapshot(conn):
-    decision = evaluate_sla(conn, "TKT-501", severity="P1")
+    decision = evaluate_sla(conn, "TKT-501", severity="P1", scope=LEGACY_SCOPE)
 
     assert decision.breached is True
     assert decision.elapsed_minutes == Decimal("30.00")
@@ -93,7 +94,7 @@ def test_breach_is_measured_against_the_dataset_snapshot(conn):
 def test_a_target_still_within_reach_is_not_reported_as_breached(conn):
     """The engine must be able to say "no breach", or a breach carries no
     information. TKT-501 is 30 minutes old against a 1-hour P2 target."""
-    decision = evaluate_sla(conn, "TKT-501", severity="P2")
+    decision = evaluate_sla(conn, "TKT-501", severity="P2", scope=LEGACY_SCOPE)
 
     assert decision.breached is False
     assert decision.outcome is PolicyOutcome.ALLOWED
@@ -105,15 +106,15 @@ def test_a_target_still_within_reach_is_not_reported_as_breached(conn):
 
 def test_p1_requires_immediate_escalation_independently_of_the_clock(conn):
     """The policy escalates P1 immediately; it does not wait for a breach."""
-    breached = evaluate_sla(conn, "TKT-501", severity="P1")
-    within = evaluate_sla(conn, "TKT-503", severity="P1")
+    breached = evaluate_sla(conn, "TKT-501", severity="P1", scope=LEGACY_SCOPE)
+    within = evaluate_sla(conn, "TKT-503", severity="P1", scope=LEGACY_SCOPE)
 
     assert breached.requires_immediate_escalation is True
     assert within.requires_immediate_escalation is True
 
 
 def test_lower_severities_do_not_demand_immediate_escalation(conn):
-    decision = evaluate_sla(conn, "TKT-501", severity="P2")
+    decision = evaluate_sla(conn, "TKT-501", severity="P2", scope=LEGACY_SCOPE)
 
     assert decision.requires_immediate_escalation is False
 
@@ -124,7 +125,7 @@ def test_lower_severities_do_not_demand_immediate_escalation(conn):
 def test_no_severity_supplied_defers_instead_of_guessing(conn):
     """Severity is a judgement about impact. Inferring one and then asserting a
     breach against it would be a confident answer built on a guess."""
-    decision = evaluate_sla(conn, "TKT-501")
+    decision = evaluate_sla(conn, "TKT-501", scope=LEGACY_SCOPE)
 
     assert decision.severity is None
     assert decision.breached is None
@@ -135,7 +136,7 @@ def test_no_severity_supplied_defers_instead_of_guessing(conn):
 def test_deferring_on_severity_still_reports_the_facts_it_has(conn):
     """A refusal should still be useful: elapsed time and the candidate targets
     are facts that do not depend on the severity."""
-    decision = evaluate_sla(conn, "TKT-501")
+    decision = evaluate_sla(conn, "TKT-501", scope=LEGACY_SCOPE)
 
     assert decision.elapsed_minutes == Decimal("30.00")
     assert "15 minutes" in " ".join(decision.verification_reasons)
@@ -144,7 +145,7 @@ def test_deferring_on_severity_still_reports_the_facts_it_has(conn):
 def test_business_hours_target_is_reported_but_not_converted(conn):
     """The corpus defines no business calendar, so a business-hours target
     cannot yield a breach verdict without inventing one."""
-    decision = evaluate_sla(conn, "TKT-503", severity="P3")
+    decision = evaluate_sla(conn, "TKT-503", severity="P3", scope=LEGACY_SCOPE)
 
     assert decision.target_text == "2 business days"
     assert decision.target_minutes is None
@@ -155,7 +156,7 @@ def test_business_hours_target_is_reported_but_not_converted(conn):
 
 def test_an_undefined_severity_is_refused(conn):
     with pytest.raises(PolicyLookupError):
-        evaluate_sla(conn, "TKT-501", severity="P9")
+        evaluate_sla(conn, "TKT-501", severity="P9", scope=LEGACY_SCOPE)
 
 
 # --- scope ----------------------------------------------------------------------
@@ -164,7 +165,7 @@ def test_an_undefined_severity_is_refused(conn):
 def test_sla_evaluation_is_account_scoped(conn):
     """Out of scope is indistinguishable from absent, as everywhere else."""
     with pytest.raises(PolicyLookupError):
-        evaluate_sla(conn, "TKT-502", severity="P1", allowed_account_ids=NORTHSTAR_ACCOUNT)
+        evaluate_sla(conn, "TKT-502", severity="P1", scope=Scope.of(LEGACY_ORG_ID, NORTHSTAR_ACCOUNT))
 
 
 # --- extraction primitives -------------------------------------------------------
@@ -187,8 +188,7 @@ def test_targets_extracted_without_a_plan_still_read_agreement_clauses(conn):
         conn,
         topic=Topic.SUPPORT_RESPONSE,
         account_id="ACCT-001",
-        allowed_account_ids=None,
-    )
+        scope=LEGACY_SCOPE)
     targets = extract_response_targets(evidence, plan=None)
 
     assert targets.for_severity(Severity.P1).minutes == 15
@@ -197,7 +197,7 @@ def test_targets_extracted_without_a_plan_still_read_agreement_clauses(conn):
 
 def test_every_extracted_target_names_the_chunk_that_stated_it(conn):
     """A target with no source was never stated by any document."""
-    decision = evaluate_sla(conn, "TKT-501", severity="P1")
+    decision = evaluate_sla(conn, "TKT-501", severity="P1", scope=LEGACY_SCOPE)
 
     assert decision.targets is not None
     for target in decision.targets.targets.values():

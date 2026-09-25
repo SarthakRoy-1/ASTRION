@@ -32,6 +32,7 @@ from collections.abc import Collection
 from datetime import datetime
 from decimal import Decimal
 
+from app.backend.tenancy import Scope
 from app.backend.agent.trust import TrustStatus
 from app.backend.models.records import Order, Ticket
 from app.backend.models.signals import (
@@ -207,7 +208,7 @@ def correlate_known_issues(
     conn: sqlite3.Connection,
     terms: list[str],
     *,
-    allowed_account_ids: Collection[str] | None,
+    scope: Scope,
     limit: int = 3,
 ) -> list[str]:
     """Documentation chunk ids matching a detected cluster's shared terms.
@@ -229,7 +230,7 @@ def correlate_known_issues(
         matches = search_documents(
             conn,
             " ".join(terms),
-            allowed_account_ids=allowed_account_ids,
+            scope=scope,
             include_non_authoritative=False,
             limit=limit,
         )
@@ -249,7 +250,7 @@ def detect_sla_risk(
     conn: sqlite3.Connection,
     tickets: list[Ticket],
     *,
-    allowed_account_ids: Collection[str] | None,
+    scope: Scope,
 ) -> list[Signal]:
     """First-response targets that are breached or close to it.
 
@@ -274,7 +275,7 @@ def detect_sla_risk(
     for ticket in tickets:
         try:
             decision = evaluate_sla(
-                conn, ticket.ticket_id, allowed_account_ids=allowed_account_ids
+                conn, ticket.ticket_id, scope=scope
             )
         except (PolicyLookupError, PolicyDataError):
             # Out of scope or unevaluable. Not a signal, and emphatically not
@@ -380,7 +381,7 @@ def detect_recurring_and_cross_customer(
     tickets: list[Ticket],
     names: dict[str, str],
     *,
-    allowed_account_ids: Collection[str] | None = None,
+    scope: Scope,
 ) -> list[Signal]:
     """Repeated problems, and problems spanning several accounts.
 
@@ -399,7 +400,7 @@ def detect_recurring_and_cross_customer(
         observed = [t.created_at for t in cluster if t.created_at]
         cross = len(accounts) > 1
         known_issue_chunks = correlate_known_issues(
-            conn, shared, allowed_account_ids=allowed_account_ids
+            conn, shared, scope=scope
         )
 
         # Evidence strength decides confidence, not whether to report.
@@ -610,7 +611,7 @@ def detect_operational_anomalies(
 def detect_signals(
     conn: sqlite3.Connection,
     *,
-    allowed_account_ids: Collection[str] | None = None,
+    scope: Scope,
 ) -> tuple[list[Signal], datetime | None]:
     """Run every detector under one tenant scope. Returns (signals, reference time).
 
@@ -619,27 +620,27 @@ def detect_signals(
     Ranking is deliberately not applied here — see `operations/ranking.py`.
     """
     try:
-        reference_time = load_evaluation_context(conn).reference_time
+        reference_time = load_evaluation_context(conn, scope.org_id).reference_time
     except PolicyDataError:
         reference_time = None
 
-    tickets = ops.list_tickets(conn, allowed_account_ids=allowed_account_ids)
+    tickets = ops.list_tickets(conn, scope=scope)
     open_tickets = [
         t for t in tickets if (t.status or "").strip().lower() == "open"
     ]
-    orders = ops.list_orders(conn, allowed_account_ids=allowed_account_ids)
-    names = ops.account_names(conn, allowed_account_ids=allowed_account_ids)
+    orders = ops.list_orders(conn, scope=scope)
+    names = ops.account_names(conn, scope=scope)
 
     signals: list[Signal] = []
     signals.extend(
-        detect_sla_risk(conn, open_tickets, allowed_account_ids=allowed_account_ids)
+        detect_sla_risk(conn, open_tickets, scope=scope)
     )
     # Clustering reads *all* tickets, open and closed: a closed ticket from last
     # week describing the same problem is exactly the evidence that makes a new
     # one a recurrence rather than a first report.
     signals.extend(
         detect_recurring_and_cross_customer(
-            conn, tickets, names, allowed_account_ids=allowed_account_ids
+            conn, tickets, names, scope=scope
         )
     )
     signals.extend(

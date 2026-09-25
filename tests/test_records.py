@@ -2,6 +2,7 @@ from datetime import datetime
 
 import pytest
 
+from app.backend.tenancy import LEGACY_ORG_ID, LEGACY_SCOPE, Scope  # noqa: F401
 from app.backend.models.records import Account, Order, Ticket
 from app.backend.services import records
 from app.backend.services.database import get_connection
@@ -25,7 +26,7 @@ def conn(tmp_path):
 
 
 def test_get_account_found(conn):
-    account = records.get_account(conn, "ACCT-A")
+    account = records.get_account(conn, "ACCT-A", scope=LEGACY_SCOPE)
 
     assert isinstance(account, Account)
     assert account.account_id == "ACCT-A"
@@ -34,15 +35,15 @@ def test_get_account_found(conn):
 
 
 def test_get_account_not_found_returns_none(conn):
-    assert records.get_account(conn, "ACCT-DOES-NOT-EXIST") is None
+    assert records.get_account(conn, "ACCT-DOES-NOT-EXIST", scope=LEGACY_SCOPE) is None
 
 
 def test_get_account_found_with_null_field_distinguishable_from_not_found(conn):
-    account = records.get_account(conn, "ACCT-B")
+    account = records.get_account(conn, "ACCT-B", scope=LEGACY_SCOPE)
 
     assert account is not None
     assert account.contract_file is None  # found, but this field is null
-    not_found = records.get_account(conn, "ACCT-ZZZ")
+    not_found = records.get_account(conn, "ACCT-ZZZ", scope=LEGACY_SCOPE)
     assert not_found is None
     assert account != not_found
 
@@ -51,7 +52,7 @@ def test_get_account_found_with_null_field_distinguishable_from_not_found(conn):
 
 
 def test_get_order_found(conn):
-    order = records.get_order(conn, "ORD-1")
+    order = records.get_order(conn, "ORD-1", scope=LEGACY_SCOPE)
 
     assert isinstance(order, Order)
     assert order.order_id == "ORD-1"
@@ -61,11 +62,11 @@ def test_get_order_found(conn):
 
 
 def test_get_order_not_found_returns_none(conn):
-    assert records.get_order(conn, "ORD-999") is None
+    assert records.get_order(conn, "ORD-999", scope=LEGACY_SCOPE) is None
 
 
 def test_get_order_null_pickup_actual_at_is_none_not_missing(conn):
-    order = records.get_order(conn, "ORD-1")
+    order = records.get_order(conn, "ORD-1", scope=LEGACY_SCOPE)
     assert order is not None
     assert order.pickup_actual_at is None
 
@@ -74,18 +75,18 @@ def test_get_order_null_pickup_actual_at_is_none_not_missing(conn):
 
 
 def test_get_ticket_found(conn):
-    ticket = records.get_ticket(conn, "TKT-2")
+    ticket = records.get_ticket(conn, "TKT-2", scope=LEGACY_SCOPE)
 
     assert isinstance(ticket, Ticket)
     assert ticket.historical_resolution == "Told customer X."
 
 
 def test_get_ticket_not_found_returns_none(conn):
-    assert records.get_ticket(conn, "TKT-999") is None
+    assert records.get_ticket(conn, "TKT-999", scope=LEGACY_SCOPE) is None
 
 
 def test_get_ticket_null_historical_resolution(conn):
-    ticket = records.get_ticket(conn, "TKT-1")
+    ticket = records.get_ticket(conn, "TKT-1", scope=LEGACY_SCOPE)
     assert ticket is not None
     assert ticket.historical_resolution is None
 
@@ -94,66 +95,66 @@ def test_get_ticket_null_historical_resolution(conn):
 
 
 def test_get_account_orders_returns_only_that_accounts_orders(conn):
-    orders = records.get_account_orders(conn, "ACCT-A")
+    orders = records.get_account_orders(conn, "ACCT-A", scope=LEGACY_SCOPE)
 
     assert [o.order_id for o in orders] == ["ORD-1"]
     assert all(o.account_id == "ACCT-A" for o in orders)
 
 
 def test_get_account_orders_unknown_account_returns_empty_list(conn):
-    assert records.get_account_orders(conn, "ACCT-ZZZ") == []
+    assert records.get_account_orders(conn, "ACCT-ZZZ", scope=LEGACY_SCOPE) == []
 
 
 def test_get_account_tickets_returns_only_that_accounts_tickets(conn):
-    tickets = records.get_account_tickets(conn, "ACCT-B")
+    tickets = records.get_account_tickets(conn, "ACCT-B", scope=LEGACY_SCOPE)
 
     assert [t.ticket_id for t in tickets] == ["TKT-2"]
 
 
 def test_get_account_tickets_unknown_account_returns_empty_list(conn):
-    assert records.get_account_tickets(conn, "ACCT-ZZZ") == []
+    assert records.get_account_tickets(conn, "ACCT-ZZZ", scope=LEGACY_SCOPE) == []
 
 
 # --- account scoping hook -------------------------------------------------------
 
 
 def test_get_account_respects_allowed_account_ids(conn):
-    in_scope = records.get_account(conn, "ACCT-A", allowed_account_ids={"ACCT-A"})
+    in_scope = records.get_account(conn, "ACCT-A", scope=Scope.of(LEGACY_ORG_ID, {"ACCT-A"}))
     assert in_scope is not None
 
-    out_of_scope = records.get_account(conn, "ACCT-B", allowed_account_ids={"ACCT-A"})
+    out_of_scope = records.get_account(conn, "ACCT-B", scope=Scope.of(LEGACY_ORG_ID, {"ACCT-A"}))
     assert out_of_scope is None
 
 
 def test_get_order_out_of_scope_is_indistinguishable_from_not_found(conn):
-    out_of_scope = records.get_order(conn, "ORD-2", allowed_account_ids={"ACCT-A"})
-    not_found = records.get_order(conn, "ORD-999", allowed_account_ids={"ACCT-A"})
+    out_of_scope = records.get_order(conn, "ORD-2", scope=Scope.of(LEGACY_ORG_ID, {"ACCT-A"}))
+    not_found = records.get_order(conn, "ORD-999", scope=Scope.of(LEGACY_ORG_ID, {"ACCT-A"}))
 
     assert out_of_scope is None
     assert not_found is None
 
 
 def test_get_account_orders_out_of_scope_returns_empty_list(conn):
-    assert records.get_account_orders(conn, "ACCT-B", allowed_account_ids={"ACCT-A"}) == []
+    assert records.get_account_orders(conn, "ACCT-B", scope=Scope.of(LEGACY_ORG_ID, {"ACCT-A"})) == []
 
 
 def test_get_account_tickets_out_of_scope_returns_empty_list(conn):
-    assert records.get_account_tickets(conn, "ACCT-B", allowed_account_ids={"ACCT-A"}) == []
+    assert records.get_account_tickets(conn, "ACCT-B", scope=Scope.of(LEGACY_ORG_ID, {"ACCT-A"})) == []
 
 
 def test_no_scope_restriction_by_default(conn):
     # Omitting allowed_account_ids must not silently restrict anything --
     # Phase 5 (auth) has not been implemented, so today's default caller can
     # see all accounts.
-    assert records.get_account(conn, "ACCT-B") is not None
-    assert len(records.get_account_orders(conn, "ACCT-B")) == 1
+    assert records.get_account(conn, "ACCT-B", scope=LEGACY_SCOPE) is not None
+    assert len(records.get_account_orders(conn, "ACCT-B", scope=LEGACY_SCOPE)) == 1
 
 
 # --- dataset metadata ------------------------------------------------------------
 
 
 def test_get_dataset_metadata(conn):
-    meta = records.get_dataset_metadata(conn)
+    meta = records.get_dataset_metadata(conn, LEGACY_ORG_ID)
 
     assert meta is not None
     assert meta.dataset_snapshot_raw == "2026-01-10 09:00 Asia/Kolkata"
@@ -167,7 +168,7 @@ def test_get_dataset_metadata_missing_returns_none(tmp_path):
     empty_conn = get_connection(tmp_path / "empty.db")
     try:
         initialize_schema(empty_conn)
-        assert records.get_dataset_metadata(empty_conn) is None
+        assert records.get_dataset_metadata(empty_conn, LEGACY_ORG_ID) is None
     finally:
         empty_conn.close()
 
@@ -176,7 +177,7 @@ def test_get_dataset_metadata_missing_returns_none(tmp_path):
 
 
 def test_get_source_provenance_for_known_record(conn):
-    prov = records.get_source_provenance(conn, "orders", "ORD-1")
+    prov = records.get_source_provenance(conn, "orders", "ORD-1", org_id=LEGACY_ORG_ID)
 
     assert prov is not None
     assert prov.source_sheet == "orders"
@@ -185,7 +186,7 @@ def test_get_source_provenance_for_known_record(conn):
 
 
 def test_get_source_provenance_unknown_returns_none(conn):
-    assert records.get_source_provenance(conn, "orders", "ORD-999") is None
+    assert records.get_source_provenance(conn, "orders", "ORD-999", org_id=LEGACY_ORG_ID) is None
 
 
 # --- SQL injection safety ----------------------------------------------------------
@@ -194,23 +195,23 @@ def test_get_source_provenance_unknown_returns_none(conn):
 def test_get_account_is_safe_against_injection_style_input(conn):
     malicious_id = "ACCT-A' OR '1'='1"
 
-    result = records.get_account(conn, malicious_id)
+    result = records.get_account(conn, malicious_id, scope=LEGACY_SCOPE)
 
     assert result is None  # treated as a literal (non-matching) id, not SQL
     # and the database is unharmed -- real accounts are still there
-    assert records.get_account(conn, "ACCT-A") is not None
+    assert records.get_account(conn, "ACCT-A", scope=LEGACY_SCOPE) is not None
 
 
 def test_get_order_is_safe_against_drop_table_payload(conn):
     payload = "ORD-1'; DROP TABLE orders; --"
 
-    result = records.get_order(conn, payload)
+    result = records.get_order(conn, payload, scope=LEGACY_SCOPE)
 
     assert result is None
-    assert records.get_order(conn, "ORD-1") is not None  # table still exists with data
+    assert records.get_order(conn, "ORD-1", scope=LEGACY_SCOPE) is not None  # table still exists with data
 
 
 def test_get_account_orders_is_safe_against_injection_style_input(conn):
-    result = records.get_account_orders(conn, "ACCT-A' OR '1'='1")
+    result = records.get_account_orders(conn, "ACCT-A' OR '1'='1", scope=LEGACY_SCOPE)
 
     assert result == []

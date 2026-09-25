@@ -72,6 +72,7 @@ from app.backend.auth.passwords import (  # noqa: E402
 )
 from app.backend.auth.permissions import OrgRole  # noqa: E402
 from app.backend.core.config import DEFAULT_DB_PATH  # noqa: E402
+from app.backend.tenancy import LEGACY_ORG_ID  # noqa: E402
 from app.backend.services.database import (  # noqa: E402
     get_connection,
     initialize_schema,
@@ -105,9 +106,13 @@ class SeedError(Exception):
 
 
 def dataset_accounts(conn) -> list[str]:
+    """The imported dataset's accounts: those in the legacy workspace."""
     return [
         row["account_id"]
-        for row in conn.execute("SELECT account_id FROM accounts ORDER BY account_id")
+        for row in conn.execute(
+            "SELECT account_id FROM accounts WHERE org_id = ? ORDER BY account_id",
+            (LEGACY_ORG_ID,),
+        )
     ]
 
 
@@ -155,20 +160,28 @@ def ensure_membership(conn, *, org_id: str, user_id: str, role: OrgRole) -> bool
 
 
 def ensure_accounts(conn, *, org_id: str, account_ids: list[str]):
-    """Attach every unclaimed dataset account. Returns (attached, skipped).
+    """Move the imported dataset's accounts into the demo workspace.
 
-    `uq_organization_accounts_account` allows an account exactly one workspace.
-    An account another workspace holds is reported, never moved — deciding who
-    owns a tenant's data is not a decision a boot script may take.
+    Returns (attached, skipped). Only accounts still in the legacy workspace are
+    moved. One that is already here is left alone, and one that is anywhere else
+    is reported, never taken — deciding who owns a tenant's data is not a
+    decision a boot script may take.
     """
     attached: list[str] = []
     skipped: list[tuple[str, str]] = []
     for account_id in account_ids:
-        owner = repo.org_owning_account(conn, account_id)
-        if owner == org_id:
+        here = conn.execute(
+            "SELECT 1 FROM accounts WHERE org_id = ? AND account_id = ?",
+            (org_id, account_id),
+        ).fetchone()
+        if here is not None:
             continue
-        if owner is not None:
-            skipped.append((account_id, owner))
+        in_legacy = conn.execute(
+            "SELECT 1 FROM accounts WHERE org_id = ? AND account_id = ?",
+            (LEGACY_ORG_ID, account_id),
+        ).fetchone()
+        if in_legacy is None:
+            skipped.append((account_id, "not in the imported dataset"))
             continue
         repo.grant_account(conn, org_id=org_id, account_id=account_id)
         attached.append(account_id)

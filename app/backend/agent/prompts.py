@@ -111,7 +111,7 @@ def build_context_block(
     probing records it cannot read; it is not what stops it from reading them.
     """
     if context.allowed_account_ids is None:
-        scope = "all accounts (no scope restriction applied)"
+        scope = "every account in this workspace"
     elif not context.allowed_account_ids:
         scope = "no customer-specific accounts (general documentation only)"
     else:

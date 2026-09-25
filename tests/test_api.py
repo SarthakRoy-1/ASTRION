@@ -11,6 +11,7 @@ Everything here runs on the deterministic provider: no API key, no network.
 
 import pytest
 
+from app.backend.tenancy import LEGACY_ORG_ID, LEGACY_SCOPE, Scope  # noqa: F401
 from app.backend.core.config import AuthMode, ProviderMode, Settings
 from app.backend.core.errors import ProviderConfigurationError
 from conftest import (
@@ -43,8 +44,11 @@ def test_health_reports_ready_when_the_data_is_ingested(client):
 
     assert body["status"] == "ok"
     assert body["database_ready"] is True
-    assert body["documents_indexed"] == 6
-    assert body["dataset_snapshot"].startswith("2026-08-16")
+    # The shared knowledge base: the four general documents, which belong to no
+    # workspace. The two customer agreements belong to the workspace that has
+    # those customers, and an unauthenticated endpoint does not count them.
+    assert body["documents_indexed"] == 4
+    assert body["dataset_snapshot"] is None
 
 
 def test_health_reports_the_active_provider_mode(client):
@@ -434,7 +438,7 @@ def test_confirmation_executes_exactly_once(client, conn):
 
     from app.backend.services.actions import get_ticket_escalations
 
-    assert len(get_ticket_escalations(conn, "TKT-501")) == 1
+    assert len(get_ticket_escalations(conn, "TKT-501", org_id=LEGACY_ORG_ID)) == 1
 
 
 def test_rejection_changes_nothing(client, conn):
@@ -449,7 +453,7 @@ def test_rejection_changes_nothing(client, conn):
 
     from app.backend.services.actions import get_ticket_escalations
 
-    assert get_ticket_escalations(conn, "TKT-501") == []
+    assert get_ticket_escalations(conn, "TKT-501", org_id=LEGACY_ORG_ID) == []
 
 
 def test_a_rejected_action_cannot_then_be_executed(client):
@@ -473,7 +477,7 @@ def test_confirmation_from_another_conversation_is_refused(client, conn):
 
     from app.backend.services.actions import get_ticket_escalations
 
-    assert get_ticket_escalations(conn, "TKT-501") == []
+    assert get_ticket_escalations(conn, "TKT-501", org_id=LEGACY_ORG_ID) == []
 
 
 def test_confirmation_with_no_session_is_refused_for_a_bound_action(client):
@@ -510,7 +514,7 @@ def test_a_changed_proposal_fails_the_fingerprint_check(client, conn):
 
     from app.backend.services.actions import get_ticket_escalations
 
-    assert get_ticket_escalations(conn, "TKT-501") == []
+    assert get_ticket_escalations(conn, "TKT-501", org_id=LEGACY_ORG_ID) == []
 
 
 def test_confirming_an_unknown_action_is_a_clean_404(client):

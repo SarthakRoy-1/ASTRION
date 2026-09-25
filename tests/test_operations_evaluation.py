@@ -20,6 +20,7 @@ import json
 
 import pytest
 
+from app.backend.tenancy import LEGACY_ORG_ID, LEGACY_SCOPE, Scope  # noqa: F401
 from app.backend.agent.orchestrator import AgentOrchestrator
 from app.backend.agent.trust import TrustStatus
 from app.backend.models.agent import AgentContext, AgentRequest, Role
@@ -54,7 +55,7 @@ def ops_conn(_full_db_template, tmp_path_factory):
 
 @pytest.fixture(scope="module")
 def full_report(ops_conn):
-    return build_report(ops_conn, allowed_account_ids=ALL_ACCOUNTS)
+    return build_report(ops_conn, scope=Scope.of(LEGACY_ORG_ID, ALL_ACCOUNTS))
 
 
 # ===========================================================================
@@ -110,8 +111,8 @@ def test_sla_detection_respects_a_customer_agreement(ops_conn):
     Northstar signal must differ from those quoted for an account with no
     agreement, given the same rule.
     """
-    northstar = build_report(ops_conn, allowed_account_ids=frozenset({NORTHSTAR}))
-    axis = build_report(ops_conn, allowed_account_ids=frozenset({AXIS}))
+    northstar = build_report(ops_conn, scope=Scope.of(LEGACY_ORG_ID, frozenset({NORTHSTAR})))
+    axis = build_report(ops_conn, scope=Scope.of(LEGACY_ORG_ID, frozenset({AXIS})))
 
     def bands(report):
         return {
@@ -218,7 +219,7 @@ def test_every_referenced_record_is_within_scope(ops_conn):
     """The records a signal cites must all belong to the scope it was built
     under — the strongest form of the isolation claim."""
     scope = frozenset({NORTHSTAR})
-    report = build_report(ops_conn, allowed_account_ids=scope)
+    report = build_report(ops_conn, scope=Scope.of(LEGACY_ORG_ID, scope))
     for signal in report.signals:
         for ref in signal.record_refs:
             assert ref.account_id in scope, (
@@ -249,8 +250,8 @@ def test_signal_counts_match_the_records_cited(full_report):
 def test_detection_is_deterministic(ops_conn):
     """Identical input must give identical output, or the page appears to
     change when nothing has."""
-    first = build_report(ops_conn, allowed_account_ids=ALL_ACCOUNTS)
-    second = build_report(ops_conn, allowed_account_ids=ALL_ACCOUNTS)
+    first = build_report(ops_conn, scope=Scope.of(LEGACY_ORG_ID, ALL_ACCOUNTS))
+    second = build_report(ops_conn, scope=Scope.of(LEGACY_ORG_ID, ALL_ACCOUNTS))
 
     assert [s.signal_id for s in first.signals] == [s.signal_id for s in second.signals]
     assert [s.priority_score for s in first.signals] == [
@@ -379,8 +380,8 @@ def test_ranking_is_deterministic_for_equal_scores(ops_conn):
 
 
 def test_a_workspace_sees_only_its_own_signals(ops_conn):
-    alpha = build_report(ops_conn, allowed_account_ids=frozenset({NORTHSTAR}))
-    beta = build_report(ops_conn, allowed_account_ids=frozenset({LUMENWORKS}))
+    alpha = build_report(ops_conn, scope=Scope.of(LEGACY_ORG_ID, frozenset({NORTHSTAR})))
+    beta = build_report(ops_conn, scope=Scope.of(LEGACY_ORG_ID, frozenset({LUMENWORKS})))
 
     alpha_ids = {s.signal_id for s in alpha.signals}
     beta_ids = {s.signal_id for s in beta.signals}
@@ -388,7 +389,7 @@ def test_a_workspace_sees_only_its_own_signals(ops_conn):
 
 
 def test_another_tenants_data_never_appears_in_a_scoped_report(ops_conn):
-    report = build_report(ops_conn, allowed_account_ids=frozenset({NORTHSTAR}))
+    report = build_report(ops_conn, scope=Scope.of(LEGACY_ORG_ID, frozenset({NORTHSTAR})))
     blob = json.dumps(report.model_dump(mode="json"), default=str)
     for foreign in (LUMENWORKS, BEACON, AXIS, "LumenWorks", "Beacon Retail", "Axis Labs"):
         assert foreign not in blob, f"scoped report leaked {foreign}"
@@ -400,17 +401,17 @@ def test_an_empty_scope_produces_no_signals(ops_conn):
     The difference between an empty collection and `None` is the difference
     between a user with no workspace and a user who can see the whole dataset.
     """
-    report = build_report(ops_conn, allowed_account_ids=frozenset())
+    report = build_report(ops_conn, scope=Scope.of(LEGACY_ORG_ID, frozenset()))
     assert report.count == 0
 
 
 def test_a_foreign_signal_id_is_reported_as_absent(ops_conn):
-    beta = build_report(ops_conn, allowed_account_ids=frozenset({LUMENWORKS}))
+    beta = build_report(ops_conn, scope=Scope.of(LEGACY_ORG_ID, frozenset({LUMENWORKS})))
     assert beta.signals, "expected the other workspace to have signals"
     foreign_id = beta.signals[0].signal_id
 
     assert (
-        get_signal(ops_conn, foreign_id, allowed_account_ids=frozenset({NORTHSTAR}))
+        get_signal(ops_conn, foreign_id, scope=Scope.of(LEGACY_ORG_ID, frozenset({NORTHSTAR})))
         is None
     )
 
@@ -418,18 +419,18 @@ def test_a_foreign_signal_id_is_reported_as_absent(ops_conn):
 def test_an_invented_signal_id_answers_like_a_foreign_one(ops_conn):
     """Both absent, so the endpoint cannot be used as an existence oracle."""
     scope = frozenset({NORTHSTAR})
-    assert get_signal(ops_conn, "SLA-TKT-000000", allowed_account_ids=scope) is None
+    assert get_signal(ops_conn, "SLA-TKT-000000", scope=Scope.of(LEGACY_ORG_ID, scope)) is None
 
 
 def test_scoped_aggregates_cannot_reach_another_tenant(ops_conn):
     """The query layer itself, asserted directly."""
     scope = frozenset({NORTHSTAR})
-    for ticket in ops.list_tickets(ops_conn, allowed_account_ids=scope):
+    for ticket in ops.list_tickets(ops_conn, scope=Scope.of(LEGACY_ORG_ID, scope)):
         assert ticket.account_id == NORTHSTAR
-    for order in ops.list_orders(ops_conn, allowed_account_ids=scope):
+    for order in ops.list_orders(ops_conn, scope=Scope.of(LEGACY_ORG_ID, scope)):
         assert order.account_id == NORTHSTAR
-    assert set(ops.account_names(ops_conn, allowed_account_ids=scope)) == scope
-    assert set(ops.count_tickets_by_account(ops_conn, allowed_account_ids=scope)) <= scope
+    assert set(ops.account_names(ops_conn, scope=Scope.of(LEGACY_ORG_ID, scope))) == scope
+    assert set(ops.count_tickets_by_account(ops_conn, scope=Scope.of(LEGACY_ORG_ID, scope))) <= scope
 
 
 # ===========================================================================
@@ -442,8 +443,7 @@ def agent_ask(conn, message: str, scope: frozenset[str], role: Role = Role.SUPPO
         user_id="eval.ops",
         role=role,
         allowed_account_ids=scope,
-        session_id="SES-eval-ops",
-    )
+        session_id="SES-eval-ops", org_id=LEGACY_ORG_ID)
     return AgentOrchestrator(conn).handle(
         AgentRequest(message=message, context=context, request_id="REQ-eval-ops")
     )
@@ -542,8 +542,7 @@ def test_the_operations_tools_reject_authorization_arguments(ops_conn):
     context = AgentContext(
         user_id="u",
         role=Role.SUPPORT_AGENT,
-        allowed_account_ids=frozenset({NORTHSTAR}),
-    )
+        allowed_account_ids=frozenset({NORTHSTAR}), org_id=LEGACY_ORG_ID)
     for argument in ("allowed_account_ids", "allowed_accounts", "user_id", "role"):
         result = registry.execute(
             ops_conn, context, "get_operational_signals", {argument: [LUMENWORKS]}
@@ -567,8 +566,7 @@ def test_the_signal_tool_is_scoped_by_the_context(ops_conn):
 
     registry = build_default_registry()
     scoped = AgentContext(
-        user_id="u", role=Role.SUPPORT_AGENT, allowed_account_ids=frozenset({NORTHSTAR})
-    )
+        user_id="u", role=Role.SUPPORT_AGENT, allowed_account_ids=frozenset({NORTHSTAR}), org_id=LEGACY_ORG_ID)
     result = registry.execute(ops_conn, scoped, "get_operational_signals", {})
     blob = json.dumps(result.data, default=str)
     for foreign in (LUMENWORKS, BEACON, AXIS):
@@ -582,7 +580,7 @@ def test_detection_without_scope_is_available_but_not_reachable_from_a_request(o
     everything, the other sees nothing, and confusing them is the failure this
     layer is shaped to prevent.
     """
-    unrestricted, _ = detect_signals(ops_conn, allowed_account_ids=None)
-    empty, _ = detect_signals(ops_conn, allowed_account_ids=frozenset())
+    unrestricted, _ = detect_signals(ops_conn, scope=LEGACY_SCOPE)
+    empty, _ = detect_signals(ops_conn, scope=Scope.of(LEGACY_ORG_ID, frozenset()))
     assert unrestricted, "unrestricted detection returned nothing"
     assert not empty, "empty scope must return nothing"

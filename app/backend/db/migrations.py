@@ -104,8 +104,12 @@ def _verify(applied: dict[str, tuple[str, str]], available: list[Migration]) -> 
             )
 
 
-def apply_migrations(conn, dialect: str) -> list[str]:
-    """Apply every pending migration. Returns the versions applied, in order."""
+def apply_migrations(conn, dialect: str, *, up_to: str | None = None) -> list[str]:
+    """Apply pending migrations, in order, and return the versions applied.
+
+    `up_to` stops after that version, so a test can build the schema as it stood
+    at an earlier release, put data in it, and migrate the rest.
+    """
     if dialect != "postgres":
         raise MigrationError(f"versioned migrations are not used for {dialect}")
 
@@ -121,6 +125,8 @@ def apply_migrations(conn, dialect: str) -> list[str]:
         for migration in available:
             if migration.version in applied:
                 continue
+            if up_to is not None and migration.version > up_to:
+                break
             logger.info("applying migration %s_%s", migration.version, migration.name)
             conn.run_script(migration.sql)
             conn.execute(

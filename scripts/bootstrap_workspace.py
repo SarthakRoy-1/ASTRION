@@ -46,6 +46,7 @@ from app.backend.auth.passwords import (  # noqa: E402
     validate_password,
 )
 from app.backend.core.config import DEFAULT_DB_PATH  # noqa: E402
+from app.backend.tenancy import LEGACY_ORG_ID  # noqa: E402
 from app.backend.services.database import (  # noqa: E402
     get_connection,
     initialize_schema,
@@ -53,8 +54,10 @@ from app.backend.services.database import (  # noqa: E402
 
 
 def dataset_accounts(conn) -> list[str]:
+    """The imported dataset's accounts: those still in the legacy workspace."""
     return [row["account_id"] for row in conn.execute(
-        "SELECT account_id FROM accounts ORDER BY account_id"
+        "SELECT account_id FROM accounts WHERE org_id = ? ORDER BY account_id",
+        (LEGACY_ORG_ID,),
     )]
 
 
@@ -117,7 +120,8 @@ def main() -> int:
         available, claimed = [], []
         for account_id in wanted:
             owner = repo.org_owning_account(conn, account_id)
-            (claimed if owner is not None else available).append((account_id, owner))
+            # Only accounts still in the imported (legacy) workspace can be handed on.
+            (available if owner == LEGACY_ORG_ID else claimed).append((account_id, owner))
 
         workspace = workspace_service.create_workspace(
             conn,

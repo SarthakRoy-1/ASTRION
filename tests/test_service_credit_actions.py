@@ -25,6 +25,7 @@ from decimal import Decimal
 
 import pytest
 
+from app.backend.tenancy import LEGACY_ORG_ID, LEGACY_SCOPE, Scope  # noqa: F401
 from app.backend.models.actions import ActionStatus, ActionType
 from app.backend.models.agent import AgentContext, Role, ToolStatus
 from app.backend.services.actions import (
@@ -51,8 +52,7 @@ def lumenworks_context():
     return AgentContext(
         user_id="lw.agent",
         role=Role.SUPPORT_AGENT,
-        allowed_account_ids=frozenset({LUMENWORKS_ACCOUNT}),
-    )
+        allowed_account_ids=frozenset({LUMENWORKS_ACCOUNT}), org_id=LEGACY_ORG_ID)
 
 
 def raise_credit_above_threshold(monkeypatch, amount="2500"):
@@ -92,7 +92,7 @@ def test_an_eligible_credit_can_be_prepared(conn, lumenworks_context):
 def test_the_amount_is_the_policy_engine_s_own_figure(conn, lumenworks_context):
     from app.backend.policies.service_credit import evaluate_service_credit
 
-    decision = evaluate_service_credit(conn, ELIGIBLE_ORDER)
+    decision = evaluate_service_credit(conn, ELIGIBLE_ORDER, scope=LEGACY_SCOPE)
     result = prepare_credit(conn, lumenworks_context)
 
     assert result.proposed_action.parameters["amount"] == str(decision.credit_amount)
@@ -116,7 +116,7 @@ def test_the_customer_agreement_amount_overrides_the_sop_default(
     """LumenWorks' agreement replaces the SOP's default credit, not adds to it."""
     from app.backend.policies.service_credit import evaluate_service_credit
 
-    decision = evaluate_service_credit(conn, ELIGIBLE_ORDER)
+    decision = evaluate_service_credit(conn, ELIGIBLE_ORDER, scope=LEGACY_SCOPE)
     result = prepare_credit(conn, lumenworks_context)
 
     # Whatever the agreement says is what gets proposed, and the proposal
@@ -164,7 +164,7 @@ def test_missing_facts_produce_uncertainty_not_a_credit(
 
 def test_preparation_writes_no_credit(conn, lumenworks_context):
     prepare_credit(conn, lumenworks_context)
-    assert get_order_service_credits(conn, ELIGIBLE_ORDER) == []
+    assert get_order_service_credits(conn, ELIGIBLE_ORDER, org_id=LEGACY_ORG_ID) == []
 
 
 # --- manager authority, decided at confirmation -----------------------------
@@ -183,7 +183,7 @@ def test_a_credit_within_the_threshold_follows_the_normal_path(
     executed = confirm(orchestrator, prepared.action_id, lumenworks_context)
 
     assert executed.status is ActionStatus.EXECUTED
-    credits = get_order_service_credits(conn, ELIGIBLE_ORDER)
+    credits = get_order_service_credits(conn, ELIGIBLE_ORDER, org_id=LEGACY_ORG_ID)
     assert len(credits) == 1
     assert credits[0]["amount"] == prepared.parameters["amount"]
     assert credits[0]["required_manager_approval"] == 0
@@ -209,10 +209,10 @@ def test_a_refused_confirmation_changes_nothing(
     with pytest.raises(ActionForbidden):
         confirm(orchestrator, prepared.action_id, lumenworks_context)
 
-    assert get_order_service_credits(conn, ELIGIBLE_ORDER) == []
+    assert get_order_service_credits(conn, ELIGIBLE_ORDER, org_id=LEGACY_ORG_ID) == []
     # And it stays confirmable by someone who *is* authorised, rather than
     # being burned by the failed attempt.
-    assert get_action(conn, prepared.action_id).status is (
+    assert get_action(conn, prepared.action_id, scope=LEGACY_SCOPE).status is (
         ActionStatus.PENDING_CONFIRMATION
     )
 
@@ -226,13 +226,12 @@ def test_a_credit_over_the_threshold_is_confirmed_by_a_manager(
     manager = AgentContext(
         user_id="lw.manager",
         role=Role.SUPPORT_MANAGER,
-        allowed_account_ids=frozenset({LUMENWORKS_ACCOUNT}),
-    )
+        allowed_account_ids=frozenset({LUMENWORKS_ACCOUNT}), org_id=LEGACY_ORG_ID)
     executed = confirm(orchestrator, prepared.action_id, manager)
 
     assert executed.status is ActionStatus.EXECUTED
     assert executed.confirmed_by == "lw.manager"
-    credits = get_order_service_credits(conn, ELIGIBLE_ORDER)
+    credits = get_order_service_credits(conn, ELIGIBLE_ORDER, org_id=LEGACY_ORG_ID)
     assert credits[0]["required_manager_approval"] == 1
     assert credits[0]["approved_by"] == "lw.manager"
 
@@ -245,15 +244,13 @@ def test_authority_is_read_from_the_confirming_caller_not_the_preparer(
     manager = AgentContext(
         user_id="lw.manager",
         role=Role.SUPPORT_MANAGER,
-        allowed_account_ids=frozenset({LUMENWORKS_ACCOUNT}),
-    )
+        allowed_account_ids=frozenset({LUMENWORKS_ACCOUNT}), org_id=LEGACY_ORG_ID)
     prepared = prepare_credit(conn, manager).proposed_action
 
     agent = AgentContext(
         user_id="lw.agent",
         role=Role.SUPPORT_AGENT,
-        allowed_account_ids=frozenset({LUMENWORKS_ACCOUNT}),
-    )
+        allowed_account_ids=frozenset({LUMENWORKS_ACCOUNT}), org_id=LEGACY_ORG_ID)
     with pytest.raises(ActionForbidden):
         confirm(orchestrator, prepared.action_id, agent)
 
@@ -285,8 +282,7 @@ def test_permissions_decide_authority_when_a_workspace_issued_them(
         user_id="ops.user",
         role=Role.SUPPORT_AGENT,
         allowed_account_ids=frozenset({LUMENWORKS_ACCOUNT}),
-        permissions=frozenset({"execute_action", "propose_action", "run_agent"}),
-    )
+        permissions=frozenset({"execute_action", "propose_action", "run_agent"}), org_id=LEGACY_ORG_ID)
     prepared = prepare_credit(conn, operations).proposed_action
 
     with pytest.raises(ActionForbidden):
@@ -321,7 +317,7 @@ def test_a_stale_approval_flag_cannot_buy_a_cheap_confirmation(
 
     with pytest.raises(ActionStateError):
         confirm(orchestrator, prepared.action_id, lumenworks_context)
-    assert get_order_service_credits(conn, ELIGIBLE_ORDER) == []
+    assert get_order_service_credits(conn, ELIGIBLE_ORDER, org_id=LEGACY_ORG_ID) == []
 
 
 def test_a_credit_that_stopped_qualifying_cannot_be_confirmed(
@@ -338,7 +334,7 @@ def test_a_credit_that_stopped_qualifying_cannot_be_confirmed(
 
     with pytest.raises(ActionStateError):
         confirm(orchestrator, prepared.action_id, lumenworks_context)
-    assert get_order_service_credits(conn, ELIGIBLE_ORDER) == []
+    assert get_order_service_credits(conn, ELIGIBLE_ORDER, org_id=LEGACY_ORG_ID) == []
 
 
 def test_a_policy_that_cannot_be_re_evaluated_fails_closed(
@@ -356,7 +352,7 @@ def test_a_policy_that_cannot_be_re_evaluated_fails_closed(
 
     with pytest.raises(ActionStateError):
         confirm(orchestrator, prepared.action_id, lumenworks_context)
-    assert get_order_service_credits(conn, ELIGIBLE_ORDER) == []
+    assert get_order_service_credits(conn, ELIGIBLE_ORDER, org_id=LEGACY_ORG_ID) == []
 
 
 # --- the confirmation gate, unchanged for the new type ----------------------
@@ -364,10 +360,10 @@ def test_a_policy_that_cannot_be_re_evaluated_fails_closed(
 
 def test_a_prepared_credit_does_not_execute_on_its_own(conn, lumenworks_context):
     prepared = prepare_credit(conn, lumenworks_context).proposed_action
-    assert get_action(conn, prepared.action_id).status is (
+    assert get_action(conn, prepared.action_id, scope=LEGACY_SCOPE).status is (
         ActionStatus.PENDING_CONFIRMATION
     )
-    assert get_order_service_credits(conn, ELIGIBLE_ORDER) == []
+    assert get_order_service_credits(conn, ELIGIBLE_ORDER, org_id=LEGACY_ORG_ID) == []
 
 
 def test_execution_is_single_use(conn, orchestrator, lumenworks_context):
@@ -376,7 +372,7 @@ def test_execution_is_single_use(conn, orchestrator, lumenworks_context):
 
     with pytest.raises(ActionStateError):
         confirm(orchestrator, prepared.action_id, lumenworks_context)
-    assert len(get_order_service_credits(conn, ELIGIBLE_ORDER)) == 1
+    assert len(get_order_service_credits(conn, ELIGIBLE_ORDER, org_id=LEGACY_ORG_ID)) == 1
 
 
 def test_an_expired_credit_cannot_be_confirmed(conn, orchestrator, lumenworks_context):
@@ -392,7 +388,7 @@ def test_an_expired_credit_cannot_be_confirmed(conn, orchestrator, lumenworks_co
 
     with pytest.raises(ActionStateError):
         confirm(orchestrator, prepared.action_id, lumenworks_context)
-    assert get_order_service_credits(conn, ELIGIBLE_ORDER) == []
+    assert get_order_service_credits(conn, ELIGIBLE_ORDER, org_id=LEGACY_ORG_ID) == []
 
 
 def test_a_fingerprint_mismatch_refuses_confirmation(
@@ -407,7 +403,7 @@ def test_a_fingerprint_mismatch_refuses_confirmation(
             lumenworks_context,
             expected_fingerprint="not-the-reviewed-proposal",
         )
-    assert get_order_service_credits(conn, ELIGIBLE_ORDER) == []
+    assert get_order_service_credits(conn, ELIGIBLE_ORDER, org_id=LEGACY_ORG_ID) == []
 
 
 def test_the_reviewed_fingerprint_confirms(conn, orchestrator, lumenworks_context):
@@ -423,11 +419,11 @@ def test_the_reviewed_fingerprint_confirms(conn, orchestrator, lumenworks_contex
 
 def test_a_rejected_credit_cannot_execute(conn, orchestrator, lumenworks_context):
     prepared = prepare_credit(conn, lumenworks_context).proposed_action
-    reject_action(conn, prepared.action_id, rejected_by="lw.agent")
+    reject_action(conn, prepared.action_id, rejected_by="lw.agent", scope=LEGACY_SCOPE)
 
     with pytest.raises(ActionStateError):
         confirm(orchestrator, prepared.action_id, lumenworks_context)
-    assert get_order_service_credits(conn, ELIGIBLE_ORDER) == []
+    assert get_order_service_credits(conn, ELIGIBLE_ORDER, org_id=LEGACY_ORG_ID) == []
 
 
 def test_rejection_remains_possible_and_writes_nothing(
@@ -439,7 +435,7 @@ def test_rejection_remains_possible_and_writes_nothing(
     )
 
     assert rejected.status is ActionStatus.REJECTED
-    assert get_order_service_credits(conn, ELIGIBLE_ORDER) == []
+    assert get_order_service_credits(conn, ELIGIBLE_ORDER, org_id=LEGACY_ORG_ID) == []
 
 
 def test_a_read_only_caller_cannot_confirm(conn, orchestrator, lumenworks_context):
@@ -448,7 +444,7 @@ def test_a_read_only_caller_cannot_confirm(conn, orchestrator, lumenworks_contex
 
     with pytest.raises(ActionForbidden):
         confirm(orchestrator, prepared.action_id, viewer)
-    assert get_order_service_credits(conn, ELIGIBLE_ORDER) == []
+    assert get_order_service_credits(conn, ELIGIBLE_ORDER, org_id=LEGACY_ORG_ID) == []
 
 
 def test_a_credit_is_invisible_outside_its_account_scope(
@@ -458,14 +454,13 @@ def test_a_credit_is_invisible_outside_its_account_scope(
     outsider = AgentContext(
         user_id="ns.agent",
         role=Role.SUPPORT_AGENT,
-        allowed_account_ids=frozenset({"ACCT-001"}),
-    )
+        allowed_account_ids=frozenset({"ACCT-001"}), org_id=LEGACY_ORG_ID)
 
     from app.backend.services.actions import ActionNotFound
 
     with pytest.raises(ActionNotFound):
         confirm(orchestrator, prepared.action_id, outsider)
-    assert get_order_service_credits(conn, ELIGIBLE_ORDER) == []
+    assert get_order_service_credits(conn, ELIGIBLE_ORDER, org_id=LEGACY_ORG_ID) == []
 
 
 def test_the_executed_credit_records_its_full_lifecycle(
@@ -474,7 +469,7 @@ def test_the_executed_credit_records_its_full_lifecycle(
     prepared = prepare_credit(conn, lumenworks_context).proposed_action
     confirm(orchestrator, prepared.action_id, lumenworks_context)
 
-    audit = get_action_audit(conn, prepared.action_id)
+    audit = get_action_audit(conn, prepared.action_id, scope=LEGACY_SCOPE)
     assert audit.status is ActionStatus.EXECUTED
     assert audit.requested_by == "lw.agent"
     assert audit.confirmed_by == "lw.agent"
@@ -502,8 +497,7 @@ def test_preparing_requires_no_manager_authority(conn):
     agent = AgentContext(
         user_id="lw.agent",
         role=Role.SUPPORT_AGENT,
-        allowed_account_ids=frozenset({LUMENWORKS_ACCOUNT}),
-    )
+        allowed_account_ids=frozenset({LUMENWORKS_ACCOUNT}), org_id=LEGACY_ORG_ID)
     assert agent.may_approve_high_value is False
     assert prepare_credit(conn, agent).status is ToolStatus.OK
 
@@ -530,9 +524,8 @@ def test_a_hand_written_action_row_still_meets_the_gate(
         },
         requested_by="lw.agent",
         requested_by_role="support_agent",
-        account_id=LUMENWORKS_ACCOUNT,
-    )
+        account_id=LUMENWORKS_ACCOUNT, org_id=LEGACY_ORG_ID)
 
     with pytest.raises(ActionForbidden):
         confirm(orchestrator, forged.action_id, lumenworks_context)
-    assert get_order_service_credits(conn, ELIGIBLE_ORDER) == []
+    assert get_order_service_credits(conn, ELIGIBLE_ORDER, org_id=LEGACY_ORG_ID) == []

@@ -79,6 +79,9 @@ class Document(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     document_id: str
+    #: The workspace that owns this document; None for a system document
+    #: (platform knowledge every workspace's assistant may cite).
+    org_id: str | None = None
     source_file: str
     source_sha256: str
     title: str
@@ -106,6 +109,11 @@ class Document(BaseModel):
     superseded_by: str | None
 
     page_count: int
+
+    @property
+    def is_system_document(self) -> bool:
+        """Platform knowledge: owned by no workspace, citable by all of them."""
+        return self.org_id is None
 
 
 class DocumentChunk(BaseModel):

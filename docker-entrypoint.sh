@@ -31,6 +31,13 @@ case "${DATABASE_URL:-}" in
         # in it goes in through the product.
         echo "docker-entrypoint: PostgreSQL configured; applying migrations ..."
         python -m app.backend.db.migrate
+        # The platform's own knowledge -- the support policy, the SOP, the
+        # operations guide -- as system documents that every workspace's
+        # assistant may cite. Idempotent: an unchanged pack is replaced by
+        # itself. Customer agreements in the pack belong to no one here and are
+        # skipped (--system-only); a workspace's own data arrives through the
+        # product, never from a seed.
+        python scripts/ingest_documents.py --system-only
         exec "$@"
         ;;
 esac

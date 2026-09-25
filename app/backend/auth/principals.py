@@ -34,6 +34,7 @@ from enum import StrEnum
 from app.backend.core.errors import AuthenticationError
 from app.backend.models.agent import AgentContext, Role
 from app.backend.services.records import get_all_account_ids
+from app.backend.tenancy import LEGACY_ORG_ID, Scope
 
 
 class ScopeKind(StrEnum):
@@ -59,7 +60,7 @@ class Principal:
 
     def resolve_scope(self, conn: sqlite3.Connection) -> frozenset[str]:
         if self.scope_kind is ScopeKind.ALL_ACCOUNTS:
-            return frozenset(get_all_account_ids(conn))
+            return frozenset(get_all_account_ids(conn, Scope.of(LEGACY_ORG_ID)))
         return self.account_ids
 
 
@@ -171,4 +172,7 @@ def build_context(
         role=principal.role,
         allowed_account_ids=scope,
         session_id=session_id,
+        # The development personas act within the one fixed workspace; real
+        # callers get theirs from a session (api/authentication.py).
+        org_id=LEGACY_ORG_ID,
     )

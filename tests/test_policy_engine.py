@@ -13,6 +13,7 @@ from decimal import Decimal
 
 import pytest
 
+from app.backend.tenancy import LEGACY_ORG_ID, LEGACY_SCOPE, Scope  # noqa: F401
 from app.backend.models.documents import Topic
 from app.backend.models.policy import PolicyOutcome
 from app.backend.policies.base import PolicyLookupError, gather_policy_evidence
@@ -27,14 +28,14 @@ from conftest import BEACON_ACCOUNT, LUMENWORKS_ACCOUNT, NORTHSTAR_ACCOUNT
 
 def cancellation_terms_for(conn, account_id):
     evidence, _ = gather_policy_evidence(
-        conn, topic=Topic.CANCELLATION, account_id=account_id, allowed_account_ids=None
+        conn, topic=Topic.CANCELLATION, account_id=account_id, scope=LEGACY_SCOPE
     )
     return extract_cancellation_terms(evidence)
 
 
 def credit_terms_for(conn, account_id):
     evidence, _ = gather_policy_evidence(
-        conn, topic=Topic.SERVICE_CREDIT, account_id=account_id, allowed_account_ids=None
+        conn, topic=Topic.SERVICE_CREDIT, account_id=account_id, scope=LEGACY_SCOPE
     )
     return extract_service_credit_terms(evidence)
 
@@ -138,7 +139,7 @@ def test_every_extracted_term_names_its_source(conn):
 def test_agreement_waiver_overrides_the_sop_fee(conn):
     """ORD-1001 was cancelled 120 minutes after booking — well past the SOP's
     30-minute window — but its account's agreement waives the fee."""
-    decision = evaluate_cancellation(conn, "ORD-1001")
+    decision = evaluate_cancellation(conn, "ORD-1001", scope=LEGACY_SCOPE)
 
     assert decision.outcome is PolicyOutcome.ALLOWED
     assert decision.can_cancel is True
@@ -150,7 +151,7 @@ def test_agreement_waiver_overrides_the_sop_fee(conn):
 
 def test_fee_applies_after_the_window_without_a_waiver(conn):
     """ORD-2001: 75 minutes after booking, and its agreement grants no waiver."""
-    decision = evaluate_cancellation(conn, "ORD-2001")
+    decision = evaluate_cancellation(conn, "ORD-2001", scope=LEGACY_SCOPE)
 
     assert decision.fee_applies is True
     assert decision.fee_amount == Decimal("250.00")
@@ -159,7 +160,7 @@ def test_fee_applies_after_the_window_without_a_waiver(conn):
 
 def test_no_fee_within_the_window(conn):
     """ORD-3001: 15 minutes after booking, no agreement in the pack."""
-    decision = evaluate_cancellation(conn, "ORD-3001")
+    decision = evaluate_cancellation(conn, "ORD-3001", scope=LEGACY_SCOPE)
 
     assert decision.outcome is PolicyOutcome.ALLOWED
     assert decision.fee_applies is False
@@ -167,7 +168,7 @@ def test_no_fee_within_the_window(conn):
 
 
 def test_picked_up_order_cannot_be_cancelled(conn):
-    decision = evaluate_cancellation(conn, "ORD-1002")
+    decision = evaluate_cancellation(conn, "ORD-1002", scope=LEGACY_SCOPE)
 
     assert decision.outcome is PolicyOutcome.NOT_ALLOWED
     assert decision.can_cancel is False
@@ -175,7 +176,7 @@ def test_picked_up_order_cannot_be_cancelled(conn):
 
 
 def test_delivered_order_cannot_be_cancelled(conn):
-    decision = evaluate_cancellation(conn, "ORD-4001")
+    decision = evaluate_cancellation(conn, "ORD-4001", scope=LEGACY_SCOPE)
 
     assert decision.outcome is PolicyOutcome.NOT_ALLOWED
     assert decision.can_cancel is False
@@ -186,14 +187,14 @@ def test_stale_booked_status_triggers_verification(conn):
     """ORD-2002 is still BOOKED although its pickup window closed. Product
     documentation warns confirmation can lag, so cancelling without checking
     risks cancelling a parcel already collected."""
-    decision = evaluate_cancellation(conn, "ORD-2002")
+    decision = evaluate_cancellation(conn, "ORD-2002", scope=LEGACY_SCOPE)
 
     assert decision.requires_verification is True
     assert any("pickup" in reason.lower() for reason in decision.verification_reasons)
 
 
 def test_cancellation_decision_carries_provenance(conn):
-    decision = evaluate_cancellation(conn, "ORD-1001")
+    decision = evaluate_cancellation(conn, "ORD-1001", scope=LEGACY_SCOPE)
 
     assert decision.controlling_sources
     assert decision.evidence_chunk_ids
@@ -202,8 +203,8 @@ def test_cancellation_decision_carries_provenance(conn):
 
 
 def test_cancellation_is_deterministic(conn):
-    first = evaluate_cancellation(conn, "ORD-2001")
-    second = evaluate_cancellation(conn, "ORD-2001")
+    first = evaluate_cancellation(conn, "ORD-2001", scope=LEGACY_SCOPE)
+    second = evaluate_cancellation(conn, "ORD-2001", scope=LEGACY_SCOPE)
 
     assert first.fee_amount == second.fee_amount
     assert first.controlling_rule == second.controlling_rule
@@ -212,12 +213,12 @@ def test_cancellation_is_deterministic(conn):
 
 def test_unknown_order_raises_lookup_error(conn):
     with pytest.raises(PolicyLookupError):
-        evaluate_cancellation(conn, "ORD-NOPE")
+        evaluate_cancellation(conn, "ORD-NOPE", scope=LEGACY_SCOPE)
 
 
 def test_out_of_scope_order_is_indistinguishable_from_missing(conn):
     with pytest.raises(PolicyLookupError):
-        evaluate_cancellation(conn, "ORD-2001", allowed_account_ids={NORTHSTAR_ACCOUNT})
+        evaluate_cancellation(conn, "ORD-2001", scope=Scope.of(LEGACY_ORG_ID, {NORTHSTAR_ACCOUNT}))
 
 
 # --- service-credit decisions ------------------------------------------------------------
@@ -226,7 +227,7 @@ def test_out_of_scope_order_is_indistinguishable_from_missing(conn):
 def test_agreement_threshold_and_fixed_amount_are_applied(conn):
     """ORD-2002 is 4.5h late with carrier fault; its agreement sets a 4h
     threshold and a fixed amount, replacing the SOP's 2h / lower-of formula."""
-    decision = evaluate_service_credit(conn, "ORD-2002")
+    decision = evaluate_service_credit(conn, "ORD-2002", scope=LEGACY_SCOPE)
 
     assert decision.threshold_hours == Decimal("4")
     assert decision.credit_amount == Decimal("300.00")
@@ -242,7 +243,7 @@ def test_unconfirmed_pickup_outside_any_documented_lag_is_decided_not_deferred(c
     governing agreement states. Deferring here would withhold a credit the
     agreement grants, on the strength of a known issue that does not apply.
     """
-    decision = evaluate_service_credit(conn, "ORD-2002")
+    decision = evaluate_service_credit(conn, "ORD-2002", scope=LEGACY_SCOPE)
 
     assert decision.outcome is PolicyOutcome.ELIGIBLE
     assert decision.eligible is True
@@ -279,7 +280,7 @@ def test_cancelling_inside_a_documented_lag_cites_the_known_issue(conn, monkeypa
         )
 
     monkeypatch.setattr(module, "get_order", just_past_window)
-    decision = evaluate_cancellation(conn, "ORD-1001")
+    decision = evaluate_cancellation(conn, "ORD-1001", scope=LEGACY_SCOPE)
 
     assert decision.requires_verification is True
     assert any(
@@ -305,7 +306,7 @@ def test_cancelling_well_past_a_documented_lag_gives_the_generic_caution(conn, m
         )
 
     monkeypatch.setattr(module, "get_order", long_past_window)
-    decision = evaluate_cancellation(conn, "ORD-1001")
+    decision = evaluate_cancellation(conn, "ORD-1001", scope=LEGACY_SCOPE)
 
     assert decision.requires_verification is True
     assert any(
@@ -324,8 +325,8 @@ def test_documented_lag_is_matched_to_the_orders_own_carrier(conn):
     is what is looked for in the known-issue text, so a renamed or additional
     carrier issue changes behaviour without a code change.
     """
-    swiftship = evaluate_service_credit(conn, "ORD-1001")
-    roadrunner = evaluate_service_credit(conn, "ORD-2002")
+    swiftship = evaluate_service_credit(conn, "ORD-1001", scope=LEGACY_SCOPE)
+    roadrunner = evaluate_service_credit(conn, "ORD-2002", scope=LEGACY_SCOPE)
 
     assert swiftship.inputs["carrier"] == "SwiftShip"
     assert swiftship.inputs["documented_pickup_confirmation_lag_minutes"] == "20"
@@ -347,7 +348,7 @@ def test_unknown_carrier_fault_still_forces_verification(conn, monkeypatch):
         return order.model_copy(update={"carrier_fault": None})
 
     monkeypatch.setattr(module, "get_order", unknown_fault)
-    decision = evaluate_service_credit(conn, "ORD-2002")
+    decision = evaluate_service_credit(conn, "ORD-2002", scope=LEGACY_SCOPE)
 
     assert decision.outcome is PolicyOutcome.REQUIRES_VERIFICATION
     assert decision.eligible is False
@@ -356,7 +357,7 @@ def test_unknown_carrier_fault_still_forces_verification(conn, monkeypatch):
 
 
 def test_order_not_yet_late_is_not_eligible(conn):
-    decision = evaluate_service_credit(conn, "ORD-1001")
+    decision = evaluate_service_credit(conn, "ORD-1001", scope=LEGACY_SCOPE)
 
     assert decision.outcome is PolicyOutcome.NOT_ELIGIBLE
     assert decision.delay_hours < 0
@@ -384,7 +385,7 @@ def test_default_lower_of_calculation(conn, monkeypatch):
         )
 
     monkeypatch.setattr(module, "get_order", late_beacon_order)
-    decision = evaluate_service_credit(conn, "ORD-3001")
+    decision = evaluate_service_credit(conn, "ORD-3001", scope=LEGACY_SCOPE)
 
     assert decision.outcome is PolicyOutcome.ELIGIBLE
     assert decision.threshold_hours == Decimal("2")
@@ -410,7 +411,7 @@ def test_credit_capped_by_the_max_when_percentage_is_higher(conn, monkeypatch):
         )
 
     monkeypatch.setattr(module, "get_order", expensive_late_order)
-    decision = evaluate_service_credit(conn, "ORD-3001")
+    decision = evaluate_service_credit(conn, "ORD-3001", scope=LEGACY_SCOPE)
 
     # 10% of 90000 = 9000, so the INR 500 cap binds.
     assert decision.credit_amount == Decimal("500.00")
@@ -428,7 +429,7 @@ def test_customer_fault_disqualifies(conn, monkeypatch):
         return order.model_copy(update={"customer_fault": True})
 
     monkeypatch.setattr(module, "get_order", customer_at_fault)
-    decision = evaluate_service_credit(conn, "ORD-2002")
+    decision = evaluate_service_credit(conn, "ORD-2002", scope=LEGACY_SCOPE)
 
     assert decision.outcome is PolicyOutcome.NOT_ELIGIBLE
     assert decision.credit_amount is None
@@ -446,7 +447,7 @@ def test_unknown_carrier_fault_prevents_a_promise(conn, monkeypatch):
         return order.model_copy(update={"carrier_fault": None})
 
     monkeypatch.setattr(module, "get_order", unknown_fault)
-    decision = evaluate_service_credit(conn, "ORD-2002")
+    decision = evaluate_service_credit(conn, "ORD-2002", scope=LEGACY_SCOPE)
 
     assert decision.outcome is PolicyOutcome.REQUIRES_VERIFICATION
     assert decision.eligible is False
@@ -465,7 +466,7 @@ def test_unknown_customer_fault_prevents_a_promise(conn, monkeypatch):
         return order.model_copy(update={"customer_fault": None})
 
     monkeypatch.setattr(module, "get_order", unknown_customer_fault)
-    decision = evaluate_service_credit(conn, "ORD-2002")
+    decision = evaluate_service_credit(conn, "ORD-2002", scope=LEGACY_SCOPE)
 
     assert decision.outcome is PolicyOutcome.REQUIRES_VERIFICATION
     assert any("customer fault is unknown" in r.lower() for r in decision.verification_reasons)
@@ -483,7 +484,7 @@ def test_missing_pickup_window_prevents_measurement(conn, monkeypatch):
         return order.model_copy(update={"pickup_window_end": None})
 
     monkeypatch.setattr(module, "get_order", no_window)
-    decision = evaluate_service_credit(conn, "ORD-2002")
+    decision = evaluate_service_credit(conn, "ORD-2002", scope=LEGACY_SCOPE)
 
     assert decision.outcome is PolicyOutcome.REQUIRES_VERIFICATION
     assert decision.credit_amount is None
@@ -499,7 +500,7 @@ def test_manager_approval_flag_for_a_large_credit(conn, monkeypatch):
         return terms.model_copy(update={"fixed_amount": Decimal("2500")})
 
     monkeypatch.setattr(module, "extract_service_credit_terms", big_fixed_credit)
-    decision = evaluate_service_credit(conn, "ORD-2002")
+    decision = evaluate_service_credit(conn, "ORD-2002", scope=LEGACY_SCOPE)
 
     assert decision.requires_manager_approval is True
     assert "manager approval" in decision.calculation
@@ -512,7 +513,7 @@ def test_incomplete_terms_produce_verification_not_a_guess(conn, monkeypatch):
     monkeypatch.setattr(
         module, "extract_service_credit_terms", lambda evidence: ServiceCreditTerms()
     )
-    decision = evaluate_service_credit(conn, "ORD-2002")
+    decision = evaluate_service_credit(conn, "ORD-2002", scope=LEGACY_SCOPE)
 
     assert decision.outcome is PolicyOutcome.REQUIRES_VERIFICATION
     assert decision.credit_amount is None
@@ -535,14 +536,14 @@ def test_monthly_cap_is_surfaced_when_the_agreement_sets_one(conn, monkeypatch):
         )
 
     monkeypatch.setattr(module, "get_order", late_northstar)
-    decision = evaluate_service_credit(conn, "ORD-1001")
+    decision = evaluate_service_credit(conn, "ORD-1001", scope=LEGACY_SCOPE)
 
     assert decision.monthly_cap == Decimal("5000")
 
 
 def test_service_credit_is_deterministic(conn):
-    first = evaluate_service_credit(conn, "ORD-2002")
-    second = evaluate_service_credit(conn, "ORD-2002")
+    first = evaluate_service_credit(conn, "ORD-2002", scope=LEGACY_SCOPE)
+    second = evaluate_service_credit(conn, "ORD-2002", scope=LEGACY_SCOPE)
 
     assert first.credit_amount == second.credit_amount
     assert first.verification_reasons == second.verification_reasons
@@ -550,11 +551,11 @@ def test_service_credit_is_deterministic(conn):
 
 def test_service_credit_out_of_scope_order_raises(conn):
     with pytest.raises(PolicyLookupError):
-        evaluate_service_credit(conn, "ORD-2002", allowed_account_ids={NORTHSTAR_ACCOUNT})
+        evaluate_service_credit(conn, "ORD-2002", scope=Scope.of(LEGACY_ORG_ID, {NORTHSTAR_ACCOUNT}))
 
 
 def test_reference_time_comes_from_the_dataset_snapshot(conn):
-    decision = evaluate_service_credit(conn, "ORD-2002")
+    decision = evaluate_service_credit(conn, "ORD-2002", scope=LEGACY_SCOPE)
 
     assert "dataset snapshot" in decision.inputs["reference_time_source"]
     assert "2026-08-16" in decision.inputs["evaluated_against"]

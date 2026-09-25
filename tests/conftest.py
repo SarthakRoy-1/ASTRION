@@ -13,6 +13,7 @@ if str(REPO_ROOT) not in sys.path:
 # Must happen before any test module imports `get_connection` by name, which is
 # why it lives at the top of the root conftest.
 import os
+from app.backend.tenancy import LEGACY_ORG_ID, LEGACY_SCOPE, Scope  # noqa: F401
 
 PG_MODE = bool(os.environ.get("ASTRION_TEST_DATABASE_URL"))
 if PG_MODE:
@@ -277,21 +278,21 @@ def conn(full_db):
 def agent_context():
     from app.backend.models.agent import AgentContext, Role
 
-    return AgentContext(user_id="agent.test", role=Role.SUPPORT_AGENT)
+    return AgentContext(user_id="agent.test", role=Role.SUPPORT_AGENT, org_id=LEGACY_ORG_ID)
 
 
 @pytest.fixture
 def manager_context():
     from app.backend.models.agent import AgentContext, Role
 
-    return AgentContext(user_id="manager.test", role=Role.SUPPORT_MANAGER)
+    return AgentContext(user_id="manager.test", role=Role.SUPPORT_MANAGER, org_id=LEGACY_ORG_ID)
 
 
 @pytest.fixture
 def readonly_context():
     from app.backend.models.agent import AgentContext, Role
 
-    return AgentContext(user_id="viewer.test", role=Role.READ_ONLY)
+    return AgentContext(user_id="viewer.test", role=Role.READ_ONLY, org_id=LEGACY_ORG_ID)
 
 
 @pytest.fixture
@@ -302,8 +303,7 @@ def northstar_context():
     return AgentContext(
         user_id="ns.agent",
         role=Role.SUPPORT_AGENT,
-        allowed_account_ids=frozenset({NORTHSTAR_ACCOUNT}),
-    )
+        allowed_account_ids=frozenset({NORTHSTAR_ACCOUNT}), org_id=LEGACY_ORG_ID)
 
 
 @pytest.fixture

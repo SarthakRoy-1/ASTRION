@@ -31,6 +31,7 @@ from dataclasses import dataclass, field
 
 import pytest
 
+from app.backend.tenancy import LEGACY_ORG_ID, LEGACY_SCOPE, Scope  # noqa: F401
 from app.backend.agent.orchestrator import AgentOrchestrator
 from app.backend.agent.trust import TrustStatus
 from app.backend.models.agent import AgentContext, AgentRequest, Role
@@ -459,8 +460,7 @@ def run_case(conn, case: Case):
         user_id=f"eval.{case.id}",
         role=case.role,
         allowed_account_ids=case.scope,
-        session_id=f"SES-eval-{case.id}",
-    )
+        session_id=f"SES-eval-{case.id}", org_id=LEGACY_ORG_ID)
     return AgentOrchestrator(conn).handle(
         AgentRequest(message=case.question, context=context, request_id=f"REQ-{case.id}")
     )

@@ -139,7 +139,7 @@ def migrated(pgdb):
 class TestMigrations:
     def test_creates_every_table_and_records_the_version(self, pgdb):
         applied = pgdb.migrate()
-        assert applied == ["0001"]
+        assert applied == ["0001", "0002"]
         conn = pgdb.connect()
         try:
             tables = {
@@ -155,7 +155,7 @@ class TestMigrations:
         assert {"users", "sessions", "audit_log", "documents", "agent_actions"} <= tables
         assert "schema_migrations" in tables
         assert len(tables) == 29  # the 28 application tables, and the ledger
-        assert versions == ["0001"]
+        assert versions == ["0001", "0002"]
 
     def test_running_again_applies_nothing(self, pgdb):
         pgdb.migrate()
@@ -214,7 +214,7 @@ class TestMigrations:
         [t.start() for t in threads]
         [t.join() for t in threads]
         assert not errors
-        assert sorted(len(r) for r in results) == [0, 0, 0, 1]
+        assert sorted(len(r) for r in results) == [0, 0, 0, 2]  # both migrations, once
 
     def test_request_handling_never_runs_ddl(self, migrated):
         # ensure_ready on a migrated database only reads.
@@ -225,7 +225,7 @@ class TestMigrations:
         finally:
             conn.close()
         migrated.ensure_ready()
-        assert before == 1
+        assert before == 2
 
 
 @pg
@@ -578,15 +578,19 @@ def test_the_postgres_schema_matches_the_sqlite_schema(migrated, tmp_path):
         initialize_schema(lite)
         lite_tables = {
             r["name"]
-            for r in lite.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
+            for r in lite.execute(
+                "SELECT name FROM sqlite_master WHERE type IN ('table', 'view')"
+            )
             if not r["name"].startswith("sqlite_")
         }
         lite_cols = {}
+        lite_pks = {}
         for table in lite_tables:
+            info = lite.execute(f"PRAGMA table_info({table})").fetchall()
             lite_cols[table] = [
-                (r["name"], bool(r["notnull"]) or bool(r["pk"]))
-                for r in lite.execute(f"PRAGMA table_info({table})")
+                (r["name"], bool(r["notnull"]) or bool(r["pk"])) for r in info
             ]
+            lite_pks[table] = {r["name"] for r in info if r["pk"]}
         lite.close()
     finally:
         layer._connection_factory = saved
@@ -612,5 +616,202 @@ def test_the_postgres_schema_matches_the_sqlite_schema(migrated, tmp_path):
                 ).fetchall()
             ]
             assert sorted(cols) == sorted(lite_cols[table]), table
+            pk = {
+                r["column_name"]
+                for r in conn.execute(
+                    "SELECT k.column_name FROM information_schema.table_constraints c "
+                    "JOIN information_schema.key_column_usage k "
+                    "  ON k.constraint_name = c.constraint_name AND k.table_schema = c.table_schema "
+                    "WHERE c.table_schema = current_schema() AND c.table_name = ? "
+                    "  AND c.constraint_type = 'PRIMARY KEY'",
+                    (table,),
+                ).fetchall()
+            }
+            assert pk == lite_pks[table], f"{table}: primary keys differ"
     finally:
         conn.close()
+
+
+@pg
+class TestOwnershipMigration:
+    """0002 must be right on a database that already holds rows, not only an empty one."""
+
+    def _legacy(self, db):
+        """A database at 0001 holding what the global-account model stored."""
+        db.migrate(up_to="0001")
+        c = db.connect()
+        try:
+            for org, slug in (("ORG-A", "a"), ("ORG-B", "b")):
+                c.execute(
+                    "INSERT INTO organizations (org_id, name, slug, created_at_utc) VALUES (?,?,?,?)",
+                    (org, org, slug, "t"),
+                )
+            for acct in ("ACCT-1", "ACCT-2", "ACCT-3"):
+                c.execute("INSERT INTO accounts (account_id, account_name) VALUES (?, ?)", (acct, acct))
+            # ACCT-1 was granted to ORG-A; ACCT-2 to ORG-B; ACCT-3 to nobody.
+            c.execute("INSERT INTO organization_accounts VALUES ('ORG-A', 'ACCT-1', 't1')")
+            c.execute("INSERT INTO organization_accounts VALUES ('ORG-B', 'ACCT-2', 't2')")
+            c.execute("INSERT INTO orders (order_id, account_id) VALUES ('ORD-1', 'ACCT-1')")
+            c.execute("INSERT INTO orders (order_id, account_id) VALUES ('ORD-2', 'ACCT-3')")
+            c.execute("INSERT INTO tickets (ticket_id, account_id) VALUES ('TKT-1', 'ACCT-2')")
+            c.execute(
+                "INSERT INTO ingestion_runs (started_at_utc, source_workbook_path, "
+                "source_workbook_sha256, ingestion_script_version) VALUES ('t','p','h','v')"
+            )
+            for table, ident in (
+                ("accounts", "ACCT-1"),
+                ("orders", "ORD-1"),
+                ("tickets", "TKT-1"),
+                ("orders", "ORD-2"),
+            ):
+                c.execute(
+                    "INSERT INTO source_provenance (ingestion_run_id, target_table, target_id, "
+                    "source_file, source_sheet, source_row_number, raw_row_json) "
+                    "VALUES (1, ?, ?, 'f', 's', 1, '{}')",
+                    (table, ident),
+                )
+            c.execute(
+                "INSERT INTO dataset_metadata VALUES (1, 'snap', '2026-01-01T00:00:00+00:00', "
+                "'UTC', 'INR', NULL, NULL, 'w.xlsx', 'h', '[]', 't', 'v')"
+            )
+            c.execute(
+                "INSERT INTO document_ingestion_runs (started_at_utc, source_dir, "
+                "ingestion_script_version) VALUES ('t', 'd', 'v')"
+            )
+            for doc, acct in (("doc-general", None), ("doc-acct1", "ACCT-1"), ("doc-orphan", "ACCT-99")):
+                c.execute(
+                    "INSERT INTO documents (document_id, source_file, source_sha256, title, "
+                    "document_type, status, status_raw, is_current, is_deprecated, is_authoritative, "
+                    "authority_tier, account_id, page_count, ingestion_run_id) "
+                    "VALUES (?, ?, 'h', 't', 'policy', 'current', 'c', 1, 0, 1, 1, ?, 1, 1)",
+                    (doc, f"{doc}.pdf", acct),
+                )
+            for aid, acct in (("ACT-1", "ACCT-1"), ("ACT-2", None)):
+                c.execute(
+                    "INSERT INTO agent_actions (action_id, action_type, status, account_id, "
+                    "target_type, target_id, parameters_json, preview, evidence_chunk_ids_json, "
+                    "requested_by, requested_by_role, prepared_at_utc, expires_at_utc) "
+                    "VALUES (?, 'x', 'executed', ?, 'ticket', 'TKT-1', '{}', 'p', '[]', 'u', 'r', 't', 't')",
+                    (aid, acct),
+                )
+            c.execute(
+                "INSERT INTO ticket_notes (note_id, action_id, ticket_id, account_id, note, "
+                "created_by, created_at_utc) VALUES ('N-1', 'ACT-1', 'TKT-1', 'ACCT-1', 'n', 'u', 't')"
+            )
+        finally:
+            c.close()
+
+    def _one(self, c, sql, params=()):
+        return c.execute(sql, params).fetchone()[0]
+
+    def test_existing_ownership_is_kept_and_unowned_rows_go_to_the_legacy_workspace(self, pgdb):
+        self._legacy(pgdb)
+        assert pgdb.migrate() == ["0002"]
+        c = pgdb.connect()
+        try:
+            owner = {
+                r["account_id"]: r["org_id"]
+                for r in c.execute("SELECT account_id, org_id FROM accounts")
+            }
+            assert owner == {
+                "ACCT-1": "ORG-A",
+                "ACCT-2": "ORG-B",
+                "ACCT-3": "ORG-legacy-assessment",
+            }
+            assert self._one(c, "SELECT org_id FROM orders WHERE order_id = 'ORD-1'") == "ORG-A"
+            assert self._one(c, "SELECT org_id FROM orders WHERE order_id = 'ORD-2'") == "ORG-legacy-assessment"
+            assert self._one(c, "SELECT org_id FROM tickets WHERE ticket_id = 'TKT-1'") == "ORG-B"
+            # Provenance follows the record it explains.
+            prov = {
+                (r["target_table"], r["target_id"]): r["org_id"]
+                for r in c.execute("SELECT target_table, target_id, org_id FROM source_provenance")
+            }
+            assert prov[("accounts", "ACCT-1")] == "ORG-A"
+            assert prov[("orders", "ORD-2")] == "ORG-legacy-assessment"
+            assert prov[("tickets", "TKT-1")] == "ORG-B"
+            # The single snapshot row becomes the legacy workspace's.
+            assert self._one(c, "SELECT org_id FROM dataset_metadata") == "ORG-legacy-assessment"
+        finally:
+            c.close()
+
+    def test_documents_split_into_system_workspace_and_legacy(self, pgdb):
+        self._legacy(pgdb)
+        pgdb.migrate()
+        c = pgdb.connect()
+        try:
+            docs = {
+                r["document_id"]: r["org_id"]
+                for r in c.execute("SELECT document_id, org_id FROM documents")
+            }
+            assert docs["doc-general"] is None  # a system document
+            assert docs["doc-acct1"] == "ORG-A"
+            assert docs["doc-orphan"] == "ORG-legacy-assessment"  # names an account nobody has
+        finally:
+            c.close()
+
+    def test_actions_and_their_effects_follow_their_account(self, pgdb):
+        self._legacy(pgdb)
+        pgdb.migrate()
+        c = pgdb.connect()
+        try:
+            assert self._one(c, "SELECT org_id FROM agent_actions WHERE action_id = 'ACT-1'") == "ORG-A"
+            assert (
+                self._one(c, "SELECT org_id FROM agent_actions WHERE action_id = 'ACT-2'")
+                == "ORG-legacy-assessment"
+            )
+            assert self._one(c, "SELECT org_id FROM ticket_notes WHERE note_id = 'N-1'") == "ORG-A"
+        finally:
+            c.close()
+
+    def test_the_composite_keys_and_foreign_keys_hold_afterwards(self, pgdb):
+        self._legacy(pgdb)
+        pgdb.migrate()
+        c = pgdb.connect()
+        try:
+            # Two workspaces may now both have an ACCT-1...
+            c.execute("INSERT INTO accounts (org_id, account_id) VALUES ('ORG-B', 'ACCT-1')")
+            # ...but not twice within one workspace,
+            with pytest.raises(IntegrityError):
+                c.execute("INSERT INTO accounts (org_id, account_id) VALUES ('ORG-B', 'ACCT-1')")
+            # nor an order for an account its workspace does not have.
+            with pytest.raises(IntegrityError):
+                c.execute(
+                    "INSERT INTO orders (org_id, order_id, account_id) VALUES ('ORG-A', 'ORD-9', 'ACCT-2')"
+                )
+            # A system document may not name an account.
+            with pytest.raises(IntegrityError):
+                c.execute(
+                    "INSERT INTO documents (document_id, org_id, source_file, source_sha256, title, "
+                    "document_type, status, status_raw, is_current, is_deprecated, is_authoritative, "
+                    "authority_tier, account_id, page_count, ingestion_run_id) "
+                    "VALUES ('bad', NULL, 'bad.pdf', 'h', 't', 'policy', 'current', 'c', 1, 0, 1, 1, 'ACCT-1', 1, 1)"
+                )
+        finally:
+            c.close()
+
+    def test_organization_accounts_is_now_a_view_of_the_accounts(self, pgdb):
+        self._legacy(pgdb)
+        pgdb.migrate()
+        c = pgdb.connect()
+        try:
+            rows = {
+                (r["org_id"], r["account_id"])
+                for r in c.execute("SELECT org_id, account_id FROM organization_accounts")
+            }
+            assert ("ORG-A", "ACCT-1") in rows and ("ORG-B", "ACCT-2") in rows
+            kind = self._one(
+                c,
+                "SELECT table_type FROM information_schema.tables "
+                "WHERE table_schema = current_schema() AND table_name = 'organization_accounts'",
+            )
+            assert kind == "VIEW"
+        finally:
+            c.close()
+
+    def test_an_empty_database_gets_no_legacy_workspace(self, pgdb):
+        pgdb.migrate()
+        c = pgdb.connect()
+        try:
+            assert self._one(c, "SELECT count(*) FROM organizations") == 0
+        finally:
+            c.close()

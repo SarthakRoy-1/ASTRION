@@ -56,7 +56,7 @@ def _lookup_record(
     scope = context.scope()
 
     if entity == "dataset_metadata":
-        metadata = get_dataset_metadata(conn)
+        metadata = get_dataset_metadata(conn, context.org_id)
         if metadata is None:
             return ToolResult(
                 status=ToolStatus.NOT_FOUND,
@@ -82,19 +82,19 @@ def _lookup_record(
         return error
 
     if entity == "account":
-        account = get_account(conn, record_id, allowed_account_ids=scope)
+        account = get_account(conn, record_id, scope=scope)
         if account is None:
             return _not_found(entity, record_id)
         return _single(entity, account.model_dump(mode="json"))
 
     if entity == "order":
-        order = get_order(conn, record_id, allowed_account_ids=scope)
+        order = get_order(conn, record_id, scope=scope)
         if order is None:
             return _not_found(entity, record_id)
         return _single(entity, order.model_dump(mode="json"), account_id=order.account_id)
 
     if entity == "ticket":
-        ticket = get_ticket(conn, record_id, allowed_account_ids=scope)
+        ticket = get_ticket(conn, record_id, scope=scope)
         if ticket is None:
             return _not_found(entity, record_id)
         payload = ticket.model_dump(mode="json")
@@ -108,7 +108,7 @@ def _lookup_record(
         return _single(entity, payload, account_id=ticket.account_id)
 
     if entity == "account_orders":
-        orders = get_account_orders(conn, record_id, allowed_account_ids=scope)
+        orders = get_account_orders(conn, record_id, scope=scope)
         if not orders:
             return _empty_collection(entity, record_id)
         return ToolResult(
@@ -121,7 +121,7 @@ def _lookup_record(
             },
         )
 
-    tickets = get_account_tickets(conn, record_id, allowed_account_ids=scope)
+    tickets = get_account_tickets(conn, record_id, scope=scope)
     if not tickets:
         return _empty_collection(entity, record_id)
     return ToolResult(
@@ -174,9 +174,9 @@ def _lookup_provenance(
     # so this cannot become a side channel around record scoping.
     scope = context.scope()
     readable = {
-        "accounts": lambda: get_account(conn, target_id, allowed_account_ids=scope),
-        "orders": lambda: get_order(conn, target_id, allowed_account_ids=scope),
-        "tickets": lambda: get_ticket(conn, target_id, allowed_account_ids=scope),
+        "accounts": lambda: get_account(conn, target_id, scope=scope),
+        "orders": lambda: get_order(conn, target_id, scope=scope),
+        "tickets": lambda: get_ticket(conn, target_id, scope=scope),
     }.get(table)
     if readable is None:
         return ToolResult(
@@ -186,7 +186,7 @@ def _lookup_provenance(
     if readable() is None:
         return _not_found(table, target_id)
 
-    provenance = get_source_provenance(conn, table, target_id)
+    provenance = get_source_provenance(conn, table, target_id, org_id=context.org_id)
     if provenance is None:
         return ToolResult(
             status=ToolStatus.NOT_FOUND,
