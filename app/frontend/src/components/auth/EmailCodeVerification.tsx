@@ -194,7 +194,10 @@ export function EmailCodeVerification({
     try {
       const result = await resendVerificationCode();
       adopt(result.verification);
-      setResent(result.status === "code_sent");
+      // "New code sent" is a claim about the provider, so it needs the server's
+      // word for it twice over: the status, and the verification's own record
+      // that a message was accepted. Anything less is not shown as success.
+      setResent(result.status === "code_sent" && result.verification.email_sent === true);
       setCode("");
       lastSubmitted.current = null;
       inputRef.current?.focus();
@@ -288,8 +291,11 @@ export function EmailCodeVerification({
     <div className={panelClass}>
       <Title className={panel.title}>Verify your email</Title>
       <p className={panel.lede}>
-        We’ve sent a verification code to{" "}
+        {deliveryFailed ? "We couldn’t email " : "We’ve emailed "}
         <span className={styles.address}>{status.email_hint}</span>.
+        {deliveryFailed
+          ? ""
+          : " Enter the code it contains. If you already have an account, the email says how to sign in instead."}
       </p>
 
       {deliveryFailed ? (

@@ -84,24 +84,10 @@
   -webkit-backdrop-filter: blur(22px) saturate(120%);
   backdrop-filter: blur(22px) saturate(120%);
 
-  /* The product's components take their colours from these tokens, so the
-     form, its errors and its notices restyle themselves for dark glass. */
-  --text-primary: #f2eee7;
-  --text-secondary: rgba(236, 232, 225, 0.78);
-  --text-muted: rgba(236, 232, 225, 0.56);
-  --surface-raised: rgba(255, 255, 255, 0.06);
-  --surface-sunken: rgba(255, 255, 255, 0.04);
-  --border-subtle: rgba(255, 255, 255, 0.12);
-  --border-default: rgba(255, 255, 255, 0.16);
-  --border-strong: rgba(255, 255, 255, 0.32);
-  --accent: #ebe2d6;
-  --accent-hover: #f5eee4;
-  --on-accent: #0a0f14;
-  --accent-soft: rgba(255, 255, 255, 0.06);
-  --accent-border: rgba(255, 255, 255, 0.16);
-  --fail: #f0a6a0;
-  --fail-soft: rgba(214, 92, 84, 0.14);
-  --fail-border: rgba(240, 166, 160, 0.34);
+  /* The product's components take their colours from tokens, so the form, its
+     errors and its notices restyle themselves for dark glass. The palette is the
+     one the signed-in application uses (site/darkTokens.module.css). */
+  composes: dark from "../site/darkTokens.module.css";
 
   color: var(--text-primary);
 }
@@ -113,6 +99,7 @@
   --accent-soft: rgba(235, 226, 214, 0.92);
   --accent-border: rgba(235, 226, 214, 0.5);
   --text-secondary: #3a434c;
+  --info-text: #17212b;
 }
 
 /* An error's glyph is drawn in the surface colour, which on glass is nearly

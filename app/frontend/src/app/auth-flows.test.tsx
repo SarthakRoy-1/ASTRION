@@ -49,7 +49,7 @@ interface Options {
   /** `/me` reports a verification already in progress (a reload, or a provider return). */
   resumed?: VerificationStatus;
   verification?: Partial<VerificationStatus>;
-  resend?: "ok" | "cooldown";
+  resend?: "ok" | "cooldown" | "delivery_failed";
   /** Hold the verify request open until released. */
   holdVerify?: boolean;
   /** The deployment does not require a proven address (REQUIRE_VERIFIED_EMAIL=false). */
@@ -201,7 +201,11 @@ function stubBackend(options: Options = {}) {
           return error(429, "otp_resend_cooldown", "Please wait 42 seconds.", { retry_after_seconds: 42 });
         }
         attempts = 5;
-        verification = pending({ resend_in_seconds: 60, sends_remaining: 3 });
+        if (options.resend === "delivery_failed") {
+          verification = pending({ resend_in_seconds: 60, sends_remaining: 2, email_sent: false });
+          return json(200, { status: "delivery_failed", verification });
+        }
+        verification = pending({ resend_in_seconds: 60, sends_remaining: 3, email_sent: true });
         return json(200, { status: "code_sent", verification });
       }
       if (url.includes("/api/auth/verification/email")) {
@@ -417,6 +421,42 @@ describe("verifying an email address with a code", () => {
     expect(screen.getByText(/previous code no longer works/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /resend code in/i })).toBeDisabled();
     expect(stub.calls.filter((c) => c.url.includes("/verification/resend"))).toHaveLength(1);
+  });
+
+  it("does not say a code was sent when the provider did not accept it", async () => {
+    const { user } = await signInUnverified({ resend: "delivery_failed" });
+    await user.click(screen.getByRole("button", { name: /^resend code$/i }));
+
+    expect(await screen.findByText(/the email didn.t send/i)).toBeInTheDocument();
+    expect(screen.queryByText(/new code sent/i)).toBeNull();
+    expect(screen.queryByText(/previous code no longer works/i)).toBeNull();
+    // And the page stops claiming one was emailed.
+    expect(screen.getByText(/we couldn.t email/i)).toBeInTheDocument();
+    expect(screen.queryByText(/we.ve emailed/i)).toBeNull();
+  });
+
+  it("does not trust a code_sent that the verification itself does not confirm", async () => {
+    // A status of "code_sent" with no `email_sent: true` is not a confirmation.
+    const { user, stub } = await signInUnverified();
+    void stub;
+    const original = globalThis.fetch as unknown as (i: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        if (String(input).includes("/verification/resend")) {
+          return {
+            ok: true,
+            status: 200,
+            statusText: "",
+            json: async () => ({ status: "code_sent", verification: pending({ resend_in_seconds: 60, email_sent: undefined }) }),
+          } as Response;
+        }
+        return original(input, init);
+      }),
+    );
+    await user.click(screen.getByRole("button", { name: /^resend code$/i }));
+    await screen.findByRole("button", { name: /resend code in/i });
+    expect(screen.queryByText(/new code sent/i)).toBeNull();
   });
 
   it("honours the server's cooldown when it refuses a resend", async () => {

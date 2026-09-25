@@ -1,0 +1,55 @@
+/* The landing page's palette, as the design system's tokens.
+
+   The sign-in card and the signed-in application both sit on the landing page's
+   near-black ground, and every component in them takes its colours from tokens.
+   Declaring the dark set once, here, keeps the two from drifting apart, which is
+   how a notification came to have a pale background and cream text: one place
+   had moved the text tokens to dark and not the status ones.
+
+   A tone's surface, border and text move together below. Never change one of a
+   tone's three without the others, and never let a tone's text come from the
+   ambient `--text-*` tokens (the tests read this file and check the contrast). */
+
+.dark {
+  --surface-page: #060d13;
+  --surface-raised: rgba(255, 255, 255, 0.055);
+  --surface-sunken: rgba(255, 255, 255, 0.035);
+  --surface-dialog: #111a22;
+  --border-subtle: rgba(255, 255, 255, 0.1);
+  --border-default: rgba(255, 255, 255, 0.16);
+  --border-strong: rgba(255, 255, 255, 0.32);
+
+  --text-primary: #f2eee7;
+  --text-secondary: rgba(236, 232, 225, 0.78);
+  --text-muted: rgba(236, 232, 225, 0.58);
+
+  --accent: #ebe2d6;
+  --accent-hover: #f5eee4;
+  --on-accent: #0a0f14;
+  --accent-soft: rgba(255, 255, 255, 0.07);
+  --accent-border: rgba(255, 255, 255, 0.16);
+
+  --ok: #9fcaa9;
+  --ok-soft: rgba(110, 170, 125, 0.16);
+  --ok-border: rgba(159, 202, 169, 0.36);
+  --ok-text: #d6efdc;
+  --caution: #e3c992;
+  --caution-soft: rgba(205, 165, 95, 0.16);
+  --caution-border: rgba(227, 201, 146, 0.36);
+  --caution-text: #f3e3bc;
+  --fail: #f0a6a0;
+  --fail-soft: rgba(214, 92, 84, 0.16);
+  --fail-border: rgba(240, 166, 160, 0.36);
+  --fail-text: #fad3cf;
+  --neutral: rgba(236, 232, 225, 0.72);
+  --neutral-soft: rgba(255, 255, 255, 0.06);
+  --neutral-border: rgba(255, 255, 255, 0.16);
+  --neutral-text: #e6e1d9;
+  --info-text: #f2eee7;
+  /* The ink for a glyph drawn on a tone's solid colour. */
+  --on-status: #0a0f14;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35);
+  --shadow-md: 0 12px 32px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 24px 70px rgba(0, 0, 0, 0.55);
+}

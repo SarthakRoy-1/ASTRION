@@ -34,6 +34,14 @@
   --neutral: #59616a;
   --neutral-soft: #e9e6df;
   --neutral-border: #cec8be;
+  /* Text for each tone, chosen for its own soft background (and moved with it
+     in the dark palette, components/site/darkTokens.module.css). */
+  --ok-text: #2b4636;
+  --caution-text: #5b4726;
+  --fail-text: #6a312e;
+  --neutral-text: #3f464d;
+  --info-text: #17212b;
+  --on-status: #fffefb;
 
   --brand-sand: #c7b79f;
 
