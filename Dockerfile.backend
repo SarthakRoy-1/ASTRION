@@ -1,10 +1,10 @@
-# ParcelPilot backend — FastAPI + the deterministic/real agent.
+# ASTRION backend — FastAPI + the deterministic/real agent.
 #
 # Build context is the REPO ROOT (not app/backend/), because the application
 # imports as `app.backend.*` and needs `scripts/` (ingestion) and the source
 # pack `data/source/` to boot. Build from the repo root:
 #
-#   docker build -f Dockerfile.backend -t parcelpilot-backend .
+#   docker build -f Dockerfile.backend -t astrion-backend .
 #
 # The container's working directory mirrors the repo root exactly
 # (REPO_ROOT = Path(__file__).resolve().parents[3] in

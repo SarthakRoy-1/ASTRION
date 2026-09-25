@@ -17,7 +17,8 @@
   padding: var(--space-5);
   border: 1px solid var(--border-default);
   border-radius: var(--radius-lg);
-  background: var(--surface-raised);
+  /* Opaque where the surrounding theme makes panels translucent. */
+  background: var(--surface-dialog, var(--surface-raised));
   box-shadow: var(--shadow-lg);
   animation: rise var(--duration-base) var(--ease-out);
 }

@@ -1,11 +1,11 @@
-# ParcelPilot frontend — Next.js chat UI.
+# ASTRION frontend — Next.js chat UI.
 #
 # Build context is app/frontend/ itself (self-contained; no dependency on the
 # rest of the repo). Build from that directory, or from the repo root with
 # `-f app/frontend/Dockerfile app/frontend`:
 #
 #   docker build --build-arg NEXT_PUBLIC_API_BASE_URL=https://api.example.com \
-#       -t parcelpilot-frontend app/frontend
+#       -t astrion-frontend app/frontend
 #
 # IMPORTANT — NEXT_PUBLIC_API_BASE_URL is a BUILD-TIME value for the browser
 # bundle. Next.js inlines every NEXT_PUBLIC_* variable into the compiled client

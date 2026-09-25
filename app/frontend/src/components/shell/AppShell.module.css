@@ -1,4 +1,55 @@
-.app { display:flex; flex-direction:column; height:100dvh; }
+/* The signed-in application wears the landing page's palette: the same near-black
+   ground, cream ink and translucent "glass" panels, so the site and the app read
+   as one product. It is done by re-declaring the design tokens on the shell's
+   root, so every component that already draws from them (panels, forms, tables,
+   document rows, audit entries) follows without being restyled, and keeps its
+   contrast because the text and surface tokens move together. The values are
+   the ones the sign-in card already uses for dark glass (SignInScene), plus dark
+   counterparts of the status colours. */
+.app {
+  display:flex; flex-direction:column; height:100dvh;
+  color-scheme: dark;
+
+  --landing-bg: #04090e;
+  --surface-page: #060d13;
+  --surface-raised: rgba(255,255,255,.055);
+  --surface-sunken: rgba(255,255,255,.035);
+  --surface-dialog: #111a22;
+  --border-subtle: rgba(255,255,255,.1);
+  --border-default: rgba(255,255,255,.16);
+  --border-strong: rgba(255,255,255,.32);
+  --text-primary: #f2eee7;
+  --text-secondary: rgba(236,232,225,.78);
+  --text-muted: rgba(236,232,225,.58);
+  --accent: #ebe2d6;
+  --accent-hover: #f5eee4;
+  --on-accent: #0a0f14;
+  --accent-soft: rgba(255,255,255,.07);
+  --accent-border: rgba(255,255,255,.16);
+  --ok: #9fcaa9;
+  --ok-soft: rgba(110,170,125,.14);
+  --ok-border: rgba(159,202,169,.34);
+  --caution: #e3c992;
+  --caution-soft: rgba(205,165,95,.14);
+  --caution-border: rgba(227,201,146,.34);
+  --fail: #f0a6a0;
+  --fail-soft: rgba(214,92,84,.14);
+  --fail-border: rgba(240,166,160,.34);
+  --neutral: rgba(236,232,225,.72);
+  --neutral-soft: rgba(255,255,255,.06);
+  --neutral-border: rgba(255,255,255,.16);
+  --shadow-sm: 0 1px 2px rgba(0,0,0,.35);
+  --shadow-md: 0 12px 32px rgba(0,0,0,.4);
+  --shadow-lg: 0 24px 70px rgba(0,0,0,.55);
+
+  color: var(--text-primary);
+  /* The landing page's ground, with a faint lift toward the top right where its
+     planet's glow sits; no image is loaded for it. */
+  background:
+    radial-gradient(ellipse 70% 55% at 88% -8%, rgba(199,183,159,.13), transparent 60%),
+    radial-gradient(ellipse 60% 50% at 8% 108%, rgba(60,92,120,.16), transparent 62%),
+    var(--landing-bg);
+}
 .top { flex:none; background:#091117; border-bottom:1px solid rgba(255,255,255,.1); }
 .topInner { display:flex; align-items:center; gap:var(--space-4); max-width:var(--shell-width); margin:0 auto; padding:10px var(--space-5); min-height:var(--header-height); }
 .brand { display:flex; align-items:center; flex:none; line-height:0; }

@@ -38,9 +38,13 @@ export default function AuditPage() {
   return (
     <main id="main" className={styles.page}>
       <header className={styles.header}>
-        <p className={styles.breadcrumb}>
-          <Link href="/workspace">{workspace.name}</Link>
-        </p>
+        {/* A link to the workspace's own route, not `history.back()`: it lands in
+            the same place after a refresh, from a shared URL, or when the trail
+            was opened in a fresh tab, where history has nowhere to go back to. */}
+        <Link className={styles.backLink} href="/workspace">
+          <span aria-hidden="true">←</span>
+          <span>Back to workspace</span>
+        </Link>
         <h1 className={styles.title}>Audit trail</h1>
         <p className={styles.subtitle}>
           Every sign-in, every question asked of the assistant, and every action

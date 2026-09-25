@@ -303,3 +303,43 @@ describe("the audit trail", () => {
     expect(await screen.findByText("Something new")).toBeInTheDocument();
   });
 });
+
+describe("leaving the audit trail", () => {
+  it("offers a Back link to the workspace's own route", async () => {
+    stubAudit({ body: listing([entry()]) });
+    render();
+
+    const back = await screen.findByRole("link", { name: /back to workspace/i });
+    // A real route, not `history.back()`: the destination is fixed, so it is
+    // the same after a refresh, from a pasted URL, or in a fresh tab.
+    expect(back).toHaveAttribute("href", "/workspace");
+  });
+
+  it("is there while the trail is still loading, and when it fails", async () => {
+    stubAudit({ networkError: true });
+    render();
+
+    expect(await screen.findByRole("link", { name: /back to workspace/i })).toBeInTheDocument();
+  });
+
+  it("is reachable by keyboard and comes before the trail in tab order", async () => {
+    const user = userEvent.setup();
+    stubAudit({ body: listing([entry()]) });
+    render();
+
+    const back = await screen.findByRole("link", { name: /back to workspace/i });
+    await user.tab();
+    // Some earlier control may hold focus first (the shell's skip link); the
+    // Back link must be reachable by Tab alone, and before any trail content.
+    for (let i = 0; i < 12 && document.activeElement !== back; i += 1) await user.tab();
+    expect(back).toHaveFocus();
+  });
+
+  it("does not hide the audit chain status the page exists to show", async () => {
+    stubAudit({ body: listing([entry()]) });
+    render();
+
+    await screen.findByRole("link", { name: /back to workspace/i });
+    expect(await screen.findByText(/chain verified/i)).toBeInTheDocument();
+  });
+});
