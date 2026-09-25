@@ -36,6 +36,7 @@ from enum import StrEnum
 from typing import Any
 
 from app.backend.auth.tokens import new_id
+from app.backend.db import serialized
 
 logger = logging.getLogger("astrion.audit")
 
@@ -249,27 +250,20 @@ def record_event(
         }
         detail_json = json.dumps(payload["details"], sort_keys=True, default=str)
 
-        # Take the write lock *before* reading the head, so reading it and
-        # appending to it are one indivisible step.
+        # Take the lock *before* reading the head, so reading it and appending
+        # to it are one indivisible step.
         #
-        # SQLite's default transaction is deferred: it acquires nothing until
-        # the first write. Reading the head inside `with conn:` therefore held
-        # no lock, and two concurrent requests could both read the same head
-        # and both chain from it — forking the log, and leaving
-        # `verify_audit_chain` reporting a break for the rest of that
-        # database's life. Not hypothetical: a load test of eighty concurrent
-        # registrations produced exactly one such fork, twelve milliseconds
-        # wide. `BEGIN IMMEDIATE` takes the reserved lock up front, so the
-        # second writer waits out its `busy_timeout` and then chains from the
-        # head the first one actually wrote.
+        # Without it, two concurrent requests could both read the same head and
+        # both chain from it — forking the log, and leaving `verify_audit_chain`
+        # reporting a break for the rest of that database's life. Not
+        # hypothetical: a load test of eighty concurrent registrations produced
+        # exactly one such fork, twelve milliseconds wide.
         #
-        # A caller who is already inside a transaction keeps it: SQLite cannot
-        # nest one, and committing on their behalf would publish whatever
-        # half-finished work they had pending.
-        opened = not conn.in_transaction
-        if opened:
-            conn.execute("BEGIN IMMEDIATE")
-        try:
+        # `serialized` is the engine-appropriate lock: `BEGIN IMMEDIATE` on
+        # SQLite, a transaction-scoped advisory lock on PostgreSQL. Either way
+        # the second writer waits and then chains from the head the first one
+        # actually wrote, and a caller already inside a transaction keeps it.
+        with serialized(conn, "audit_chain"):
             prev_hash = _head_hash(conn)
             entry_hash = _compute_hash(prev_hash, payload)
             conn.execute(
@@ -297,12 +291,6 @@ def record_event(
                     entry_hash,
                 ),
             )
-        except Exception:
-            if opened:
-                conn.rollback()
-            raise
-        if opened:
-            conn.commit()
         return event_id
     except Exception:  # pragma: no cover - defensive
         logger.exception("failed to record audit event %s", event_type)

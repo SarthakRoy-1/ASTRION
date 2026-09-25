@@ -443,10 +443,10 @@ def evaluation_conn(_full_db_template, tmp_path_factory):
     action *preparation* is the strongest thing the agent can do and the cases
     that reach it assert only that a proposal exists.
     """
-    import shutil
+    from tests.dbutil import copy_full_db
 
     path = tmp_path_factory.mktemp("evaluation") / "astrion.db"
-    shutil.copy(_full_db_template, path)
+    copy_full_db(_full_db_template, path)
     conn = get_connection(path)
     initialize_schema(conn)
     yield conn

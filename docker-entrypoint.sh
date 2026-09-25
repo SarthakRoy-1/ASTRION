@@ -20,6 +20,21 @@ DB_PATH="${DATABASE_URL:-data/processed/parcelpilot.db}"
 DB_PATH="${DB_PATH#sqlite:///}"
 DB_PATH="${DB_PATH#sqlite://}"
 
+case "${DATABASE_URL:-}" in
+    postgresql://*|postgres://*)
+        # PostgreSQL: the schema is owned by versioned migrations, applied here,
+        # once, before the API starts -- never from a request handler. The
+        # migration runner holds an advisory lock, so two instances starting
+        # together cannot race, and it prints version numbers only, never the
+        # URL (which carries a password). No file is created and nothing is
+        # ingested at boot: this database is the system of record, and what goes
+        # in it goes in through the product.
+        echo "docker-entrypoint: PostgreSQL configured; applying migrations ..."
+        python -m app.backend.db.migrate
+        exec "$@"
+        ;;
+esac
+
 if [ ! -f "$DB_PATH" ]; then
     echo "docker-entrypoint: $DB_PATH not found; ingesting from data/source/ ..."
     python scripts/ingest_dataset.py --db "$DB_PATH"

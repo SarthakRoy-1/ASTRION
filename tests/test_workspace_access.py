@@ -29,6 +29,7 @@ from app.backend.auth import repository as repo
 from app.backend.auth import workspaces as workspace_service
 from app.backend.auth.passwords import hash_password
 from app.backend.auth.permissions import OrgRole
+from app.backend.db import IntegrityError
 from app.backend.core.config import AuthMode, Settings
 from app.backend.services.database import get_connection, initialize_schema
 
@@ -157,7 +158,7 @@ def test_a_duplicate_code_is_refused_by_the_database(db, team):
     other = repo.create_organization(db, name="Other", slug="other")[0]
     user_id = repo.get_user_by_email(db, "owner@example.com").user_id
 
-    with pytest.raises(sqlite3.IntegrityError):
+    with pytest.raises(IntegrityError):
         repo.create_workspace_access(
             db,
             org_id=other,
@@ -809,7 +810,7 @@ def test_a_rejoin_is_audited_without_the_secret(app, db, owner, team):
     rows = db.execute(
         "SELECT event_type, detail_json FROM audit_log"
         " WHERE event_type = 'org.membership_created' AND target_id = ?"
-        " ORDER BY rowid",
+        " ORDER BY seq",
         (_user_id(db, "audit-rejoin@example.com"),),
     ).fetchall()
 

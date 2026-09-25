@@ -129,6 +129,9 @@ def _database_path(raw: str | None) -> Path:
     """Accept either a plain path or the `sqlite:///` URL form in `.env`."""
     if not raw:
         return DEFAULT_DB_PATH
+    if raw.lower().startswith(("postgresql://", "postgres://")):
+        # Not a file. `Settings.database_url` carries it; the path is unused.
+        return DEFAULT_DB_PATH
     if raw.startswith("sqlite:///"):
         raw = raw[len("sqlite:///") :]
     elif raw.startswith("sqlite://"):
@@ -164,6 +167,15 @@ class Settings(BaseModel):
     llm_temperature: float = 0.0
 
     database_path: Path = DEFAULT_DB_PATH
+    #: The raw `DATABASE_URL`. When it names PostgreSQL (`postgresql://...`) the
+    #: application uses PostgreSQL and `database_path` is ignored; anything else
+    #: (or nothing) means the SQLite file at `database_path`. Holds a password,
+    #: so it is `repr=False` and never appears in `public_summary`.
+    database_url: str | None = Field(default=None, repr=False)
+    #: Connection pool bounds for PostgreSQL. Sized against the database's own
+    #: connection limit, not the request rate: each in-flight request holds one.
+    db_pool_min: int = 1
+    db_pool_max: int = 10
     #: Where uploaded documents are stored. Configurable for the same reason
     #: the database is: a deployment with a persistent disk must be able to
     #: put both on it, and a test must be able to put both in a temporary
@@ -316,6 +328,12 @@ class Settings(BaseModel):
             )
 
     @property
+    def database_backend(self) -> str:
+        """`"postgres"` when `DATABASE_URL` names PostgreSQL, else `"sqlite"`."""
+        url = (self.database_url or "").strip().lower()
+        return "postgres" if url.startswith(("postgresql://", "postgres://")) else "sqlite"
+
+    @property
     def is_production(self) -> bool:
         """Whether this deployment claims to be serving real users.
 
@@ -338,6 +356,11 @@ class Settings(BaseModel):
                 "AUTH_MODE=demo_header trusts the X-Astrion-User header "
                 "without any credential and must never run in production. "
                 f"APP_ENV is {self.app_env!r}. Set AUTH_MODE=session."
+            )
+        if self.demo_login_enabled and self.database_backend == "postgres":
+            raise ConfigurationError(
+                "DEMO_LOGIN_ENABLED builds and seeds its own local SQLite file and "
+                "cannot run against PostgreSQL. Set DEMO_LOGIN_ENABLED=false."
             )
         if self.is_production and not self.session_cookie_secure:
             raise ConfigurationError(
@@ -464,6 +487,9 @@ def load_settings(*, env_file: Path | str | None = None) -> Settings:
         agent_request_timeout_seconds=_env_float("AGENT_REQUEST_TIMEOUT_SECONDS", 60.0),
         llm_temperature=_env_float("LLM_TEMPERATURE", 0.0),
         database_path=_database_path(_env("DATABASE_URL")),
+        database_url=_env("DATABASE_URL"),
+        db_pool_min=_env_int("DB_POOL_MIN", 1),
+        db_pool_max=_env_int("DB_POOL_MAX", 10),
         uploads_dir=_repo_relative(_env("UPLOADS_DIR"), DEFAULT_UPLOADS_DIR),
         cors_allow_origins=tuple(o.strip() for o in origins.split(",") if o.strip()),
         enable_state_changing_actions=_env_bool("ENABLE_STATE_CHANGING_ACTIONS", True),

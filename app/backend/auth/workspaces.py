@@ -31,6 +31,7 @@ import secrets
 import sqlite3
 import unicodedata
 
+from app.backend.db.errors import IntegrityError
 from app.backend.auth import repository as repo
 from app.backend.auth import service as auth_service
 from app.backend.auth.passwords import (
@@ -192,7 +193,7 @@ def _issue_workspace_access(
                 password_hash=password_hash,
                 owner_user_id=owner_user_id,
             )
-        except sqlite3.IntegrityError:
+        except IntegrityError:
             continue
         return code
     raise WorkspaceError("A workspace code could not be generated. Try again.")

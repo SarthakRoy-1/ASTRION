@@ -10,6 +10,7 @@ import sqlite3
 from datetime import date, datetime, timezone
 from pathlib import Path
 
+from app.backend.db.errors import OperationalError
 from app.backend.models.documents import Document, DocumentChunk
 from app.backend.retrieval.extraction import (
     DocumentIngestionError,
@@ -23,7 +24,7 @@ def validate_account_links(conn: sqlite3.Connection, documents: list[Document]) 
     """Cross-check each agreement's `Account:` against Phase 2's accounts data."""
     try:
         rows = conn.execute("SELECT account_id, contract_file FROM accounts").fetchall()
-    except sqlite3.OperationalError:
+    except OperationalError:
         return ["accounts table not present — account cross-check skipped"]
     if not rows:
         return ["accounts table empty — account cross-check skipped"]
@@ -109,10 +110,11 @@ def ingest_single_document(
             INSERT INTO document_ingestion_runs
                 (started_at_utc, source_dir, ingestion_script_version, status)
             VALUES (?, ?, ?, 'running')
+            RETURNING id
             """,
             (started, source_dir, INGESTION_SCRIPT_VERSION),
         )
-        run_id = cursor.lastrowid
+        run_id = cursor.fetchall()[0]["id"]
 
         conn.execute("DELETE FROM document_chunks WHERE document_id = ?", (extracted.document.document_id,))
         conn.execute("DELETE FROM documents WHERE document_id = ?", (extracted.document.document_id,))
@@ -146,10 +148,11 @@ def load_into_db(
             INSERT INTO document_ingestion_runs
                 (started_at_utc, source_dir, ingestion_script_version, status)
             VALUES (?, ?, ?, 'running')
+            RETURNING id
             """,
             (started, str(source_dir), INGESTION_SCRIPT_VERSION),
         )
-        run_id = cursor.lastrowid
+        run_id = cursor.fetchall()[0]["id"]
 
         # Delete ONLY the documents that originated from the same source_dir
         # This preserves uploaded documents when scripts/ingest_documents.py runs,

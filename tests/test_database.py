@@ -1,6 +1,10 @@
 import sqlite3
 
+import pytest
+
 from app.backend.services import database as db
+
+pytestmark = pytest.mark.sqlite_only  # exercises the SQLite engine itself
 
 
 def test_get_connection_creates_parent_directory(tmp_path):

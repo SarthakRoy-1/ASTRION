@@ -34,7 +34,7 @@ from app.backend.core.config import Settings
 from app.backend.core.errors import DataUnavailableError
 from app.backend.models.agent import AgentContext
 from app.backend.policies.base import PolicyDataError, load_evaluation_context
-from app.backend.services.database import get_connection, initialize_schema
+from app.backend.db import SchemaNotReadyError
 from app.backend.tools.registry import build_default_registry
 
 logger = logging.getLogger("astrion.api")
@@ -71,19 +71,24 @@ def get_settings(request: Request) -> Settings:
 
 def get_db(request: Request) -> Iterator[sqlite3.Connection]:
     """Open a scoped connection, refusing clearly if the data is not built."""
-    settings: Settings = request.app.state.settings
-    if not settings.database_path.exists():
+    database = request.app.state.database
+    if not database.exists():
         logger.error(
-            "no database at %s. Build it with `python scripts/ingest_dataset.py` "
-            "and `python scripts/ingest_documents.py`, or set "
-            "DEMO_LOGIN_ENABLED=true to have the application build it itself.",
-            settings.database_path,
+            "no database at %s. Build it with "
+            "`python scripts/ingest_dataset.py` and `python scripts/ingest_documents.py`, "
+            "or set DEMO_LOGIN_ENABLED=true to have the application build it itself.",
+            database.location,
         )
         raise DataUnavailableError(DATA_UNAVAILABLE_MESSAGE)
-    conn = get_connection(settings.database_path)
     try:
-        # Idempotent, and applies any column added since this file was built.
-        initialize_schema(conn)
+        # Once per process, and never DDL on PostgreSQL: a database behind the
+        # code is reported, not repaired from a request handler.
+        database.ensure_ready()
+    except SchemaNotReadyError as exc:
+        logger.error("%s", exc)
+        raise DataUnavailableError(DATA_UNAVAILABLE_MESSAGE) from exc
+    conn = database.connect()
+    try:
         yield conn
     finally:
         conn.close()

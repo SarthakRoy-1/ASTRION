@@ -30,6 +30,10 @@ import sqlite3
 import threading
 
 import pytest
+
+# The demo environment builds and seeds its own local SQLite file; it is not
+# available against PostgreSQL (Settings.validate_auth refuses the combination).
+pytestmark = pytest.mark.sqlite_only
 from fastapi.testclient import TestClient
 
 from app.backend.api.app import create_app

@@ -462,6 +462,7 @@ def test_concurrent_writers_cannot_fork_the_chain(full_db):
         conn.close()
 
 
+@pytest.mark.sqlite_only  # spells the transaction as BEGIN IMMEDIATE; see test_db_layer for PostgreSQL
 def test_an_audit_write_does_not_commit_a_callers_open_transaction(conn):
     """Recording inside someone else's transaction must not publish their work.
 

@@ -24,6 +24,7 @@ import uuid
 
 from fastapi import APIRouter, Request
 
+from app.backend.db.errors import DatabaseError
 from app.backend.api.authentication import (
     audit_denial,
     authenticate,
@@ -91,19 +92,18 @@ def health(request: Request) -> HealthResponse:
     database_ready = False
     documents = 0
     snapshot: str | None = None
-    if settings.database_path.exists():
+    database = request.app.state.database
+    if database.exists():
         conn: sqlite3.Connection | None = None
         try:
-            from app.backend.services.database import get_connection
-
-            conn = get_connection(settings.database_path)
+            conn = database.connect()
             metadata = get_dataset_metadata(conn)
             if metadata is not None:
                 snapshot = metadata.dataset_snapshot_raw
             row = conn.execute("SELECT COUNT(*) AS n FROM documents").fetchone()
             documents = int(row["n"]) if row else 0
             database_ready = metadata is not None and documents > 0
-        except sqlite3.Error:
+        except DatabaseError:
             database_ready = False
         finally:
             if conn is not None:

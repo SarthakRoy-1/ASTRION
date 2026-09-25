@@ -434,10 +434,10 @@ def test_the_audit_log_is_scoped_to_the_workspace(secure_settings, world):
 
 
 def test_a_duplicate_membership_cannot_be_created(db, world):
-    import sqlite3
+    from app.backend.db import IntegrityError
 
     viewer_id = uid(db, world["people"]["viewer"])
-    with pytest.raises(sqlite3.IntegrityError):
+    with pytest.raises(IntegrityError):
         repo.add_member(
             db, org_id=world["alpha"], user_id=viewer_id, role=OrgRole.OWNER
         )
@@ -781,7 +781,9 @@ def test_the_raw_invitation_token_is_never_persisted(secure_settings, world, db,
     stored = [r["token_hash"] for r in db.execute("SELECT token_hash FROM invitations")]
     assert token not in stored
     # The strongest form: the token appears nowhere in the database file at all.
-    assert token.encode() not in full_db.read_bytes()
+    from tests.dbutil import db_bytes
+
+    assert token.encode() not in db_bytes(full_db)
 
 
 def test_an_invitation_cannot_be_redeemed_by_a_different_account(
@@ -1045,7 +1047,7 @@ def test_two_simultaneous_acceptances_create_one_membership(
     assert 200 in results
 
 
-def test_two_simultaneous_owner_removals_cannot_orphan_a_workspace(db, world):
+def test_two_simultaneous_owner_removals_cannot_orphan_a_workspace(db, world, full_db):
     """The last-owner guard must hold under a race, not only in sequence."""
     second_owner = make_user(db, "owner2@alpha.test")
     repo.add_member(db, org_id=world["alpha"], user_id=second_owner, role=OrgRole.OWNER)
@@ -1067,7 +1069,7 @@ def test_two_simultaneous_owner_removals_cannot_orphan_a_workspace(db, world):
         with lock:
             outcomes.append(outcome)
 
-    path = db.execute("PRAGMA database_list").fetchone()[2]
+    path = full_db
     threads = [
         threading.Thread(target=remove, args=(owner_one, path)),
         threading.Thread(target=remove, args=(second_owner, path)),

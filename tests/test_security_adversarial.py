@@ -927,7 +927,9 @@ def test_a_login_password_never_appears_anywhere_in_the_database(
             "/api/auth/login",
             json={"email": tenants["people"]["alpha_owner"], "password": PASSWORD},
         )
-    raw = full_db.read_bytes()
+    from tests.dbutil import db_bytes
+
+    raw = db_bytes(full_db)
     assert PASSWORD.encode() not in raw
 
 

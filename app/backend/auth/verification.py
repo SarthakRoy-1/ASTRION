@@ -316,7 +316,7 @@ def _latest_code(conn: sqlite3.Connection, verification_id: str) -> sqlite3.Row 
     return conn.execute(
         """
         SELECT * FROM email_otps WHERE verification_id = ?
-         ORDER BY created_at_utc DESC, rowid DESC LIMIT 1
+         ORDER BY created_at_utc DESC, otp_id DESC LIMIT 1
         """,
         (verification_id,),
     ).fetchone()

@@ -9,6 +9,52 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+# Running the suite against PostgreSQL instead of SQLite. See tests/pg_backend.py.
+# Must happen before any test module imports `get_connection` by name, which is
+# why it lives at the top of the root conftest.
+import os
+
+PG_MODE = bool(os.environ.get("ASTRION_TEST_DATABASE_URL"))
+if PG_MODE:
+    from tests import pg_backend
+
+    # Idempotent: this file can be imported twice (as `conftest` by pytest and
+    # as `tests.conftest` by a test), and a second drop_all() would delete the
+    # schemas the first one built.
+    if not getattr(pg_backend, "_installed", False):
+        pg_backend.drop_all()
+        pg_backend.install()
+        pg_backend._installed = True
+
+
+def pytest_configure(config):
+    config.addinivalue_line("markers", "sqlite_only: skipped when running on PostgreSQL")
+    config.addinivalue_line("markers", "postgres_only: needs ASTRION_TEST_DATABASE_URL")
+
+
+def pytest_sessionfinish(session, exitstatus):
+    if PG_MODE:
+        pg_backend.drop_all()
+
+
+def pytest_collection_modifyitems(config, items):
+    """SQLite-only tests are not run against PostgreSQL.
+
+    A test marked `sqlite_only` exercises something that is SQLite by design --
+    the demo bootstrap builds its own local file, and the legacy schema upgrade
+    path is `PRAGMA`-driven. `postgres_only` tests need a server and are skipped
+    when there isn't one.
+    """
+    import pytest as _pytest
+
+    for item in items:
+        if PG_MODE and "sqlite_only" in item.keywords:
+            item.add_marker(_pytest.mark.skip(reason="SQLite-only by design"))
+        if not PG_MODE and "postgres_only" in item.keywords:
+            item.add_marker(
+                _pytest.mark.skip(reason="set ASTRION_TEST_DATABASE_URL to run")
+            )
+
 # A real filename from the supplied source pack, reused here only because
 # scripts/ingest_dataset.py validates accounts.contract_file against the
 # actual delivered PDFs — a synthetic filename would correctly fail that
@@ -209,10 +255,10 @@ def _full_db_template(tmp_path_factory) -> Path:
 @pytest.fixture
 def full_db(_full_db_template, tmp_path) -> Path:
     """A private copy of the fully ingested database for one test."""
-    import shutil
+    from tests.dbutil import copy_full_db
 
     db_path = tmp_path / "astrion.db"
-    shutil.copy(_full_db_template, db_path)
+    copy_full_db(_full_db_template, db_path)
     return db_path
 
 

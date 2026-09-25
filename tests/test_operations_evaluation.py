@@ -42,10 +42,10 @@ ALL_ACCOUNTS = frozenset({NORTHSTAR, LUMENWORKS, BEACON, AXIS})
 @pytest.fixture(scope="module")
 def ops_conn(_full_db_template, tmp_path_factory):
     """One ingested database for the suite. Detection is read-only."""
-    import shutil
+    from tests.dbutil import copy_full_db
 
     path = tmp_path_factory.mktemp("operations") / "astrion.db"
-    shutil.copy(_full_db_template, path)
+    copy_full_db(_full_db_template, path)
     conn = get_connection(path)
     initialize_schema(conn)
     yield conn

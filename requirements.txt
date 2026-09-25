@@ -42,3 +42,9 @@ openai==2.14.0
 # app/backend/email/resend_provider.py so the entire test suite runs without
 # an API key or network access.
 resend==2.43.0
+
+# --- PostgreSQL (production database) ------------------------------------------
+# The production engine. SQLite remains for local development and the tests
+# until nothing needs it. `binary` bundles libpq so the slim image needs no
+# compiler; `pool` is the connection pool (app/backend/db/postgres.py).
+psycopg[binary,pool]==3.2.9

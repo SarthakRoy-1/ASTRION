@@ -53,6 +53,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
+from app.backend.db.errors import DatabaseError
 from app.backend.auth import repository as repo
 from app.backend.auth import service as auth_service
 from app.backend.auth.passwords import hash_password, verify_password
@@ -224,7 +225,7 @@ def dataset_present(conn: sqlite3.Connection) -> bool:
         return bool(metadata) and all(
             _count(conn, table) > 0 for table in ("accounts", "orders", "tickets")
         )
-    except sqlite3.Error:
+    except DatabaseError:
         return False
 
 
@@ -236,7 +237,7 @@ def documents_present(conn: sqlite3.Connection) -> bool:
     """
     try:
         return _count(conn, "documents") > 0 and _count(conn, "document_chunks") > 0
-    except sqlite3.Error:
+    except DatabaseError:
         return False
 
 
@@ -326,7 +327,7 @@ def ensure_demo_environment(settings: Settings) -> DemoEnvironmentReport:
                     already_ready=True,
                     duration_seconds=time.perf_counter() - started,
                 )
-        except sqlite3.Error:
+        except DatabaseError:
             # A database that cannot even be read is one to rebuild, not one to
             # refuse over. Fall through to the guarded path.
             pass

@@ -24,7 +24,11 @@ Design notes (see docs/architecture.md for the full rationale):
 from __future__ import annotations
 
 import sqlite3
+from collections.abc import Callable
 from pathlib import Path
+
+from app.backend.db.errors import OperationalError
+from app.backend.db.sqlite import SqliteConnection
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_DB_PATH = REPO_ROOT / "data" / "processed" / "astrion.db"
@@ -281,8 +285,25 @@ SCHEMA_STATEMENTS: tuple[str, ...] = (
 )
 
 
+#: A seam for running the suite against another engine; see
+#: `app.backend.db.set_database_factory`. None in every real process.
+_connection_factory: Callable[[Path], object] | None = None
+
+
+def set_connection_factory(factory: Callable[[Path], object] | None) -> None:
+    global _connection_factory
+    _connection_factory = factory
+
+
 def get_connection(db_path: Path | str = DEFAULT_DB_PATH) -> sqlite3.Connection:
-    """Open a connection with row access by column name and FKs enforced."""
+    """Open a SQLite connection with row access by column name and FKs enforced.
+
+    This is the SQLite engine's connection function. Application code reaches
+    the configured engine through `app.backend.db.open_database(settings)`;
+    scripts and tests that name a file come here.
+    """
+    if _connection_factory is not None:
+        return _connection_factory(Path(db_path))  # type: ignore[return-value]
     db_path = Path(db_path)
     db_path.parent.mkdir(parents=True, exist_ok=True)
     # `check_same_thread=False` because FastAPI hands one request's connection
@@ -298,7 +319,9 @@ def get_connection(db_path: Path | str = DEFAULT_DB_PATH) -> sqlite3.Connection:
     # single task and no two threads ever touch a connection at once. What is
     # switched off is a guard against a pattern this code does not use; the
     # serialisation SQLite itself provides between *connections* is untouched.
-    conn = sqlite3.connect(str(db_path), check_same_thread=False)
+    conn = sqlite3.connect(
+        str(db_path), check_same_thread=False, factory=SqliteConnection
+    )
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     # SQLite serialises writers. Without a busy timeout the loser of a race
@@ -367,10 +390,10 @@ def _check_account_exclusivity(conn: sqlite3.Connection) -> None:
             """
             SELECT account_id, COUNT(DISTINCT org_id) AS orgs
               FROM organization_accounts
-             GROUP BY account_id HAVING orgs > 1
+             GROUP BY account_id HAVING COUNT(DISTINCT org_id) > 1
             """
         ).fetchall()
-    except sqlite3.OperationalError:
+    except OperationalError:
         return  # table not created yet; nothing to check
     if rows:
         offenders = ", ".join(str(row[0]) for row in rows)
@@ -396,6 +419,11 @@ def initialize_schema(conn: sqlite3.Connection) -> None:
     security tables hold the only copy of their data and must survive one.
     """
     from app.backend.auth.schema import SECURITY_SCHEMA_STATEMENTS
+
+    if getattr(conn, "dialect", "sqlite") != "sqlite":
+        # PostgreSQL's schema is owned by versioned migrations, applied by the
+        # deploy step. It is never created from here, least of all per request.
+        return
 
     _check_account_exclusivity(conn)
 

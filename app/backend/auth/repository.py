@@ -19,6 +19,8 @@ import sqlite3
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
+from app.backend.db import serialized
+from app.backend.db.errors import IntegrityError
 from app.backend.auth.permissions import OrgRole, Permission, role_has
 from app.backend.auth.tokens import hash_token, new_id, new_token
 
@@ -466,6 +468,13 @@ def count_owners(conn: sqlite3.Connection, org_id: str) -> int:
 #: Folding the count into the UPDATE's WHERE clause makes the check and the
 #: write one statement, which SQLite evaluates atomically. The losing writer
 #: matches no rows and is refused.
+#:
+#: That is a property of SQLite's single writer, not of SQL. On PostgreSQL the
+#: default isolation is READ COMMITTED, where two concurrent UPDATEs each see
+#: the *other* owner still active and both succeed -- the same orphaned
+#: workspace by another route. So every function that can remove an owner takes
+#: `serialized(conn, "members:<org>")` first: one membership change per
+#: workspace at a time, on either engine.
 _NOT_LAST_OWNER = """
     AND (
         role != 'owner'
@@ -516,7 +525,7 @@ def set_member_role(
     owner is no longer the last one and may be demoted freely.
     """
     guard = "" if role is OrgRole.OWNER else _NOT_LAST_OWNER
-    with conn:
+    with serialized(conn, f"members:{org_id}"), conn:
         cursor = conn.execute(
             f"""
             UPDATE memberships SET role = ?, updated_at_utc = ?
@@ -541,7 +550,7 @@ def remove_member(conn: sqlite3.Connection, *, org_id: str, user_id: str) -> boo
     Refuses to remove the last owner, for the same reason `set_member_role`
     refuses to demote one.
     """
-    with conn:
+    with serialized(conn, f"members:{org_id}"), conn:
         cursor = conn.execute(
             f"""
             UPDATE memberships SET status = 'removed', updated_at_utc = ?
@@ -571,7 +580,7 @@ def transfer_ownership(
     safe direction to fail in.
     """
     now = _now().isoformat()
-    with conn:
+    with serialized(conn, f"members:{org_id}"), conn:
         target = conn.execute(
             "SELECT role FROM memberships WHERE org_id = ? AND user_id = ? AND status = ?",
             (org_id, to_user_id, ACTIVE),
@@ -819,7 +828,7 @@ def grant_account(conn: sqlite3.Connection, *, org_id: str, account_id: str) -> 
                 """,
                 (org_id, account_id, _now().isoformat()),
             )
-    except sqlite3.IntegrityError as exc:
+    except IntegrityError as exc:
         # Lost a race with a concurrent grant. The constraint held; report it.
         raise AccountAlreadyClaimedError(
             f"Account {account_id!r} already belongs to another workspace."
@@ -1119,16 +1128,17 @@ def claim_conversation(
     """Register or re-assert ownership of a conversation. False if it is someone else's.
 
     First use registers it; later uses check it. The INSERT carries the
-    ownership guard itself (`INSERT OR IGNORE` then a scoped read) so two
+    ownership guard itself (`ON CONFLICT DO NOTHING` then a scoped read) so two
     simultaneous first-uses cannot both claim the same id.
     """
     now = _now().isoformat()
     with conn:
         conn.execute(
             """
-            INSERT OR IGNORE INTO conversations
+            INSERT INTO conversations
                 (conversation_id, user_id, org_id, created_at_utc, last_used_at_utc)
             VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT (conversation_id) DO NOTHING
             """,
             (conversation_id, user_id, org_id, now, now),
         )
@@ -1276,7 +1286,7 @@ def create_invitation(
                     (now + timedelta(hours=ttl_hours)).isoformat(),
                 ),
             )
-    except sqlite3.IntegrityError as exc:
+    except IntegrityError as exc:
         raise DuplicateInvitationError(
             "There is already an open invitation to that address for this "
             "workspace. Revoke it first, or wait for it to expire."

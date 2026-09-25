@@ -440,10 +440,11 @@ def load_into_db(
                 (started_at_utc, source_workbook_path, source_workbook_sha256,
                  ingestion_script_version, status)
             VALUES (?, ?, ?, ?, 'running')
+            RETURNING id
             """,
             (now_utc, str(workbook_path), workbook_sha256, INGESTION_SCRIPT_VERSION),
         )
-        run_id = cur.lastrowid
+        run_id = cur.fetchall()[0]["id"]
 
         conn.execute("DELETE FROM orders")
         conn.execute("DELETE FROM tickets")

@@ -727,6 +727,7 @@ def test_there_is_no_silent_fallback_from_real_to_deterministic(api_settings):
 # --- error envelope ----------------------------------------------------------------------------
 
 
+@pytest.mark.sqlite_only  # a missing *file*; PostgreSQL's equivalent is an unmigrated schema
 def test_missing_data_produces_a_clear_structured_error(tmp_path, caplog):
     """Structured for the caller, actionable for whoever can act.
 

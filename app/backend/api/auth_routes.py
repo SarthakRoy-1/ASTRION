@@ -64,7 +64,6 @@ from app.backend.services.bootstrap import (
     ensure_demo_environment,
     sign_in_demo_user,
 )
-from app.backend.services.database import get_connection
 
 #: Reserved for this module's own diagnostics. Deliberately never used to
 #: record a verification or reset token — see `_may_disclose_link`.
@@ -543,7 +542,7 @@ def demo_login(request: Request, response: Response) -> dict:
             "demo environment prepared on demand in %.2fs", report.duration_seconds
         )
 
-    conn = get_connection(settings.database_path)
+    conn = request.app.state.database.connect()
     try:
         result = sign_in_demo_user(
             conn,

@@ -34,6 +34,7 @@ from app.backend.api.ratelimit import RateLimiter
 from app.backend.api.operations_routes import operations_router
 from app.backend.api.routes import router
 from app.backend.api.workspace_routes import workspace_router
+from app.backend.db import open_database
 from app.backend.core.config import DEFAULT_ENV_FILE, Settings, load_settings
 from app.backend.services.bootstrap import ensure_demo_environment
 
@@ -76,7 +77,7 @@ def _demo_lifespan(settings: Settings):
     """
 
     @asynccontextmanager
-    async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         if settings.demo_login_enabled:
             try:
                 report = ensure_demo_environment(settings)
@@ -92,7 +93,11 @@ def _demo_lifespan(settings: Settings):
                     "demo environment could not be prepared at startup; "
                     "it will be retried on the first demo sign-in"
                 )
-        yield
+        try:
+            yield
+        finally:
+            # Returns the PostgreSQL pool's connections; a no-op for SQLite.
+            app.state.database.close()
 
     return lifespan
 
@@ -152,6 +157,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         lifespan=_demo_lifespan(settings),
     )
     app.state.settings = settings
+    app.state.database = open_database(settings)
     app.state.rate_limiter = RateLimiter()
     #: Whether `X-Forwarded-For` may be believed. False unless a proxy that
     #: sets it is known to be in front, because a client that can choose its

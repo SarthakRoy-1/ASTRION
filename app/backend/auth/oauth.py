@@ -46,6 +46,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from urllib.parse import urlencode
 
+from app.backend.db.errors import IntegrityError
 from app.backend.auth import repository as repo
 from app.backend.auth.passwords import UNUSABLE_PASSWORD
 from app.backend.auth.tokens import hash_token, new_id, new_token, tokens_equal
@@ -436,7 +437,7 @@ def account_for_verified_email(
                 password_hash=UNUSABLE_PASSWORD,
                 email_verified=True,
             )
-        except sqlite3.IntegrityError:
+        except IntegrityError:
             # Registered by someone else between the lookup and the insert.
             user = repo.get_user_by_email(conn, normalized)
             if user is None:
@@ -467,7 +468,7 @@ def account_for_verified_email(
             request_id=request_id,
             ip_hash=ip_hash,
         )
-    except sqlite3.IntegrityError:
+    except IntegrityError:
         # This provider identity was linked concurrently. It must be to this
         # same user; if it is not, refuse rather than pick one.
         linked = find_identity_user(conn, provider, subject)
