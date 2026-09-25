@@ -735,6 +735,54 @@ def test_a_plaintext_cors_origin_is_refused_in_production():
         ).validate_cors()
 
 
+def test_the_browser_app_may_use_every_method_the_ui_sends(full_db):
+    """A split-site deployment sends each non-simple request after a preflight.
+
+    The UI changes a member's role and renames a workspace with PATCH; a method
+    missing from the allowed list fails that preflight, so the button does
+    nothing in the browser while every same-origin test passes.
+    """
+    from app.backend.api.app import create_app
+
+    origin = "https://app.example.com"
+    settings = Settings(
+        database_path=full_db,
+        app_env="production",
+        auth_mode=AuthMode.SESSION,
+        cors_allow_origins=(origin,),
+        session_cookie_secure=True,
+        session_cookie_samesite="none",
+        rate_limit_enabled=False,
+    )
+
+    with TestClient(create_app(settings)) as client:
+        for method in ("GET", "POST", "PATCH", "DELETE"):
+            preflight = client.options(
+                "/api/workspaces/ORG-x/members/USR-x",
+                headers={
+                    "Origin": origin,
+                    "Access-Control-Request-Method": method,
+                    "Access-Control-Request-Headers": "content-type",
+                },
+            )
+            assert preflight.status_code == 200, method
+            assert preflight.headers["access-control-allow-origin"] == origin
+            assert preflight.headers["access-control-allow-credentials"] == "true"
+
+        # Not widened past what the UI needs.
+        refused = client.options(
+            "/api/workspaces/ORG-x/members/USR-x",
+            headers={"Origin": origin, "Access-Control-Request-Method": "PUT"},
+        )
+        assert refused.status_code == 400
+        # And still only for the configured origin.
+        stranger = client.options(
+            "/api/workspaces/ORG-x/members/USR-x",
+            headers={"Origin": "https://evil.example", "Access-Control-Request-Method": "PATCH"},
+        )
+        assert "access-control-allow-origin" not in stranger.headers
+
+
 def test_the_demo_directory_is_not_published_under_session_auth(secure_client):
     """A persona list is meaningless once identity is real, and advertising it
     would invite a sign-in that does not exist."""

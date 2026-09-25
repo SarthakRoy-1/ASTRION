@@ -198,7 +198,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             CORSMiddleware,
             allow_origins=list(settings.cors_allow_origins),
             allow_credentials=True,
-            allow_methods=["GET", "POST", "DELETE"],
+            allow_methods=["GET", "POST", "PATCH", "DELETE"],
             allow_headers=["Content-Type", "X-Astrion-User"],
         )
 
