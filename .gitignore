@@ -102,6 +102,8 @@ data/processed/*
 data/index/*
 # Documents uploaded through the API are runtime data, never repository content.
 data/uploads/
+# Development mail (verification codes) written by EMAIL_OUTBOX_DIR.
+data/outbox/
 !data/processed/.gitkeep
 !data/index/.gitkeep
 

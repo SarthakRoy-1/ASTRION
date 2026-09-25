@@ -232,11 +232,61 @@ class Settings(BaseModel):
     #: Base URL for verification links — must be the frontend origin.
     #: Example: https://parcelpilot-taupe.vercel.app (Vercel legacy URL during transition)
     email_verification_url: str = "http://localhost:3000"
+    #: Development only: write outgoing mail to this directory instead of
+    #: sending it, so the verification code can be read without a provider.
+    #: Refused in production — see `validate_auth`.
+    email_outbox_dir: Path | None = None
+
+    # --- email one-time codes ------------------------------------------------
+    #: How long an emailed verification code stays valid.
+    otp_ttl_minutes: int = 10
+    #: Wrong guesses allowed against one code before it is burned.
+    otp_max_attempts: int = 5
+    #: Minimum gap between two codes sent for one verification.
+    otp_resend_cooldown_seconds: int = 60
+    #: At most this many codes per address (and per verification) per window.
+    otp_max_sends_per_window: int = 5
+    otp_send_window_minutes: int = 60
+    #: Lifetime of the verification itself — the HttpOnly cookie that binds a
+    #: browser to "verifying this account". Codes come and go inside it.
+    verification_ttl_minutes: int = 60
+
+    # --- sign-in with Google / GitHub ----------------------------------------
+    #: The frontend origin the browser is returned to after a provider sign-in.
+    #: A fixed, operator-set value: no request parameter can change where the
+    #: callback redirects, so there is no open redirect to find.
+    frontend_base_url: str = "http://localhost:3000"
+    #: The public origin of *this* API. The provider callback is
+    #: `{api_public_url}/api/auth/oauth/{provider}/callback`, and must be
+    #: registered, character for character, in the provider's console.
+    api_public_url: str = "http://localhost:8000"
+    google_oauth_client_id: str | None = None
+    google_oauth_client_secret: str | None = Field(default=None, repr=False)
+    github_oauth_client_id: str | None = None
+    github_oauth_client_secret: str | None = Field(default=None, repr=False)
+
+    @property
+    def oauth_providers(self) -> tuple[str, ...]:
+        """The providers with both halves of a client credential configured."""
+        providers: list[str] = []
+        if self.google_oauth_client_id and self.google_oauth_client_secret:
+            providers.append("google")
+        if self.github_oauth_client_id and self.github_oauth_client_secret:
+            providers.append("github")
+        return tuple(providers)
+
+    def oauth_callback_url(self, provider: str) -> str:
+        return f"{self.api_public_url.rstrip('/')}/api/auth/oauth/{provider}/callback"
 
     @property
     def has_email_provider(self) -> bool:
         """True when Resend is configured and email can actually be sent."""
         return bool(self.resend_api_key)
+
+    @property
+    def can_deliver_email(self) -> bool:
+        """True when some transport — Resend, or the dev outbox — is set up."""
+        return bool(self.resend_api_key) or self.email_outbox_dir is not None
 
     @property
     def has_provider_credentials(self) -> bool:
@@ -294,6 +344,34 @@ class Settings(BaseModel):
                 "SESSION_COOKIE_SECURE=false would send the session cookie over "
                 "plaintext HTTP. It must stay true in production."
             )
+        if self.is_production and self.email_outbox_dir is not None:
+            raise ConfigurationError(
+                "EMAIL_OUTBOX_DIR writes verification codes to disk and is for "
+                "local development only. Configure RESEND_API_KEY in production."
+            )
+        for name, value in (
+            ("OTP_TTL_MINUTES", self.otp_ttl_minutes),
+            ("OTP_MAX_ATTEMPTS", self.otp_max_attempts),
+            ("OTP_MAX_SENDS_PER_WINDOW", self.otp_max_sends_per_window),
+            ("OTP_SEND_WINDOW_MINUTES", self.otp_send_window_minutes),
+            ("VERIFICATION_TTL_MINUTES", self.verification_ttl_minutes),
+        ):
+            if value < 1:
+                raise ConfigurationError(f"{name} must be at least 1, got {value}.")
+        if self.otp_resend_cooldown_seconds < 0:
+            raise ConfigurationError("OTP_RESEND_COOLDOWN_SECONDS cannot be negative.")
+        if self.oauth_providers and self.is_production:
+            # A provider will only redirect to a registered https callback, and
+            # the browser must be sent back to an https frontend.
+            for name, url in (
+                ("API_PUBLIC_URL", self.api_public_url),
+                ("FRONTEND_BASE_URL", self.frontend_base_url),
+            ):
+                if not url.startswith("https://"):
+                    raise ConfigurationError(
+                        f"{name} must be an https:// URL in production when "
+                        f"Google or GitHub sign-in is configured; got {url!r}."
+                    )
 
     def validate_cors(self) -> None:
         """Reject an origin list that cannot be honoured safely.
@@ -336,6 +414,9 @@ class Settings(BaseModel):
             # to offer the demo button; it must never learn the credential, and
             # there is nothing here it could learn it from.
             "demo_login_enabled": self.demo_login_enabled,
+            # Names only. The client ids and secrets never leave the server;
+            # the frontend needs to know which buttons can work.
+            "oauth_providers": list(self.oauth_providers),
         }
 
 
@@ -411,6 +492,28 @@ def load_settings(*, env_file: Path | str | None = None) -> Settings:
         resend_api_key=_env("RESEND_API_KEY"),
         email_from=_env("EMAIL_FROM", "ASTRION <noreply@astrion.app>") or "ASTRION <noreply@astrion.app>",
         email_verification_url=_env("EMAIL_VERIFICATION_URL", "http://localhost:3000") or "http://localhost:3000",
+        email_outbox_dir=(
+            _repo_relative(_env("EMAIL_OUTBOX_DIR"), REPO_ROOT)
+            if _env("EMAIL_OUTBOX_DIR")
+            else None
+        ),
+        otp_ttl_minutes=_env_int("OTP_TTL_MINUTES", 10),
+        otp_max_attempts=_env_int("OTP_MAX_ATTEMPTS", 5),
+        otp_resend_cooldown_seconds=_env_int("OTP_RESEND_COOLDOWN_SECONDS", 60),
+        otp_max_sends_per_window=_env_int("OTP_MAX_SENDS_PER_WINDOW", 5),
+        otp_send_window_minutes=_env_int("OTP_SEND_WINDOW_MINUTES", 60),
+        verification_ttl_minutes=_env_int("VERIFICATION_TTL_MINUTES", 60),
+        frontend_base_url=(
+            _env("FRONTEND_BASE_URL")
+            or _env("EMAIL_VERIFICATION_URL")
+            or "http://localhost:3000"
+        ),
+        api_public_url=_env("API_PUBLIC_URL", "http://localhost:8000")
+        or "http://localhost:8000",
+        google_oauth_client_id=_env("GOOGLE_OAUTH_CLIENT_ID"),
+        google_oauth_client_secret=_env("GOOGLE_OAUTH_CLIENT_SECRET"),
+        github_oauth_client_id=_env("GITHUB_OAUTH_CLIENT_ID"),
+        github_oauth_client_secret=_env("GITHUB_OAUTH_CLIENT_SECRET"),
     )
 
 
@@ -437,6 +540,10 @@ def email_provider_for(settings: Settings):
     from app.backend.email.provider import NullEmailProvider
 
     if not settings.resend_api_key:
+        if settings.email_outbox_dir is not None and not settings.is_production:
+            from app.backend.email.outbox_provider import OutboxEmailProvider
+
+            return OutboxEmailProvider(settings.email_outbox_dir)
         return NullEmailProvider()
 
     from app.backend.email.resend_provider import ResendEmailProvider

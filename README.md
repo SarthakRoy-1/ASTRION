@@ -270,10 +270,12 @@ python dev.py
 `dev.py` starts the API on <http://127.0.0.1:8000> and the UI on
 <http://localhost:3000>. The database, document index and demo workspace are
 built on first use. The UI opens on the landing page; **Get Started** registers
-an account (with no mail configured, the verification link is shown in place),
-and **Sign in** opens the sign-in form. For the one-click demo account, set
-`PUBLIC_DEMO_SIGN_IN_ENABLED` in `app/frontend/src/lib/features.ts` to `true`
-and press **Sign in to the demo** on the sign-in page.
+an account and emails it a six-digit verification code (with no mail provider
+configured, `dev.py` writes the message to `data/outbox/` instead: open the
+newest file there to read the code), and **Sign in** opens the sign-in form.
+For the one-click demo account, set `PUBLIC_DEMO_SIGN_IN_ENABLED` in
+`app/frontend/src/lib/features.ts` to `true` and press **Sign in to the demo**
+on the sign-in page.
 
 ```powershell
 python -m pytest -q                         # backend
@@ -299,7 +301,11 @@ To run the agent on a real model, set `LLM_PROVIDER=real` and
 - **The demo identity is operations, not a manager.** It can confirm ordinary
   actions but not a credit above the SOP's manager threshold. With the supplied
   data every eligible credit is below that threshold.
-- **Self-registration cannot complete on the hosted deployment**, which has no
-  mail transport; the demo is the way in.
+- **Self-registration and provider sign-in need external setup on the hosted
+  deployment.** Registration verifies the address with an emailed code, which
+  needs a Resend key and a verified sending domain. "Continue with Google /
+  GitHub" needs OAuth apps registered with each provider. Until those exist
+  there, the buttons show as not set up and registration cannot complete. See
+  [docs/authentication.md](docs/authentication.md#production-checklist).
 - **Uploads are capped by the global request size limit** (256 KB), which the
   supplied documents fit comfortably within.

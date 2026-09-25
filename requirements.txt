@@ -21,7 +21,9 @@ fastapi==0.141.1
 # back to a vulnerable one.
 starlette==1.6.0
 uvicorn[standard]==0.41.0
-# httpx backs fastapi.testclient; no test makes a network call.
+# httpx backs fastapi.testclient (no test makes a network call) and, at
+# runtime, the server-side token and profile requests of Google/GitHub sign-in
+# (app/backend/auth/oauth.py).
 httpx==0.28.1
 # Loads .env for local development. Optional at runtime -- config falls back to
 # the process environment when it is absent (app/backend/core/config.py).

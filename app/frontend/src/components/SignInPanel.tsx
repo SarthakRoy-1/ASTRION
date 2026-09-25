@@ -3,12 +3,51 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
+import { ProviderButtons } from "./auth/ProviderButtons";
 import { ArrowRightIcon } from "./landing/icons";
 import { Button } from "./ui/Button";
 import { Callout } from "./ui/Callout";
 import { TextField } from "./ui/Field";
 
+import type { OAuthProvider, VerificationStatus } from "@/lib/auth-types";
+
 import styles from "./SignInPanel.module.css";
+
+/**
+ * What a returning Google/GitHub sign-in's `?auth_error=` means, in words.
+ *
+ * The backend appends only these codes, and never anything a provider or a
+ * visitor wrote, so nothing from the URL is ever rendered as text.
+ */
+const OAUTH_FAILED =
+  "The sign-in didn’t complete. Try again, or use your email address and password.";
+
+const PROVIDER_ERRORS: Record<string, string> = {
+  oauth_cancelled: "Sign-in was cancelled. Choose a way to continue.",
+  oauth_failed: OAUTH_FAILED,
+  oauth_state:
+    "That sign-in expired or was started in another browser. Please start again.",
+  oauth_unavailable: "That sign-in option isn’t available on this deployment.",
+  oauth_account:
+    "This account can’t be signed in to. Contact whoever manages your workspace.",
+};
+
+/** Read, and remove, the result a provider sign-in left in the address bar. */
+function takeProviderError(): string | null {
+  if (typeof window === "undefined") return null;
+  const params = new URLSearchParams(window.location.search);
+  const code = params.get("auth_error");
+  if (!params.has("auth_error") && !params.has("auth")) return null;
+  params.delete("auth_error");
+  params.delete("auth");
+  const rest = params.toString();
+  window.history.replaceState(
+    window.history.state,
+    "",
+    `${window.location.pathname}${rest ? `?${rest}` : ""}${window.location.hash}`,
+  );
+  return code ? (PROVIDER_ERRORS[code] ?? OAUTH_FAILED) : null;
+}
 
 /**
  * The shortest password the backend will store.
@@ -37,18 +76,26 @@ const MIN_PASSWORD_LENGTH = 8;
  *   `new-password`), so password managers offer the right thing and people are
  *   not pushed toward reusing one they can remember.
  *
- * Registration hands its result *up* rather than swallowing it. That is the
- * fix for a dead end: the backend issues a verification link, refuses sign-in
- * until it is used, and — outside production, where there is no mail
- * transport — returns the token in the response so the flow can be completed.
- * Discarding it left a new user registered, unable to sign in, and told only
- * "Incorrect email address or password."
+ * Registration hands its result *up* rather than swallowing it: the backend
+ * emails a one-time code and returns the verification's display state (never
+ * the code), and the session moves to the code screen
+ * (`auth/EmailCodeVerification`). Without that step a new user would be
+ * registered, unable to sign in, and told only "Incorrect email address or
+ * password."
  *
- * `appearance="glass"` is the same form dressed for the sign-in page's
- * translucent card (`auth/SignInScene`): sign-in only — registration is the
- * "Create one" link to `/get-started` — with the page's headline as the
- * `h1` and the form's title as an `h2`. Every handler, validation and message
- * is shared; only the presentation differs.
+ * "Continue with Google / GitHub" (`auth/ProviderButtons`) sit above the form,
+ * under an "or", wherever it wears the translucent card (`appearance="glass"`):
+ * both `/sign-in` and `/get-started`. A provider sign-in that comes back with
+ * an error leaves a fixed code in the URL, which is read once, mapped to
+ * wording written here, and removed from the address bar.
+ *
+ * `appearance="glass"` is the same form dressed for the public site's
+ * translucent card (`auth/SignInScene`), with the page's headline as the `h1`
+ * and the form's title as an `h2`. `initialMode` picks what the card is:
+ * `/sign-in` opens it on sign-in, `/get-started` on account creation (name,
+ * password and confirmation), each with a link to the other instead of tabs.
+ * Every handler, validation and message is shared; only the presentation
+ * differs.
  */
 export function SignInPanel({
   stage,
@@ -57,6 +104,7 @@ export function SignInPanel({
   demoAvailable = false,
   initialMode = "signin",
   appearance = "card",
+  oauthProviders = [],
   onSignIn,
   onDemoSignIn,
   onSubmitMfaCode,
@@ -72,10 +120,13 @@ export function SignInPanel({
   initialMode?: "signin" | "register";
   /** `glass` for the sign-in page's translucent card. */
   appearance?: "card" | "glass";
+  /** From `/health`: the "Continue with …" providers the server can honour. */
+  oauthProviders?: OAuthProvider[];
   onSignIn(email: string, password: string): void;
   onDemoSignIn?(): void;
   onSubmitMfaCode(code: string): void;
-  onRegistered(message: string, verificationToken: string | undefined, email: string, emailSent?: boolean): void;
+  /** Registration succeeded; a code is on its way to the address. */
+  onRegistered(verification: VerificationStatus): void;
   onDismissError(): void;
 }) {
   const [mode, setMode] = useState<"signin" | "register">(initialMode);
@@ -86,6 +137,8 @@ export function SignInPanel({
   const [code, setCode] = useState("");
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const [confirmError, setConfirmError] = useState<string | null>(null);
+  const [providerError, setProviderError] = useState<string | null>(null);
+  useEffect(() => setProviderError(takeProviderError()), []);
   const glass = appearance === "glass";
   const Title = glass ? "h2" : "h1";
   const panelClass = glass ? styles.glass : styles.panel;
@@ -129,7 +182,7 @@ export function SignInPanel({
       // Neither copy of the password outlives the request that used it.
       setPassword("");
       setConfirmPassword("");
-      onRegistered(result.message, result.verification_token, email, result.email_sent);
+      onRegistered(result.verification);
     } catch {
       // The hook surfaces the error; nothing useful to add here, and inventing
       // a message would risk contradicting the backend's careful wording.
@@ -181,8 +234,8 @@ export function SignInPanel({
     );
   }
 
-  // The glass form signs in only; registration has its own page.
-  const registering = !glass && mode === "register";
+  // On glass there are no tabs: `initialMode` alone says which form this is.
+  const registering = mode === "register";
 
   return (
     <div className={panelClass}>
@@ -234,6 +287,21 @@ export function SignInPanel({
         </>
       )}
 
+      {providerError ? (
+        <Callout tone="fail" role="alert" title="Could not sign in" className={styles.providerError}>
+          {providerError}
+        </Callout>
+      ) : null}
+
+      {glass ? (
+        <div className={styles.alternatives}>
+          <ProviderButtons available={oauthProviders} disabled={busy} />
+          <div className={styles.divider} role="separator" aria-label="or">
+            <span aria-hidden="true">or</span>
+          </div>
+        </div>
+      ) : null}
+
       <form
         className={styles.form}
         onSubmit={
@@ -241,6 +309,7 @@ export function SignInPanel({
             ? submitRegistration
             : (event) => {
                 event.preventDefault();
+                setProviderError(null);
                 onSignIn(email, password);
               }
         }
@@ -323,7 +392,15 @@ export function SignInPanel({
 
       {glass ? (
         <p className={styles.switch}>
-          Don’t have an account? <Link href="/get-started">Create one</Link>
+          {registering ? (
+            <>
+              Already have an account? <Link href="/sign-in">Sign in</Link>
+            </>
+          ) : (
+            <>
+              Don’t have an account? <Link href="/get-started">Create one</Link>
+            </>
+          )}
         </p>
       ) : (
         <p className={styles.footnote}>

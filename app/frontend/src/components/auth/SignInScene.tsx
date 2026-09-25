@@ -12,8 +12,15 @@ import styles from "./SignInScene.module.css";
  */
 const FOOTER_ITEMS = ["Privacy", "Terms", "Help", "Contact us"] as const;
 
+/** The hero's two lines on `/sign-in`, one per line of the headline. */
+const SIGN_IN_HEADLINE = ["Welcome Back", "to Astrion"] as const;
+
+/** The same hero, for someone who has no account yet. */
+export const GET_STARTED_HEADLINE = ["Welcome", "to Astrion"] as const;
+
 /**
- * The sign-in page: one view of the same public site as the landing page.
+ * The sign-in and get-started pages: one view of the same public site as the
+ * landing page.
  *
  * Presentation only. It wraps whatever the sign-in flow renders — the form,
  * the second-factor challenge, or the connection notice while the API wakes —
@@ -23,7 +30,14 @@ const FOOTER_ITEMS = ["Privacy", "Terms", "Help", "Contact us"] as const;
  * The background is the public site's shared artwork (`site/SiteBackdrop`),
  * the same one the landing page wears.
  */
-export function SignInScene({ children }: { children: React.ReactNode }) {
+export function SignInScene({
+  headline = SIGN_IN_HEADLINE,
+  children,
+}: {
+  /** The hero's two lines. `/get-started` says "Welcome to Astrion". */
+  headline?: readonly [string, string];
+  children: React.ReactNode;
+}) {
   return (
     <div className={styles.scene}>
       <a className="skip-link" href="#sign-in-main">
@@ -37,7 +51,7 @@ export function SignInScene({ children }: { children: React.ReactNode }) {
       <main id="sign-in-main" className={styles.stage}>
         <div className={styles.hero}>
           <h1 className={styles.headline}>
-            <span>Welcome Back</span> <span>to Astrion</span>
+            <span>{headline[0]}</span> <span>{headline[1]}</span>
           </h1>
           <div className={styles.card}>{children}</div>
         </div>
@@ -63,10 +77,16 @@ export function SignInScene({ children }: { children: React.ReactNode }) {
  * What the card holds while the API is still being reached: the form's own
  * title, and the notice explaining the wait.
  */
-export function SignInWaiting({ children }: { children: React.ReactNode }) {
+export function SignInWaiting({
+  title = "Sign in",
+  children,
+}: {
+  title?: string;
+  children: React.ReactNode;
+}) {
   return (
     <div className={styles.waiting}>
-      <h2 className={styles.waitingTitle}>Sign in</h2>
+      <h2 className={styles.waitingTitle}>{title}</h2>
       {children}
     </div>
   );

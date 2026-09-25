@@ -22,6 +22,8 @@ import type {
   CurrentUser,
   Invitation,
   LoginResult,
+  OAuthProvider,
+  VerificationStatus,
   MemberListing,
   Workspace,
   WorkspaceListing,
@@ -116,16 +118,18 @@ export function submitMfaCode(code: string): Promise<{ status: string }> {
   return post("/api/auth/mfa/challenge", { code });
 }
 
+export interface RegistrationResult {
+  status: string;
+  message: string;
+  email_sent: boolean;
+  verification: VerificationStatus;
+}
+
 export function register(input: {
   email: string;
   password: string;
   displayName: string;
-}): Promise<{
-  status: string;
-  message: string;
-  email_sent: boolean;
-  verification_token?: string;
-}> {
+}): Promise<RegistrationResult> {
   return post("/api/auth/register", {
     email: input.email,
     password: input.password,
@@ -133,6 +137,67 @@ export function register(input: {
   });
 }
 
+/* -- email verification by code --------------------------------------------- */
+/*
+ * None of these takes an email address. The server acts on the verification
+ * this browser holds as an HttpOnly cookie — issued at registration, or when a
+ * correct password meets an unverified address — so there is nothing here that
+ * could be pointed at somebody else's account.
+ */
+
+/** The verification carried by a thrown `ApiError`, if it carries one. */
+export function verificationFrom(error: unknown): VerificationStatus | null {
+  if (!(error instanceof ApiError)) return null;
+  const candidate = (error.details as { verification?: unknown }).verification;
+  return candidate && typeof candidate === "object"
+    ? (candidate as VerificationStatus)
+    : null;
+}
+
+export function fetchVerification(): Promise<{
+  pending: boolean;
+  verification: VerificationStatus | null;
+}> {
+  return request("/api/auth/verification");
+}
+
+export function submitVerificationCode(code: string): Promise<LoginResult> {
+  return post<LoginResult>("/api/auth/verification/verify", { code });
+}
+
+export function resendVerificationCode(): Promise<{
+  status: "code_sent" | "delivery_failed";
+  verification: VerificationStatus;
+}> {
+  return post("/api/auth/verification/resend");
+}
+
+/** A Google/GitHub sign-in without a verified address: choose one to prove. */
+export function chooseVerificationEmail(email: string): Promise<{
+  status: "code_sent" | "delivery_failed";
+  verification: VerificationStatus;
+}> {
+  return post("/api/auth/verification/email", { email });
+}
+
+export function cancelVerification(): Promise<{ status: string }> {
+  return post("/api/auth/verification/cancel");
+}
+
+/* -- sign-in with Google / GitHub -------------------------------------------- */
+
+/**
+ * Where "Continue with Google/GitHub" sends the browser.
+ *
+ * A navigation, not a fetch: the provider's consent screen has to be a page,
+ * and the state cookie that protects the callback is set on the way out. The
+ * backend chooses where the browser returns to; nothing here can.
+ */
+export function oauthStartUrl(provider: OAuthProvider): string {
+  return `${apiBaseUrl()}/api/auth/oauth/${provider}/start`;
+}
+
+/** Legacy verification links (issued before codes replaced them). */
 export function verifyEmail(token: string): Promise<{ status: string }> {
   return post("/api/auth/verify-email", { token });
 }
@@ -156,6 +221,36 @@ export function resendVerification(email: string): Promise<{
 
 export function signOut(): Promise<{ status: string }> {
   return post("/api/auth/logout");
+}
+
+/**
+ * Where this browser stands: signed in, half signed in (a second factor is
+ * outstanding), part-way through verifying an address, or signed out.
+ *
+ * One request — `/api/auth/me` — answers all four, because its refusal says
+ * which kind of "not signed in" this is.
+ */
+export type SessionState =
+  | { kind: "user"; user: CurrentUser }
+  | { kind: "mfa" }
+  | { kind: "verification"; verification: VerificationStatus }
+  | { kind: "signed-out" };
+
+export async function fetchSessionState(): Promise<SessionState> {
+  try {
+    return { kind: "user", user: await request<CurrentUser>("/api/auth/me") };
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 401) {
+      if ((error.details as { mfa_required?: boolean }).mfa_required) {
+        return { kind: "mfa" };
+      }
+      const verification = verificationFrom(error);
+      return verification
+        ? { kind: "verification", verification }
+        : { kind: "signed-out" };
+    }
+    throw error;
+  }
 }
 
 /** The signed-in user, or `null` when nobody is signed in.

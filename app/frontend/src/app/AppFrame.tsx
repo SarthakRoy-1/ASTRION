@@ -1,14 +1,14 @@
 "use client";
 
 import { usePathname, useRouter } from "next/navigation";
-import { useState, useSyncExternalStore } from "react";
+import { useSyncExternalStore } from "react";
 
 import { ConnectionNotice } from "@/components/ConnectionNotice";
 import { ErrorNotice } from "@/components/ErrorNotice";
 import { SignInPanel } from "@/components/SignInPanel";
 import { WorkspaceOnboarding } from "@/components/WorkspaceOnboarding";
-import { SignInScene, SignInWaiting } from "@/components/auth/SignInScene";
-import { VerifyEmailPrompt } from "@/components/auth/VerifyEmailPrompt";
+import { GET_STARTED_HEADLINE, SignInScene, SignInWaiting } from "@/components/auth/SignInScene";
+import { EmailCodeVerification } from "@/components/auth/EmailCodeVerification";
 import { AppShell } from "@/components/shell/AppShell";
 import { AuthLayout } from "@/components/shell/AuthLayout";
 import { LandingPage } from "@/components/landing/LandingPage";
@@ -31,10 +31,12 @@ import { readSessionHint, subscribeSessionHint } from "@/lib/session-hint";
  * inside a workspace — so they never wear the signed-in chrome, whatever the
  * session turns out to be.
  *
- * The sign-in form itself — at `/sign-in`, and wherever a signed-out visitor
- * lands other than `/` and `/get-started` — wears the public site instead of
+ * The sign-in and registration forms — `/sign-in`, `/get-started`, and wherever
+ * a signed-out visitor lands other than `/` — wear the public site instead of
  * `AuthLayout`: `SignInScene`, the landing page's header over the brand
- * background. Registration at `/get-started` keeps `AuthLayout`.
+ * background. The two routes are one experience (provider buttons, divider,
+ * email form, the code screen, the footer); `/get-started` differs only in
+ * opening the form on account creation.
  *
  * One more, in front of those three: **the public landing page at `/`.** It is
  * shown to a signed-out visitor, and — because it needs nothing from the API —
@@ -65,19 +67,11 @@ const AUTH_ROUTES = ["/sign-in", REGISTER_ROUTE];
 /** `false` while rendering on the server, where no browser storage exists. */
 const serverSessionHint = () => false;
 
-interface Registration {
-  email: string;
-  message: string;
-  token?: string;
-  emailSent: boolean;
-}
-
 export function AppFrame({ children }: { children: React.ReactNode }) {
   const session = useSession();
   const chat = useChat();
   const router = useRouter();
   const pathname = usePathname() ?? "/";
-  const [registration, setRegistration] = useState<Registration | null>(null);
   const recentlySignedIn = useSyncExternalStore(
     subscribeSessionHint,
     readSessionHint,
@@ -97,10 +91,13 @@ export function AppFrame({ children }: { children: React.ReactNode }) {
     return <AuthLayout>{children}</AuthLayout>;
   }
 
+  // `verify-email` is not signed in: that visitor holds a verification, not a
+  // session, so like `signed-out` they are sent on to the screen below.
   if (
     isPreWorkspace &&
     session.stage !== "signed-out" &&
-    session.stage !== "mfa-required"
+    session.stage !== "mfa-required" &&
+    session.stage !== "verify-email"
   ) {
     return <AuthLayout>{children}</AuthLayout>;
   }
@@ -116,6 +113,13 @@ export function AppFrame({ children }: { children: React.ReactNode }) {
     return <LandingPage />;
   }
 
+  // One scene for both routes; the route decides only the hero's wording.
+  const scene = (content: React.ReactNode) => (
+    <SignInScene headline={pathname === REGISTER_ROUTE ? GET_STARTED_HEADLINE : undefined}>
+      {content}
+    </SignInScene>
+  );
+
   // Someone who has just pressed "Sign in" or "Get Started" is waiting for a
   // form, not for the product: while the API is still being reached they see
   // the connection notice in the page they asked for, never the application
@@ -126,38 +130,34 @@ export function AppFrame({ children }: { children: React.ReactNode }) {
     ) : (
       <ConnectionNotice state={chat.connection} />
     );
-    return pathname === REGISTER_ROUTE ? (
-      <AuthLayout>{notice}</AuthLayout>
-    ) : (
-      <SignInScene>
-        <SignInWaiting>{notice}</SignInWaiting>
-      </SignInScene>
+    return scene(
+      <SignInWaiting title={pathname === REGISTER_ROUTE ? "Create your account" : "Sign in"}>
+        {notice}
+      </SignInWaiting>,
     );
   }
 
-  if (session.stage === "signed-out" || session.stage === "mfa-required") {
-    // Registration succeeded and the address is not yet confirmed. The panel
-    // below closes that loop; without it the only route onward was a sign-in
-    // the backend is required to refuse.
-    if (registration && session.stage === "signed-out") {
-      return (
-        <AuthLayout>
-          <VerifyEmailPrompt
-            email={registration.email}
-            message={registration.message}
-            emailSent={registration.emailSent}
-            verificationToken={registration.token}
-            onDone={() => {
-              setRegistration(null);
-              // "Continue to sign in" means the sign-in form, not a second
-              // registration form on the page they registered from.
-              if (pathname === REGISTER_ROUTE) router.replace("/sign-in");
-            }}
-          />
-        </AuthLayout>
-      );
-    }
+  // Proving an address with an emailed code — after registering, after the
+  // right password for an address never proven, or after a Google/GitHub
+  // sign-in that brought no verified address. Wherever the visitor is, this
+  // is the screen: nothing else can proceed until it is answered or left.
+  if (session.stage === "verify-email" && session.verification) {
+    const screen = (
+      <EmailCodeVerification
+        verification={session.verification}
+        appearance="glass"
+        onVerified={session.completeVerification}
+        onCancel={async () => {
+          await session.abandonVerification();
+          // "Back to sign in" means the sign-in form, wherever this began.
+          if (pathname !== "/sign-in") router.replace("/sign-in");
+        }}
+      />
+    );
+    return scene(screen);
+  }
 
+  if (session.stage === "signed-out" || session.stage === "mfa-required") {
     const registering = pathname === REGISTER_ROUTE;
     const panel = (
       <SignInPanel
@@ -168,7 +168,7 @@ export function AppFrame({ children }: { children: React.ReactNode }) {
         busy={session.busy}
         error={session.error}
         initialMode={registering ? "register" : "signin"}
-        appearance={registering ? "card" : "glass"}
+        appearance="glass"
         // The public demo is not offered for now. Everything behind it —
         // the endpoint, the seeded workspace, `signInToDemo` and the panel
         // itself — is intact; `PUBLIC_DEMO_SIGN_IN_ENABLED` restores it.
@@ -176,18 +176,13 @@ export function AppFrame({ children }: { children: React.ReactNode }) {
         onSignIn={session.signIn}
         onDemoSignIn={PUBLIC_DEMO_SIGN_IN_ENABLED ? session.signInToDemo : undefined}
         onSubmitMfaCode={session.submitMfaCode}
-        onRegistered={(message, token, email, emailSent) =>
-          setRegistration({ message, token, email: email ?? "", emailSent: emailSent ?? false })
-        }
+        oauthProviders={session.oauthProviders}
+        onRegistered={session.beginVerification}
         onDismissError={session.clearError}
       />
     );
 
-    return registering ? (
-      <AuthLayout>{panel}</AuthLayout>
-    ) : (
-      <SignInScene>{panel}</SignInScene>
-    );
+    return scene(panel);
   }
 
   if (session.stage === "onboarding") {

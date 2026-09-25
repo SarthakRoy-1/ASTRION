@@ -102,10 +102,11 @@ chunks the caller is permitted to see (see §6).
 | Session fixation | A new session id is minted on every login; a pre-set value is never elevated |
 | Revocation | Immediate, by database write. Password change and reset revoke all sessions |
 | MFA | TOTP, RFC 6238 (HMAC-SHA1, 30s step, ±1 window). Constant-time compare; spent time-step recorded so a code cannot be replayed |
-| Email verification | Single-use token, 24h TTL, digest stored |
+| Email verification | Six-digit emailed code: HMAC-SHA256 with a per-row salt (never plaintext), 10-minute TTL, single use, superseded on resend, 5 attempts, 60 s resend cooldown, 5 sends per address per hour — all configurable. Legacy links: single-use token, 24h TTL, digest stored. See [authentication.md](authentication.md) |
+| Google / GitHub | OAuth 2.0 code flow with PKCE (S256); state bound to an `HttpOnly` cookie *and* a single-use server row; no user-controlled redirect; provider tokens never stored or logged; identities linked only on a verified address. See [authentication.md](authentication.md) |
 | Password reset | Single-use token, 30-minute TTL, digest stored; issuing a new one invalidates the old; completion revokes every session |
 | Brute force | 5 failures per account **and** 20 per client address, over a 15-minute rolling window |
-| Enumeration | Registration, login and reset-request are response- and timing-identical for existing and non-existing accounts |
+| Enumeration | Registration, login and reset-request are response- and timing-identical for existing and non-existing accounts. A taken address gets a *decoy* code verification that behaves like a real one and never succeeds; "verify your email" is only ever said after the correct password |
 
 **No custom cryptography.** scrypt, HMAC-SHA256, SHA-256 and RFC 6238 TOTP are
 standard primitives from the Python standard library. TOTP is written out
@@ -128,7 +129,7 @@ oracle that no amount of identical response text can close.
 ## 2a. The public demo tenant
 
 A hosted deployment running real authentication has no way in for a visitor:
-registration issues a verification link, there is no mail transport to deliver
+registration issues a verification code, there is no mail transport to deliver
 it, and an unverified account cannot sign in. The gap is closed by seeding
 ordinary accounts, not by relaxing anything.
 
@@ -739,14 +740,23 @@ marketing.
    across two adjacent windows. Sliding windows avoid this at the cost of
    storing every timestamp.
 
-4. **Email verification uses Resend.** Set `RESEND_API_KEY`, `EMAIL_FROM`,
-   and `EMAIL_VERIFICATION_URL` on the backend host to enable delivery.
-   Registration sends the link via Resend when configured; if delivery fails or
-   the key is absent, the token is returned in the response body only in
-   non-production (`APP_ENV != production`). Resend rate-limiting is
-   server-side: 30-second minimum interval, 3 sends maximum per address, 24-
-   hour cooldown after the third. Password-reset and invitation links are
-   still returned out-of-band when no mail sender is configured.
+4. **Email verification uses Resend.** Set `RESEND_API_KEY` and `EMAIL_FROM`
+   on the backend host to enable delivery. Registration emails a one-time code
+   ([authentication.md](authentication.md)); the code is never returned in a
+   response in any environment. Without a provider, local development writes
+   mail to `EMAIL_OUTBOX_DIR` (refused in production); a deployment with
+   neither cannot complete registration, and the UI says the email did not
+   send. The legacy `/resend-verification` link endpoint keeps its own limits
+   (30-second interval, 3 sends, 24-hour cooldown). Password-reset and
+   invitation links are still returned out-of-band when no mail sender is
+   configured.
+
+   **Email codes can be brute-forced offline from a stolen database.** A
+   six-digit code has a million values, so its salted HMAC can be reversed by
+   anyone holding the `email_otps` row. The exposure is bounded by the
+   10-minute lifetime and single use, and by the fact that a database reader
+   already holds far more. A server-side pepper would close it and is not
+   configured.
 
    **DNS deliverability:** before going live, add SPF, DKIM, and DMARC records
    for the domain used in `EMAIL_FROM`. Resend's dashboard → Domains → Add

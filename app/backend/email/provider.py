@@ -35,6 +35,21 @@ class EmailProvider(Protocol):
         """Deliver a verification email. Raises `EmailDeliveryError` on failure."""
         ...
 
+    def send_verification_code(
+        self,
+        *,
+        to_address: str,
+        display_name: str,
+        code: str,
+        expires_minutes: int,
+    ) -> None:
+        """Deliver a one-time code. Raises `EmailDeliveryError` on failure.
+
+        The code is a credential for as long as it lives. An implementation
+        must never log it, and must never put it in an exception message.
+        """
+        ...
+
 
 class NullEmailProvider:
     """Used when no API key is configured.
@@ -53,6 +68,19 @@ class NullEmailProvider:
         logger.debug(
             "email.null_provider: no delivery configured (to=%s)", to_address
         )
+        raise EmailDeliveryError(
+            "No email provider is configured. Set RESEND_API_KEY to enable delivery."
+        )
+
+    def send_verification_code(
+        self,
+        *,
+        to_address: str,
+        display_name: str,
+        code: str,
+        expires_minutes: int,
+    ) -> None:
+        logger.debug("email.null_provider: no delivery configured for a code")
         raise EmailDeliveryError(
             "No email provider is configured. Set RESEND_API_KEY to enable delivery."
         )

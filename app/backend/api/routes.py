@@ -118,6 +118,7 @@ def health(request: Request) -> HealthResponse:
         state_changing_actions_enabled=summary["state_changing_actions_enabled"],
         auth_mode=summary["auth_mode"],
         demo_login_enabled=summary["demo_login_enabled"],
+        oauth_providers=summary["oauth_providers"],
         database_ready=database_ready,
         documents_indexed=documents,
         dataset_snapshot=snapshot,

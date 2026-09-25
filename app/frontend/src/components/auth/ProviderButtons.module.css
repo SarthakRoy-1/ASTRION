@@ -1,0 +1,69 @@
+/* Two full-width outline buttons. Colours come from the surrounding tokens, so
+   the same buttons sit on the sign-in page's dark glass and on the light
+   registration card without a variant. */
+
+.providers {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.provider {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 46px;
+  padding: 0 16px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-pill);
+  background: var(--surface-raised);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    background-color 120ms ease,
+    border-color 120ms ease;
+}
+
+.provider:hover:not(:disabled) {
+  border-color: var(--border-strong);
+  background: var(--surface-sunken);
+}
+
+.provider:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.provider:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.provider[aria-busy="true"] {
+  cursor: progress;
+  opacity: 0.85;
+}
+
+.mark {
+  flex: none;
+  width: 18px;
+  height: 18px;
+}
+
+.note {
+  margin: 2px 0 0;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.45;
+  text-align: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .provider {
+    transition: none;
+  }
+}
