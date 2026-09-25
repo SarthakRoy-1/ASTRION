@@ -27,10 +27,19 @@ path goes through it, and surfaced here as a typed refusal the API can explain.
 from __future__ import annotations
 
 import re
+import secrets
 import sqlite3
 import unicodedata
 
 from app.backend.auth import repository as repo
+from app.backend.auth import service as auth_service
+from app.backend.auth.passwords import (
+    PasswordError,
+    hash_password,
+    validate_password,
+    verify_password,
+    waste_time,
+)
 from app.backend.auth.permissions import OrgRole
 from app.backend.services.audit import (
     AuditEvent,
@@ -47,8 +56,38 @@ MIN_WORKSPACE_NAME = 2
 MAX_WORKSPACES_PER_USER = 20
 
 
+#: What a joiner is told for every way a join can fail -- no such code, a wrong
+#: password, a workspace with no join password -- so the answer says nothing
+#: about which workspaces exist.
+JOIN_REFUSAL = "That workspace code and password don't match."
+
+#: The role someone gets on joining with the shared password. The least that
+#: still lets them use the workspace (read the records, ask the assistant); the
+#: owner raises it with the ordinary member controls. A password shared with a
+#: team is not a reason to hand everyone who learns it authority to act.
+JOIN_ROLE = OrgRole.VIEWER
+
+#: No I, O, 0 or 1: a code people read out or copy by hand should not have
+#: characters that can be mistaken for one another.
+CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+CODE_LENGTH = 10
+_CODE_ATTEMPTS = 8
+
+#: Failed joins allowed inside `auth_service.LOCKOUT_WINDOW_MINUTES`. A workspace
+#: password is guessable in a way a random code is not, so a wrong guess costs
+#: something -- per person, per code (so a crowd of accounts cannot share the
+#: guessing), and per address.
+MAX_JOIN_FAILURES_PER_USER = 5
+MAX_JOIN_FAILURES_PER_CODE = 20
+MAX_JOIN_FAILURES_PER_CLIENT = 30
+
+
 class WorkspaceError(Exception):
     """A workspace operation was refused. The message is safe to show."""
+
+
+class JoinLockedError(WorkspaceError):
+    """Too many recent failed joins. Carries no hint about the workspace."""
 
 
 class InvitationError(Exception):
@@ -105,6 +144,60 @@ def validate_name(name: str) -> str:
     return cleaned
 
 
+# --- workspace codes --------------------------------------------------------
+
+
+def generate_workspace_code() -> str:
+    """A random code, from the operating system's CSPRNG. Not derived from
+    anything -- not an id, a name or a counter -- so it cannot be predicted from
+    another workspace's.
+    """
+    return "".join(secrets.choice(CODE_ALPHABET) for _ in range(CODE_LENGTH))
+
+
+def normalize_workspace_code(raw: str) -> str:
+    """How a person's typing is compared with a stored code: case and any
+    spaces or hyphens ignored, so a code read aloud or pasted with a gap works.
+    """
+    return re.sub(r"[\s-]+", "", raw or "").upper()
+
+
+def _validate_workspace_password(password: str) -> None:
+    """The same rules as an account password, and the same messages."""
+    try:
+        validate_password(password)
+    except PasswordError as exc:
+        raise WorkspaceError(
+            str(exc).replace("Password", "Workspace password", 1)
+        ) from exc
+
+
+def _issue_workspace_access(
+    conn: sqlite3.Connection, *, org_id: str, password: str, owner_user_id: str
+) -> str:
+    """Store a hash and a fresh unique code for a workspace. Returns the code.
+
+    A collision is astronomically unlikely (32^10 codes) and is handled anyway:
+    the UNIQUE constraint is what guarantees uniqueness, and a violation just
+    means "generate another".
+    """
+    password_hash = hash_password(password)
+    for _ in range(_CODE_ATTEMPTS):
+        code = generate_workspace_code()
+        try:
+            repo.create_workspace_access(
+                conn,
+                org_id=org_id,
+                workspace_code=code,
+                password_hash=password_hash,
+                owner_user_id=owner_user_id,
+            )
+        except sqlite3.IntegrityError:
+            continue
+        return code
+    raise WorkspaceError("A workspace code could not be generated. Try again.")
+
+
 # --- workspaces -------------------------------------------------------------
 
 
@@ -113,6 +206,7 @@ def create_workspace(
     *,
     owner_user_id: str,
     name: str,
+    workspace_password: str | None = None,
     account_ids: list[str] | None = None,
     request_id: str | None = None,
     client_ip: str | None = None,
@@ -122,8 +216,15 @@ def create_workspace(
     The creator becomes OWNER unconditionally — a workspace created with no
     owner would be immediately unmanageable, and there is nobody else to be one
     at this point.
+
+    With a `workspace_password` the workspace also gets a generated code and the
+    hash of that password, and can be joined with the pair. Without one (the
+    bootstrap scripts, the seeded demo) it has neither and cannot be joined by
+    code. The API always supplies one.
     """
     cleaned = validate_name(name)
+    if workspace_password is not None:
+        _validate_workspace_password(workspace_password)
 
     owned = [
         m
@@ -140,6 +241,10 @@ def create_workspace(
         conn, name=cleaned, slug=_unique_slug(conn, cleaned)
     )
     repo.add_member(conn, org_id=org_id, user_id=owner_user_id, role=OrgRole.OWNER)
+    if workspace_password is not None:
+        _issue_workspace_access(
+            conn, org_id=org_id, password=workspace_password, owner_user_id=owner_user_id
+        )
 
     # Granting dataset accounts is an operator/bootstrap concern, not something
     # a signing-up user chooses. It is accepted here so the bootstrap script
@@ -207,6 +312,177 @@ def rename_workspace(
     updated = repo.get_organization(conn, org_id)
     assert updated is not None
     return updated
+
+
+# --- joining by code and password ------------------------------------------
+
+
+def _join_failures(conn: sqlite3.Connection, scope: str, identifier: str) -> int:
+    return auth_service._recent_failures(conn, identifier=identifier, scope=scope)
+
+
+def _note_join_failure(
+    conn: sqlite3.Connection, *, user_id: str, code: str, client_ip: str | None
+) -> None:
+    for scope, identifier in (
+        ("workspace_join_user", user_id),
+        ("workspace_join_code", code),
+        ("workspace_join_client", client_ip or ""),
+    ):
+        if identifier:
+            auth_service._record_attempt(
+                conn, identifier=identifier, scope=scope, successful=False
+            )
+
+
+def join_workspace(
+    conn: sqlite3.Connection,
+    *,
+    user_id: str,
+    workspace_code: str,
+    workspace_password: str,
+    request_id: str | None = None,
+    client_ip: str | None = None,
+) -> dict:
+    """Add an authenticated user to the workspace a code and password name.
+
+    The account is authenticated before this is called, and the code alone
+    grants nothing: access needs the code *and* the password, checked against
+    the stored hash. Every failure -- no such code, a wrong password, a
+    workspace nobody set a password on -- raises the same `JOIN_REFUSAL`, after
+    the same amount of work, so the answer cannot be used to find out which
+    workspaces exist. Guessing is throttled (see `MAX_JOIN_FAILURES_*`).
+    """
+    user = repo.get_user(conn, user_id)
+    if user is None or not user.is_active:
+        raise WorkspaceError("Your account cannot join workspaces.")
+
+    code = normalize_workspace_code(workspace_code)
+    ip_hash = hash_identifier(client_ip)
+
+    if (
+        _join_failures(conn, "workspace_join_user", user_id) >= MAX_JOIN_FAILURES_PER_USER
+        or _join_failures(conn, "workspace_join_code", code) >= MAX_JOIN_FAILURES_PER_CODE
+        or (
+            client_ip
+            and _join_failures(conn, "workspace_join_client", client_ip)
+            >= MAX_JOIN_FAILURES_PER_CLIENT
+        )
+    ):
+        record_event(
+            conn,
+            AuditEvent.WORKSPACE_JOIN_FAILED,
+            outcome=AuditOutcome.DENIED,
+            actor_user_id=user_id,
+            request_id=request_id,
+            ip_hash=ip_hash,
+            details={"reason": "locked_out"},
+        )
+        raise JoinLockedError(
+            "Too many failed attempts. Try again in "
+            f"{auth_service.LOCKOUT_WINDOW_MINUTES} minutes."
+        )
+
+    found = repo.find_workspace_for_join(conn, code) if code else None
+    if found is None:
+        waste_time()  # the cost of a real check, so timing reveals nothing
+        matched = False
+    else:
+        matched = verify_password(workspace_password, found["password_hash"])
+
+    if not matched:
+        _note_join_failure(conn, user_id=user_id, code=code, client_ip=client_ip)
+        record_event(
+            conn,
+            AuditEvent.WORKSPACE_JOIN_FAILED,
+            outcome=AuditOutcome.FAILURE,
+            actor_user_id=user_id,
+            request_id=request_id,
+            ip_hash=ip_hash,
+            details={"reason": "no_match"},
+        )
+        raise WorkspaceError(JOIN_REFUSAL)
+
+    org_id = found["org_id"]
+    workspace = repo.get_organization(conn, org_id)
+    if workspace is None:
+        raise WorkspaceError(JOIN_REFUSAL)
+
+    if repo.get_membership(conn, org_id=org_id, user_id=user_id) is None:
+        # A removed member keeps their row (see `remove_member`), so returning
+        # reactivates it -- as a Viewer, whatever they were before.
+        rejoined = repo.reactivate_member(
+            conn, org_id=org_id, user_id=user_id, role=JOIN_ROLE
+        )
+        if not rejoined:
+            repo.add_member(conn, org_id=org_id, user_id=user_id, role=JOIN_ROLE)
+        record_event(
+            conn,
+            AuditEvent.MEMBERSHIP_CREATED,
+            actor_user_id=user_id,
+            actor_role=JOIN_ROLE.value,
+            org_id=org_id,
+            target_type="user",
+            target_id=user_id,
+            request_id=request_id,
+            details={
+                "role": JOIN_ROLE.value,
+                "reason": "workspace_code",
+                **({"rejoined": True} if rejoined else {}),
+            },
+        )
+    record_event(
+        conn,
+        AuditEvent.WORKSPACE_JOINED,
+        actor_user_id=user_id,
+        org_id=org_id,
+        request_id=request_id,
+        ip_hash=ip_hash,
+    )
+    return workspace
+
+
+def change_workspace_password(
+    conn: sqlite3.Connection,
+    *,
+    org_id: str,
+    new_password: str,
+    actor_user_id: str,
+    actor_role: str | None = None,
+    request_id: str | None = None,
+) -> str:
+    """Replace the password people join with. Returns the workspace's code.
+
+    The new hash replaces the old in one statement, so the old password stops
+    working at once. Memberships are untouched: this decides who can *join*, not
+    who already has. A workspace that never had a join password (the seeded
+    demo) gets one, and a code, the first time its owner sets it.
+    """
+    _validate_workspace_password(new_password)
+    if repo.get_organization(conn, org_id) is None:
+        raise WorkspaceError("That workspace was not found.")
+
+    code = repo.get_workspace_code(conn, org_id)
+    if code is None:
+        code = _issue_workspace_access(
+            conn, org_id=org_id, password=new_password, owner_user_id=actor_user_id
+        )
+    else:
+        repo.set_workspace_password_hash(
+            conn, org_id=org_id, password_hash=hash_password(new_password)
+        )
+
+    record_event(
+        conn,
+        AuditEvent.WORKSPACE_PASSWORD_CHANGED,
+        actor_user_id=actor_user_id,
+        actor_role=actor_role,
+        org_id=org_id,
+        target_type="workspace",
+        target_id=org_id,
+        request_id=request_id,
+    )
+    return code
 
 
 # --- membership -------------------------------------------------------------
@@ -501,6 +777,26 @@ def accept_invitation(
     if user is None or not user.is_active:
         raise InvitationError("Your account cannot accept invitations.")
 
+    # An invitation is bound to an *address*, so holding it proves something only
+    # if the account's address has been proven. Signing in used to guarantee that;
+    # a deployment that does not require a verified address for sign-in
+    # (REQUIRE_VERIFIED_EMAIL=false) has accounts whose address is just what was
+    # typed, and anyone who could register the invited address would otherwise be
+    # able to redeem a leaked link.
+    if not user.email_verified:
+        record_event(
+            conn,
+            AuditEvent.INVITATION_ACCEPT_FAILED,
+            outcome=AuditOutcome.DENIED,
+            actor_user_id=user_id,
+            request_id=request_id,
+            ip_hash=hash_identifier(client_ip),
+            details={"reason": "email_unverified"},
+        )
+        raise InvitationError(
+            "Verify your email address before accepting an invitation."
+        )
+
     invitation = repo.find_invitation_by_token(conn, token)
     if invitation is None:
         record_event(
@@ -579,9 +875,15 @@ def accept_invitation(
     ):
         raise InvitationError("That invitation has already been used.")
 
-    repo.add_member(
+    # A removed member keeps their row, so accepting a fresh invitation
+    # reactivates it at the invited role rather than inserting a duplicate.
+    rejoined = repo.reactivate_member(
         conn, org_id=invitation.org_id, user_id=user_id, role=invitation.role
     )
+    if not rejoined:
+        repo.add_member(
+            conn, org_id=invitation.org_id, user_id=user_id, role=invitation.role
+        )
 
     record_event(
         conn,
@@ -604,6 +906,10 @@ def accept_invitation(
         target_type="user",
         target_id=user_id,
         request_id=request_id,
-        details={"role": invitation.role.value, "reason": "invitation_accepted"},
+        details={
+            "role": invitation.role.value,
+            "reason": "invitation_accepted",
+            **({"rejoined": True} if rejoined else {}),
+        },
     )
     return workspace

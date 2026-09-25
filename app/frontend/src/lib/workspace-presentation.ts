@@ -65,6 +65,7 @@ const PERMISSION_LABELS: Record<string, string> = {
   "workspace.read": "See this workspace",
   "workspace.update": "Rename the workspace",
   manage_rules: "Manage policy rules",
+  "workspace.credentials": "Change the workspace password",
   "ownership.transfer": "Transfer ownership",
   "workspace.delete": "Delete the workspace",
 };

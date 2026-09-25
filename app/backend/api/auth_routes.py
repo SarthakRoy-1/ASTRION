@@ -288,6 +288,22 @@ def register(
         # refused simply tries another one that fails the same way.
         raise InvalidRequestError(str(exc)) from exc
 
+    if not settings.require_verified_email:
+        # A deployment that has chosen not to prove addresses (it has no way to
+        # email a code) has nothing to verify, so no verification is started and
+        # no cookie is set. The body is the same whether the address was new or
+        # already registered -- the caller signs in with the password it just
+        # typed, and only that can tell the two apart -- so this still cannot be
+        # used to learn who is registered. Turning REQUIRE_VERIFIED_EMAIL back
+        # on restores the code flow below unchanged, and an account made this
+        # way is then asked for a code at its next sign-in.
+        return {
+            "status": "registered",
+            "email_sent": False,
+            "message": "Your account is ready. Sign in to continue.",
+            "verification": None,
+        }
+
     normalized = repo.normalize_email(payload.email)
     status = start_account_verification(
         request,

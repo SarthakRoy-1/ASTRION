@@ -34,12 +34,14 @@ from app.backend.api.dependencies import DbDep
 from app.backend.api.ratelimit import client_address
 from app.backend.auth import repository as repo
 from app.backend.auth import workspaces as workspace_service
+from app.backend.auth.passwords import MAX_PASSWORD_LENGTH
 from app.backend.auth.permissions import OrgRole, Permission, parse_role, permissions_for
 from app.backend.core.config import AuthMode, Settings
 from app.backend.core.errors import (
     AuthorizationError,
     InvalidRequestError,
     NotFoundError,
+    RateLimitedError,
 )
 from app.backend.services.audit import AuditEvent, record_event
 
@@ -130,6 +132,24 @@ class CreateWorkspaceRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     name: str = Field(min_length=1, max_length=MAX_NAME)
+    #: The password people will join with. Hashed on arrival and never returned.
+    #: The code they join with is generated here; there is no field to choose it.
+    workspace_password: str = Field(min_length=1, max_length=MAX_PASSWORD_LENGTH)
+    confirm_workspace_password: str = Field(min_length=1, max_length=MAX_PASSWORD_LENGTH)
+
+
+class JoinWorkspaceRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    workspace_code: str = Field(min_length=1, max_length=64)
+    workspace_password: str = Field(min_length=1, max_length=MAX_PASSWORD_LENGTH)
+
+
+class ChangeWorkspacePasswordRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    new_password: str = Field(min_length=1, max_length=MAX_PASSWORD_LENGTH)
+    confirm_new_password: str = Field(min_length=1, max_length=MAX_PASSWORD_LENGTH)
 
 
 class UpdateWorkspaceRequest(BaseModel):
@@ -170,7 +190,11 @@ class AcceptInvitationRequest(BaseModel):
 # --- serialisation ----------------------------------------------------------
 
 
-def _workspace_view(workspace: dict, membership: repo.Membership | None) -> dict:
+def _workspace_view(
+    workspace: dict,
+    membership: repo.Membership | None,
+    conn: sqlite3.Connection | None = None,
+) -> dict:
     view = {
         "workspace_id": workspace["org_id"],
         "name": workspace["name"],
@@ -183,6 +207,15 @@ def _workspace_view(workspace: dict, membership: repo.Membership | None) -> dict
         # *rendering* hint and never an authorization decision: every
         # permission listed is re-checked server-side at the point of use.
         view["permissions"] = sorted(p.value for p in permissions_for(membership.role))
+        # The code is what an owner hands to the people they want in, so it is
+        # shown to owners only. It is not the credential -- the password is, and
+        # that is stored as a hash and returned nowhere.
+        if conn is not None and Permission.WORKSPACE_CREDENTIALS in permissions_for(
+            membership.role
+        ):
+            code = repo.get_workspace_code(conn, workspace["org_id"])
+            if code is not None:
+                view["workspace_code"] = code
     return view
 
 
@@ -217,7 +250,7 @@ def list_workspaces(request: Request, conn: sqlite3.Connection = DbDep) -> dict:
     for membership in memberships:
         workspace = repo.get_organization(conn, membership.org_id)
         if workspace is not None:
-            items.append(_workspace_view(workspace, membership))
+            items.append(_workspace_view(workspace, membership, conn))
 
     return {
         "workspaces": items,
@@ -237,13 +270,20 @@ def create_workspace(
     Any authenticated user may create one — this is the path out of the
     no-workspace onboarding state, so gating it on a permission would leave a
     new account with no way forward. `MAX_WORKSPACES_PER_USER` is the ceiling.
+
+    The body carries the password people will join with (twice, so a slip is
+    caught). The response carries the generated workspace code and never the
+    password or its hash.
     """
     caller = _caller(request, conn)
+    if payload.workspace_password != payload.confirm_workspace_password:
+        raise InvalidRequestError("The workspace passwords do not match.")
     try:
         workspace = workspace_service.create_workspace(
             conn,
             owner_user_id=caller.user_id,
             name=payload.name,
+            workspace_password=payload.workspace_password,
             request_id=getattr(request.state, "request_id", None),
             client_ip=client_address(request),
         )
@@ -259,7 +299,42 @@ def create_workspace(
     if caller.auth_session_id and caller.org_id is None:
         repo.set_session_org(conn, caller.auth_session_id, workspace["org_id"])
 
-    return _workspace_view(workspace, membership)
+    return _workspace_view(workspace, membership, conn)
+
+
+@workspace_router.post("/api/workspaces/join")
+def join_workspace(
+    request: Request, payload: JoinWorkspaceRequest, conn: sqlite3.Connection = DbDep
+) -> dict:
+    """Join a workspace with its code and password.
+
+    Needs a signed-in account, like every route here; the code and password are
+    what admit that account to *this* workspace and are never a substitute for
+    the session. Declared before the `{workspace_id}` routes so `join` is never
+    read as an id.
+    """
+    caller = _caller(request, conn)
+    try:
+        workspace = workspace_service.join_workspace(
+            conn,
+            user_id=caller.user_id,
+            workspace_code=payload.workspace_code,
+            workspace_password=payload.workspace_password,
+            request_id=getattr(request.state, "request_id", None),
+            client_ip=client_address(request),
+        )
+    except workspace_service.JoinLockedError as exc:
+        raise RateLimitedError(str(exc)) from exc
+    except workspace_service.WorkspaceError as exc:
+        raise InvalidRequestError(str(exc)) from exc
+
+    membership = repo.get_membership(
+        conn, org_id=workspace["org_id"], user_id=caller.user_id
+    )
+    # Someone with no active workspace lands in the one they just joined.
+    if caller.auth_session_id and caller.org_id is None:
+        repo.set_session_org(conn, caller.auth_session_id, workspace["org_id"])
+    return {"status": "joined", **_workspace_view(workspace, membership, conn)}
 
 
 @workspace_router.get("/api/workspaces/{workspace_id}")
@@ -272,7 +347,7 @@ def get_workspace(
     workspace = repo.get_organization(conn, workspace_id)
     if workspace is None:
         raise NotFoundError("That workspace was not found.")
-    return _workspace_view(workspace, membership)
+    return _workspace_view(workspace, membership, conn)
 
 
 @workspace_router.patch("/api/workspaces/{workspace_id}")
@@ -296,7 +371,38 @@ def update_workspace(
         )
     except workspace_service.WorkspaceError as exc:
         raise InvalidRequestError(str(exc)) from exc
-    return _workspace_view(workspace, membership)
+    return _workspace_view(workspace, membership, conn)
+
+
+@workspace_router.post("/api/workspaces/{workspace_id}/password")
+def change_workspace_password(
+    request: Request,
+    workspace_id: str,
+    payload: ChangeWorkspacePasswordRequest,
+    conn: sqlite3.Connection = DbDep,
+) -> dict:
+    """Owner only: replace the password people join with.
+
+    The old password stops working immediately; existing members are untouched.
+    Nothing about the current password is returned -- only its hash is stored.
+    """
+    caller, membership = _require(
+        request, conn, workspace_id, Permission.WORKSPACE_CREDENTIALS
+    )
+    if payload.new_password != payload.confirm_new_password:
+        raise InvalidRequestError("The workspace passwords do not match.")
+    try:
+        code = workspace_service.change_workspace_password(
+            conn,
+            org_id=workspace_id,
+            new_password=payload.new_password,
+            actor_user_id=caller.user_id,
+            actor_role=membership.role.value,
+            request_id=getattr(request.state, "request_id", None),
+        )
+    except workspace_service.WorkspaceError as exc:
+        raise InvalidRequestError(str(exc)) from exc
+    return {"status": "password_changed", "workspace_id": workspace_id, "workspace_code": code}
 
 
 @workspace_router.post("/api/workspaces/{workspace_id}/activate")
@@ -326,7 +432,7 @@ def activate_workspace(
     )
     workspace = repo.get_organization(conn, workspace_id)
     assert workspace is not None
-    return {"status": "activated", **_workspace_view(workspace, membership)}
+    return {"status": "activated", **_workspace_view(workspace, membership, conn)}
 
 
 # --- members ----------------------------------------------------------------
@@ -481,6 +587,10 @@ def list_invitations(
     return {
         "workspace_id": workspace_id,
         "invitations": [_invitation_view(i) for i in invitations],
+        # Whether new invitations can be issued here. Off when addresses are not
+        # proven (see `create_invitation`), so the UI can say how people join
+        # instead.
+        "invitations_enabled": _settings(request).require_verified_email,
     }
 
 
@@ -494,6 +604,16 @@ def create_invitation(
     caller, membership = _require(
         request, conn, workspace_id, Permission.MEMBERS_INVITE
     )
+    if not _settings(request).require_verified_email:
+        # An invitation is bound to an address, and this deployment does not
+        # prove addresses -- so it could only be redeemed by whoever registered
+        # that address first. People are added with the workspace code and
+        # password instead. The invitation code is intact for when addresses are
+        # verified again.
+        raise InvalidRequestError(
+            "Invitations are not available on this deployment. Share the "
+            "workspace code and password to add people."
+        )
     role = parse_role(payload.role)
     if role is None:
         raise InvalidRequestError(
@@ -576,4 +696,4 @@ def accept_invitation(
     )
     if caller.auth_session_id and caller.org_id is None:
         repo.set_session_org(conn, caller.auth_session_id, workspace["org_id"])
-    return {"status": "joined", **_workspace_view(workspace, membership)}
+    return {"status": "joined", **_workspace_view(workspace, membership, conn)}

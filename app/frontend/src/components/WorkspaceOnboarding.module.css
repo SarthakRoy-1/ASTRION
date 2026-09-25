@@ -79,3 +79,37 @@
   gap: var(--space-2);
   margin-top: var(--space-3);
 }
+
+/* Joining a workspace somebody else made: a second, quieter way in, separated
+   from creating one so neither reads as the other's fine print. */
+.join {
+  margin-top: var(--space-5);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.joinTitle {
+  font-size: var(--text-heading, 1.125rem);
+  letter-spacing: -0.01em;
+}
+
+/* The workspace code, as a thing to read out or copy: monospaced, spaced, and
+   selectable in one gesture. */
+.codeRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  margin-top: var(--space-4);
+}
+
+.code {
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--surface-sunken);
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: var(--text-title);
+  letter-spacing: 0.14em;
+  user-select: all;
+}

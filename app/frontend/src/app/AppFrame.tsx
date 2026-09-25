@@ -6,6 +6,7 @@ import { useSyncExternalStore } from "react";
 import { ConnectionNotice } from "@/components/ConnectionNotice";
 import { ErrorNotice } from "@/components/ErrorNotice";
 import { SignInPanel } from "@/components/SignInPanel";
+import { WorkspaceCreated } from "@/components/WorkspaceCreated";
 import { WorkspaceOnboarding } from "@/components/WorkspaceOnboarding";
 import { GET_STARTED_HEADLINE, SignInScene, SignInWaiting } from "@/components/auth/SignInScene";
 import { EmailCodeVerification } from "@/components/auth/EmailCodeVerification";
@@ -193,7 +194,23 @@ export function AppFrame({ children }: { children: React.ReactNode }) {
           busy={session.busy}
           error={session.error}
           onCreate={session.createWorkspace}
+          onJoin={session.joinWorkspace}
           onSignOut={session.signOut}
+        />
+      </AuthLayout>
+    );
+  }
+
+  // Just made a workspace: the owner sees its code before anything else, once.
+  // Only when there is a workspace to continue into; the server has already put
+  // them in it, so this is a pause on the way, not a gate.
+  if (session.createdWorkspace && session.stage === "ready") {
+    return (
+      <AuthLayout>
+        <WorkspaceCreated
+          name={session.createdWorkspace.name}
+          code={session.createdWorkspace.code}
+          onContinue={session.dismissCreatedWorkspace}
         />
       </AuthLayout>
     );

@@ -233,6 +233,46 @@ with `oauth_unavailable`.
 
 ---
 
+## Joining a workspace: code and password
+
+Signing in gets an account a session. It does not get it into a workspace. On a
+deployment that cannot email invitations (no mail transport, or
+`REQUIRE_VERIFIED_EMAIL=false`), people are added with a **workspace code and a
+workspace password**.
+
+| | |
+| --- | --- |
+| Creating | `POST /api/workspaces` takes a name and a password (twice). The server generates the code and returns it to the creator, who is made owner and member in the same call. |
+| Code | 10 characters from `A–Z 2–9` (no `I`, `O`, `0`, `1`), from the operating system's CSPRNG. Unique at the database (`workspace_access.workspace_code UNIQUE`); a collision is retried. Nobody chooses it. Case, spaces and hyphens are ignored when typing it. |
+| Password | Chosen by the owner, validated like an account password, stored only as an scrypt hash in `workspace_access.password_hash`. No response carries it or its hash, and it appears in no audit entry. |
+| Joining | `POST /api/workspaces/join` needs a signed-in session, the code **and** the password. The code alone grants nothing. Wrong password, unknown code, and a workspace with no join password all answer the same 400, after the same amount of work. |
+| Role | A joiner is a `viewer` (read and ask the assistant). The owner raises it with the ordinary member controls. |
+| Returning | Removing a member deactivates their membership (the row is kept, for the audit trail). Someone removed and then given the code and password again is *reactivated* -- the same row, no duplicate -- as a `viewer`, whatever role they held before; an accepted invitation reactivates at the invited role. A removed member who still knows the password can therefore rejoin: change the workspace password when removing someone. |
+| Guessing | Five failed joins per account, twenty per code and thirty per address in fifteen minutes lock further attempts (429), even for the right answer. |
+| Owner | Only an owner sees the code and can change the password (`POST /api/workspaces/{id}/password`, permission `workspace.credentials`). The new hash replaces the old at once and members are untouched. A workspace made without a password (the seeded demo, a script) gets one, and a code, the first time its owner sets it. |
+
+Everything else about workspace access is unchanged: every workspace route
+checks the caller's **membership** server-side and answers a non-member with
+404, so knowing a workspace's id (or its code) is never access.
+
+**Invitations.** The invitation tables, routes and screens are kept. An
+invitation is bound to an *address*, so it is only sound when addresses are
+proven: acceptance now requires a verified address, and, while
+`REQUIRE_VERIFIED_EMAIL=false`, new invitations are refused (the members screen
+says to share the workspace code instead). Turn verification on and they work as
+before.
+
+**Demo login.** `DEMO_LOGIN_ENABLED` defaults to `true` when the variable is
+absent, and `POST /api/auth/demo-login` then signs anyone into the seeded demo
+workspace without credentials. That contradicts an email-and-password
+deployment, so **set `DEMO_LOGIN_ENABLED=false` on the production API**. No code
+change is needed: with it off the route answers 404, `/health` reports
+`demo_login_enabled: false` (so the sign-in screen offers no demo button), and
+the demo is not prepared at startup. The setting is a host environment variable;
+it is not changed by this repository.
+
+---
+
 ## Environment variables added
 
 All backend, all optional. Nothing here is ever exposed to the browser;

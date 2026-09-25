@@ -97,6 +97,10 @@ export interface SessionFixture {
   permissions?: string[];
   members?: Partial<MemberListing>;
   signals?: SignalReport | Reply;
+  /** Whether the server will issue invitations. Off where addresses are not proven. */
+  invitationsEnabled?: boolean;
+  /** What changing the workspace password answers. */
+  passwordChange?: Reply;
 }
 
 /** The names the server really issues — see `app/backend/auth/permissions.py`. */
@@ -260,7 +264,23 @@ export function stubApi(
         }
         if (url.includes("/members")) return respond({ body: memberListing });
         if (url.includes("/invitations")) {
-          return respond({ body: { invitations: [] } });
+          return respond({
+            body: {
+              invitations: [],
+              invitations_enabled: session.invitationsEnabled ?? true,
+            },
+          });
+        }
+        if (url.includes("/password")) {
+          return respond(
+            session.passwordChange ?? {
+              body: {
+                status: "password_changed",
+                workspace_id: workspace!.workspace_id,
+                workspace_code: workspace!.workspace_code ?? "K7Q2M9XPAB",
+              },
+            },
+          );
         }
         if (url.includes("/api/workspaces")) {
           return respond({ body: workspaceListing });

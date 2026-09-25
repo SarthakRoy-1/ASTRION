@@ -64,6 +64,9 @@ export function MembersPanel({
 }) {
   const [members, setMembers] = useState<WorkspaceMember[]>([]);
   const [invitations, setInvitations] = useState<Invitation[]>([]);
+  // Whether the server will issue invitations here. It will not where addresses
+  // are not proven, and the panel then says how people join instead.
+  const [invitationsEnabled, setInvitationsEnabled] = useState(true);
   const [ownerCount, setOwnerCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -91,6 +94,7 @@ export function MembersPanel({
       if (can("members.invite")) {
         const invitationListing = await listInvitations(workspace.workspace_id);
         setInvitations(invitationListing.invitations);
+        setInvitationsEnabled(invitationListing.invitations_enabled ?? true);
       } else {
         setInvitations([]);
       }
@@ -207,7 +211,18 @@ export function MembersPanel({
         )}
       </Panel>
 
-      {can("members.invite") ? (
+      {can("members.invite") && !invitationsEnabled ? (
+        <Panel className={styles.section} title="Adding people">
+          <p>
+            Invitations are turned off on this deployment. To add someone, give
+            them the workspace code and password (the owner finds them under
+            Workspace access) — they enter both after signing in to their own
+            account.
+          </p>
+        </Panel>
+      ) : null}
+
+      {can("members.invite") && invitationsEnabled ? (
         <Panel
           className={styles.section}
           title="Invite someone"

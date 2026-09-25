@@ -106,6 +106,10 @@ class Permission(StrEnum):
     WORKSPACE_READ = "workspace.read"
     WORKSPACE_UPDATE = "workspace.update"
     WORKSPACE_DELETE = "workspace.delete"
+    #: Setting the password people join the workspace with. Owner only: it
+    #: decides who can add themselves, so it sits with the role that decides who
+    #: the owner is.
+    WORKSPACE_CREDENTIALS = "workspace.credentials"
 
     # Membership
     MEMBERS_READ = "members.read"
@@ -192,6 +196,7 @@ _ADMIN: frozenset[Permission] = _OPERATIONS | {
 #: sit above the role that runs the workspace day to day.
 _OWNER: frozenset[Permission] = _ADMIN | {
     Permission.WORKSPACE_DELETE,
+    Permission.WORKSPACE_CREDENTIALS,
     Permission.OWNERSHIP_TRANSFER,
 }
 

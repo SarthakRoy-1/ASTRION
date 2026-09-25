@@ -114,6 +114,18 @@ def client_for(settings, email: str) -> TestClient:
     return client
 
 
+WORKSPACE_PASSWORD = "shared-workspace-password"
+
+
+def new_workspace(name: str) -> dict:
+    """A valid `POST /api/workspaces` body: the name and the join password, twice."""
+    return {
+        "name": name,
+        "workspace_password": WORKSPACE_PASSWORD,
+        "confirm_workspace_password": WORKSPACE_PASSWORD,
+    }
+
+
 def uid(db, email: str) -> str:
     user = repo.get_user_by_email(db, email)
     assert user is not None
@@ -130,7 +142,11 @@ def uid(db, email: str) -> str:
 #: reject an empty payload first.  `None` means the endpoint takes no body.
 _ENDPOINTS = [
     ("get", "/api/workspaces", None),
-    ("post", "/api/workspaces", {"name": "Anything"}),
+    ("post", "/api/workspaces", new_workspace("Anything")),
+    ("post", "/api/workspaces/join",
+     {"workspace_code": "ABCDEFGHJK", "workspace_password": WORKSPACE_PASSWORD}),
+    ("post", "/api/workspaces/ORG-x/password",
+     {"new_password": WORKSPACE_PASSWORD, "confirm_new_password": WORKSPACE_PASSWORD}),
     ("get", "/api/workspaces/ORG-x", None),
     ("patch", "/api/workspaces/ORG-x", {"name": "Anything"}),
     ("post", "/api/workspaces/ORG-x/activate", None),
@@ -182,7 +198,7 @@ def test_creating_a_workspace_makes_the_creator_its_owner(secure_settings, db):
     make_user(db, "founder@example.com")
     client = client_for(secure_settings, "founder@example.com")
 
-    created = client.post("/api/workspaces", json={"name": "Founder Ops"})
+    created = client.post("/api/workspaces", json=new_workspace("Founder Ops"))
     assert created.status_code == 201
     body = created.json()
     assert body["name"] == "Founder Ops"
@@ -200,8 +216,8 @@ def test_creating_a_second_workspace_does_not_move_the_user_out_of_the_first(
 ):
     make_user(db, "two@example.com")
     client = client_for(secure_settings, "two@example.com")
-    first = client.post("/api/workspaces", json={"name": "First"}).json()
-    client.post("/api/workspaces", json={"name": "Second"})
+    first = client.post("/api/workspaces", json=new_workspace("First")).json()
+    client.post("/api/workspaces", json=new_workspace("Second"))
 
     assert client.get("/api/workspaces").json()["active_workspace_id"] == (
         first["workspace_id"]
@@ -211,8 +227,8 @@ def test_creating_a_second_workspace_does_not_move_the_user_out_of_the_first(
 def test_workspace_slugs_do_not_collide(secure_settings, db):
     make_user(db, "slug@example.com")
     client = client_for(secure_settings, "slug@example.com")
-    a = client.post("/api/workspaces", json={"name": "Acme"}).json()
-    b = client.post("/api/workspaces", json={"name": "Acme"}).json()
+    a = client.post("/api/workspaces", json=new_workspace("Acme")).json()
+    b = client.post("/api/workspaces", json=new_workspace("Acme")).json()
     assert a["slug"] != b["slug"]
 
 
@@ -220,7 +236,7 @@ def test_a_hostile_workspace_name_cannot_poison_the_slug(secure_settings, db):
     make_user(db, "slugadv@example.com")
     client = client_for(secure_settings, "slugadv@example.com")
     created = client.post(
-        "/api/workspaces", json={"name": "../../etc/passwd <script>"}
+        "/api/workspaces", json=new_workspace("../../etc/passwd <script>")
     ).json()
     slug = created["slug"]
     assert "/" not in slug and ".." not in slug and "<" not in slug
@@ -230,8 +246,8 @@ def test_workspace_creation_is_capped(secure_settings, db):
     make_user(db, "greedy@example.com")
     client = client_for(secure_settings, "greedy@example.com")
     for i in range(workspace_service.MAX_WORKSPACES_PER_USER):
-        assert client.post("/api/workspaces", json={"name": f"W{i}"}).status_code == 201
-    assert client.post("/api/workspaces", json={"name": "One more"}).status_code == 400
+        assert client.post("/api/workspaces", json=new_workspace(f"W{i}")).status_code == 201
+    assert client.post("/api/workspaces", json=new_workspace("One more")).status_code == 400
 
 
 def test_only_workspaces_you_belong_to_are_listed(secure_settings, world):

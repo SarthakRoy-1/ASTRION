@@ -95,6 +95,13 @@ class NotFoundError(AppError):
     status = HTTPStatus.NOT_FOUND
 
 
+class RateLimitedError(AppError):
+    """Too many recent failed attempts at something guessable."""
+
+    code = "rate_limited"
+    status = HTTPStatus.TOO_MANY_REQUESTS
+
+
 class ActionStateConflictError(AppError):
     """The action exists but is not in a state permitting this transition.
 

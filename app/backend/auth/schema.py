@@ -83,6 +83,23 @@ SECURITY_SCHEMA_STATEMENTS: tuple[str, ...] = (
     ) STRICT
     """,
     """
+    -- How a workspace is joined: a code the server generated and a password its
+    -- owner chose. Its own table rather than columns on `organizations`, so no
+    -- `SELECT * FROM organizations` -- and there are several -- can carry the
+    -- hash into a response. A workspace with no row here (the seeded demo, one
+    -- created by a script) simply cannot be joined by code.
+    CREATE TABLE IF NOT EXISTS workspace_access (
+        org_id TEXT PRIMARY KEY REFERENCES organizations (org_id),
+        -- Unique at the database, not only in the generator: two workspaces
+        -- with one code would let a password for one open the other.
+        workspace_code TEXT NOT NULL UNIQUE,
+        password_hash TEXT NOT NULL,
+        owner_user_id TEXT NOT NULL REFERENCES users (user_id),
+        created_at_utc TEXT NOT NULL,
+        password_changed_at_utc TEXT NOT NULL
+    ) STRICT
+    """,
+    """
     CREATE TABLE IF NOT EXISTS organization_accounts (
         org_id TEXT NOT NULL REFERENCES organizations (org_id),
         account_id TEXT NOT NULL,

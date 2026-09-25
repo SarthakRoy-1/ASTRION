@@ -52,7 +52,32 @@ interface Options {
   resend?: "ok" | "cooldown";
   /** Hold the verify request open until released. */
   holdVerify?: boolean;
+  /** The deployment does not require a proven address (REQUIRE_VERIFIED_EMAIL=false). */
+  noVerification?: boolean;
+  /** Every sign-in is refused, as the server refuses a wrong password or an unknown address. */
+  rejectLogin?: boolean;
+  /** Joining a workspace is refused, as for a wrong password or an unknown code. */
+  joinRefused?: boolean;
 }
+
+const OWNED_WORKSPACE = {
+  workspace_id: "ORG-1",
+  name: "Acme Logistics",
+  slug: "acme-logistics",
+  created_at_utc: "2026-09-25T00:00:00Z",
+  role: "owner",
+  permissions: ["workspace.read", "workspace.credentials", "members.read"],
+  workspace_code: "K7Q2M9XPAB",
+};
+
+const JOINED_WORKSPACE = {
+  workspace_id: "ORG-2",
+  name: "Northstar",
+  slug: "northstar",
+  created_at_utc: "2026-09-25T00:00:00Z",
+  role: "viewer",
+  permissions: ["workspace.read", "members.read"],
+};
 
 function stubBackend(options: Options = {}) {
   const calls: { url: string; method: string; body: unknown }[] = [];
@@ -60,6 +85,7 @@ function stubBackend(options: Options = {}) {
   let verification: VerificationStatus | null = options.resumed ?? null;
   let attempts = 5;
   let release: () => void = () => {};
+  let workspace: Record<string, unknown> | null = null;
 
   const json = (status: number, body: unknown) =>
     Promise.resolve({
@@ -105,11 +131,30 @@ function stubBackend(options: Options = {}) {
         return error(401, "unauthenticated", "Authentication is required.",
           verification ? { verification } : {});
       }
+      if (url.includes("/api/workspaces/join")) {
+        if (options.joinRefused) {
+          return error(400, "invalid_request", "That workspace code and password don't match.");
+        }
+        workspace = JOINED_WORKSPACE;
+        return json(200, { status: "joined", ...JOINED_WORKSPACE });
+      }
+      if (url.includes("/api/workspaces") && (init?.method ?? "GET") === "POST") {
+        workspace = OWNED_WORKSPACE;
+        return json(201, OWNED_WORKSPACE);
+      }
       if (url.includes("/api/workspaces")) {
-        return json(200, { workspaces: [], active_workspace_id: null, needs_workspace: true });
+        return json(
+          200,
+          workspace
+            ? { workspaces: [workspace], active_workspace_id: workspace.workspace_id, needs_workspace: false }
+            : { workspaces: [], active_workspace_id: null, needs_workspace: true },
+        );
       }
 
       if (url.includes("/api/auth/login")) {
+        if (options.rejectLogin) {
+          return error(401, "authentication_failed", "Incorrect email address or password.");
+        }
         if (options.unverified) {
           verification = pending(options.verification);
           return error(401, "email_verification_required",
@@ -120,6 +165,14 @@ function stubBackend(options: Options = {}) {
       }
 
       if (url.includes("/api/auth/register")) {
+        if (options.noVerification) {
+          return json(200, {
+            status: "registered",
+            message: "Your account is ready. Sign in to continue.",
+            email_sent: false,
+            verification: null,
+          });
+        }
         verification = pending(options.verification);
         return json(200, {
           status: "registration_received",
@@ -525,6 +578,228 @@ describe("/get-started", () => {
 
     expect(await screen.findByText("Password must be at least 8 characters.")).toBeInTheDocument();
     expect(stub.calls.some((c) => c.url.includes("/api/auth/register"))).toBe(false);
+  });
+});
+
+// --- password accounts on a deployment that cannot email a code -------------------
+//
+// `REQUIRE_VERIFIED_EMAIL=false`: registration answers with no verification, and
+// the form signs in with the password it just took. The credentials are checked
+// by the server's ordinary login, so a refusal there ends the flow.
+
+describe("registering where no verification is required", () => {
+  async function fillRegistration(user: ReturnType<typeof userEvent.setup>) {
+    await user.type(await screen.findByLabelText(/your name/i), "Sam");
+    await user.type(screen.getByLabelText(/^work email address$/i), "sam@example.com");
+    await user.type(screen.getByLabelText(/^password$/i), "correct-horse-battery");
+    await user.type(screen.getByLabelText(/confirm password/i), "correct-horse-battery");
+    await user.click(screen.getByRole("button", { name: /^create account$/i }));
+  }
+
+  it("signs in with the chosen password and goes on to workspace creation, with no code screen", async () => {
+    const user = userEvent.setup();
+    setTestRoute("/get-started");
+    const stub = stubBackend({ noVerification: true });
+    renderApp(<GetStartedPage />);
+
+    await fillRegistration(user);
+
+    expect(
+      await screen.findByRole("heading", { name: /create your first workspace/i }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: /verify your email/i })).toBeNull();
+
+    // Register, then the ordinary login with exactly the credentials just chosen.
+    const sequence = stub.calls
+      .filter((c) => c.method === "POST")
+      .map((c) => c.url.replace(/^.*\/api\//, "/api/"));
+    expect(sequence).toEqual(["/api/auth/register", "/api/auth/login"]);
+    const login = stub.calls.find((c) => c.url.includes("/api/auth/login"));
+    expect(login?.body).toEqual({ email: "sam@example.com", password: "correct-horse-battery" });
+    expect(stub.calls.some((c) => c.url.includes("/api/auth/verification"))).toBe(false);
+  });
+
+  it("stays on the form with the server's refusal when the sign-in that follows is refused", async () => {
+    const user = userEvent.setup();
+    setTestRoute("/get-started");
+    stubBackend({ noVerification: true, rejectLogin: true });
+    renderApp(<GetStartedPage />);
+
+    await fillRegistration(user);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(/incorrect email address or password/i);
+    expect(screen.queryByRole("heading", { name: /create your first workspace/i })).toBeNull();
+  });
+
+  it("does not put a password back in the form after registering", async () => {
+    const user = userEvent.setup();
+    setTestRoute("/get-started");
+    stubBackend({ noVerification: true, rejectLogin: true });
+    renderApp(<GetStartedPage />);
+
+    await fillRegistration(user);
+    await screen.findByRole("alert");
+
+    expect(screen.getByLabelText(/^password$/i)).toHaveValue("");
+    expect(screen.getByLabelText(/confirm password/i)).toHaveValue("");
+  });
+});
+
+describe("signing in with an email and password", () => {
+  it("refuses a wrong password or unknown address with the server's answer and no session", async () => {
+    const user = userEvent.setup();
+    setTestRoute("/sign-in");
+    stubBackend({ rejectLogin: true });
+    renderApp(<SignInPage />);
+
+    await user.type(await screen.findByLabelText(/^work email address$/i), "sam@example.com");
+    await user.type(screen.getByLabelText(/^password$/i), "not-the-right-password");
+    await user.click(screen.getByRole("button", { name: /^sign in/i }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(/incorrect email address or password/i);
+    expect(screen.getByRole("button", { name: /^sign in/i })).toBeInTheDocument();
+  });
+
+  it("keeps the workspace behind the sign-in form for a visitor with no session", async () => {
+    setTestRoute("/workspace");
+    stubBackend();
+    renderApp(<p>WORKSPACE CONTENT</p>);
+
+    expect(await screen.findByLabelText(/^work email address$/i)).toBeInTheDocument();
+    expect(screen.queryByText("WORKSPACE CONTENT")).toBeNull();
+  });
+});
+
+describe("the provider buttons while no provider is configured", () => {
+  for (const route of ["/sign-in", "/get-started"] as const) {
+    it(`show Google and GitHub as unavailable on ${route}, and neither can be used`, async () => {
+      setTestRoute(route);
+      const stub = stubBackend({ providers: [] });
+      renderApp(route === "/sign-in" ? <SignInPage /> : <GetStartedPage />);
+
+      const google = await screen.findByRole("button", { name: /continue with google/i });
+      const github = screen.getByRole("button", { name: /continue with github/i });
+      expect(google).toBeDisabled();
+      expect(github).toBeDisabled();
+      // With none configured the one note covers both.
+      expect(google).toHaveAccessibleDescription(/sign-in aren.t set up on this deployment/i);
+      expect(github).toHaveAccessibleDescription(/sign-in aren.t set up on this deployment/i);
+
+      // Neither reaches for the backend's start URL.
+      fireEvent.click(google);
+      fireEvent.click(github);
+      expect(stub.calls.some((c) => c.url.includes("/oauth/"))).toBe(false);
+    });
+  }
+
+  it("neither navigates nor starts a sign-in when pressed", async () => {
+    const navigate = vi.fn();
+    const user = userEvent.setup();
+    render(<ProviderButtons available={[]} navigate={navigate} />);
+
+    await user.click(screen.getByRole("button", { name: /continue with google/i }));
+    await user.click(screen.getByRole("button", { name: /continue with github/i }));
+
+    expect(navigate).not.toHaveBeenCalled();
+  });
+
+  it("enable by themselves once the server reports the credentials", async () => {
+    setTestRoute("/get-started");
+    stubBackend({ providers: ["google", "github"] });
+    renderApp(<GetStartedPage />);
+
+    expect(await screen.findByRole("button", { name: /continue with google/i })).toBeEnabled();
+    expect(screen.getByRole("button", { name: /continue with github/i })).toBeEnabled();
+  });
+});
+
+// --- workspaces: create with a password, join with a code and that password ---------
+//
+// The account signs in as always. A workspace is created with a name and a
+// password its owner chooses; the server makes the code. Joining takes the code
+// and the password, and only from a signed-in account.
+
+describe("a signed-in account with no workspace", () => {
+  async function reachOnboarding(options: Options = {}) {
+    const user = userEvent.setup();
+    setTestRoute("/sign-in");
+    const stub = stubBackend(options);
+    renderApp(<SignInPage />);
+    await user.type(await screen.findByLabelText(/^work email address$/i), "sam@example.com");
+    await user.type(screen.getByLabelText(/^password$/i), "correct-horse-battery");
+    await user.click(screen.getByRole("button", { name: /^sign in/i }));
+    await screen.findByRole("heading", { name: /create your first workspace/i });
+    return { user, stub };
+  }
+
+  it("creates a workspace with a name and a password, then shows the generated code once", async () => {
+    const { user, stub } = await reachOnboarding();
+    const create = within(screen.getByRole("form", { name: /create a workspace/i }));
+
+    await user.type(create.getByLabelText("Workspace name"), "Acme Logistics");
+    await user.type(create.getByLabelText("Workspace password"), "team-passphrase");
+    await user.type(create.getByLabelText("Confirm workspace password"), "team-passphrase");
+    await user.click(create.getByRole("button", { name: /create workspace/i }));
+
+    expect(await screen.findByRole("heading", { name: /acme logistics is ready/i })).toBeInTheDocument();
+    expect(screen.getByLabelText("Workspace code")).toHaveTextContent("K7Q2M9XPAB");
+
+    // What went to the server: the name and the password twice — and no code.
+    const sent = stub.calls.find((c) => c.method === "POST" && c.url.endsWith("/api/workspaces"));
+    expect(sent?.body).toEqual({
+      name: "Acme Logistics",
+      workspace_password: "team-passphrase",
+      confirm_workspace_password: "team-passphrase",
+    });
+    // The password is nowhere on the screen the owner is now looking at.
+    expect(document.body.textContent).not.toContain("team-passphrase");
+  });
+
+  it("joins a workspace with its code and password", async () => {
+    const { user, stub } = await reachOnboarding();
+    const join = within(screen.getByRole("form", { name: /join a workspace/i }));
+
+    await user.type(join.getByLabelText("Workspace code"), "K7Q2M9XPAB");
+    await user.type(join.getByLabelText("Workspace password"), "team-passphrase");
+    await user.click(join.getByRole("button", { name: /join workspace/i }));
+
+    await waitFor(() =>
+      expect(screen.queryByRole("heading", { name: /create your first workspace/i })).toBeNull(),
+    );
+    const sent = stub.calls.find((c) => c.url.includes("/api/workspaces/join"));
+    expect(sent?.method).toBe("POST");
+    expect(sent?.body).toEqual({
+      workspace_code: "K7Q2M9XPAB",
+      workspace_password: "team-passphrase",
+    });
+    // A joiner is not shown a code to hand out.
+    expect(screen.queryByLabelText("Workspace code")).toBeNull();
+  });
+
+  it("stays on the join form, with the server's answer, when the code and password don't match", async () => {
+    const { user } = await reachOnboarding({ joinRefused: true });
+    const join = within(screen.getByRole("form", { name: /join a workspace/i }));
+
+    await user.type(join.getByLabelText("Workspace code"), "ZZZZZZZZZZ");
+    await user.type(join.getByLabelText("Workspace password"), "not-the-password");
+    await user.click(join.getByRole("button", { name: /join workspace/i }));
+
+    expect(await join.findByRole("alert")).toHaveTextContent(
+      "That workspace code and password don't match.",
+    );
+    expect(screen.getByRole("heading", { name: /create your first workspace/i })).toBeInTheDocument();
+  });
+});
+
+describe("a visitor with no session", () => {
+  it("is never offered to create or join a workspace", async () => {
+    setTestRoute("/sign-in");
+    stubBackend();
+    renderApp(<SignInPage />);
+
+    expect(await screen.findByLabelText(/^work email address$/i)).toBeInTheDocument();
+    expect(screen.queryByRole("form", { name: /join a workspace/i })).toBeNull();
+    expect(screen.queryByRole("form", { name: /create a workspace/i })).toBeNull();
   });
 });
 

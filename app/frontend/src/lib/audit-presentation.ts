@@ -65,6 +65,15 @@ const EVENTS: Record<string, EventDescriptor> = {
 
   // Workspace and membership
   "org.created": { label: "Created the workspace", category: "workspace" },
+  "org.workspace_joined": { label: "Joined the workspace", category: "workspace" },
+  "org.workspace_join_failed": {
+    label: "Failed to join the workspace",
+    category: "workspace",
+  },
+  "org.workspace_password_changed": {
+    label: "Changed the workspace password",
+    category: "workspace",
+  },
   "org.updated": { label: "Updated the workspace", category: "workspace" },
   "org.membership_created": { label: "Added a member", category: "workspace" },
   "org.membership_role_changed": { label: "Changed a member's role", category: "workspace" },

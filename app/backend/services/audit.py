@@ -85,6 +85,10 @@ class AuditEvent(StrEnum):
     MEMBERSHIP_REMOVED = "org.membership_removed"
     OWNERSHIP_TRANSFERRED = "org.ownership_transferred"
     WORKSPACE_ACTIVATED = "org.workspace_activated"
+    # Joining by workspace code and password. Never the password, never the code.
+    WORKSPACE_JOINED = "org.workspace_joined"
+    WORKSPACE_JOIN_FAILED = "org.workspace_join_failed"
+    WORKSPACE_PASSWORD_CHANGED = "org.workspace_password_changed"
 
     # Invitations. The token never appears in any of these — only the
     # invitation id, the role, and the invited address's domain.

@@ -406,6 +406,31 @@ def add_member(
     return membership_id
 
 
+def reactivate_member(
+    conn: sqlite3.Connection, *, org_id: str, user_id: str, role: OrgRole
+) -> bool:
+    """Bring a *removed* membership back, at exactly `role`.
+
+    `remove_member` deactivates rather than deletes, and `(org_id, user_id)` is
+    unique, so someone who was removed and then legitimately returns -- with the
+    workspace code and password, or an invitation -- has a row already. This
+    updates that row instead of inserting a second. The role is overwritten, not
+    restored: nothing the person held before survives the removal.
+
+    Returns False when there is no removed row, so the caller inserts a new one.
+    An *active* row is left alone (the guard is `status = 'removed'`).
+    """
+    with conn:
+        cursor = conn.execute(
+            """
+            UPDATE memberships SET role = ?, status = ?, updated_at_utc = ?
+             WHERE org_id = ? AND user_id = ? AND status = 'removed'
+            """,
+            (role.value, ACTIVE, _now().isoformat(), org_id, user_id),
+        )
+    return cursor.rowcount == 1
+
+
 class LastOwnerError(Exception):
     """The change would leave a workspace with no owner.
 
@@ -563,6 +588,11 @@ def transfer_ownership(
             "WHERE org_id = ? AND user_id = ? AND status = ?",
             (OrgRole.ADMIN.value, now, org_id, from_user_id, ACTIVE),
         )
+        # The recorded owner follows the role, in the same transaction.
+        conn.execute(
+            "UPDATE workspace_access SET owner_user_id = ? WHERE org_id = ?",
+            (to_user_id, org_id),
+        )
     return True
 
 
@@ -591,6 +621,73 @@ def update_organization(
             "UPDATE organizations SET name = ?, updated_at_utc = ? "
             "WHERE org_id = ? AND status = ?",
             (name.strip(), _now().isoformat(), org_id, ACTIVE),
+        )
+    return cursor.rowcount == 1
+
+
+# --- workspace access (join by code and password) -----------------------------
+
+
+def create_workspace_access(
+    conn: sqlite3.Connection,
+    *,
+    org_id: str,
+    workspace_code: str,
+    password_hash: str,
+    owner_user_id: str,
+) -> None:
+    """Record how a workspace is joined. Raises `sqlite3.IntegrityError` when
+    the code is already taken -- the caller generates another and tries again.
+    """
+    now = _now().isoformat()
+    with conn:
+        conn.execute(
+            """
+            INSERT INTO workspace_access
+                (org_id, workspace_code, password_hash, owner_user_id,
+                 created_at_utc, password_changed_at_utc)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (org_id, workspace_code, password_hash, owner_user_id, now, now),
+        )
+
+
+def get_workspace_code(conn: sqlite3.Connection, org_id: str) -> str | None:
+    """The code, and only the code. Never the hash."""
+    row = conn.execute(
+        "SELECT workspace_code FROM workspace_access WHERE org_id = ?", (org_id,)
+    ).fetchone()
+    return None if row is None else row["workspace_code"]
+
+
+def find_workspace_for_join(conn: sqlite3.Connection, workspace_code: str) -> dict | None:
+    """The workspace a code names, with the hash to check a password against.
+
+    Only for the join check: the result carries the credential, so it is never
+    passed on to anything that builds a response. An inactive workspace is not
+    found.
+    """
+    row = conn.execute(
+        """
+        SELECT a.org_id, a.password_hash, o.name
+          FROM workspace_access a
+          JOIN organizations o ON o.org_id = a.org_id
+         WHERE a.workspace_code = ? AND o.status = ?
+        """,
+        (workspace_code, ACTIVE),
+    ).fetchone()
+    return None if row is None else dict(row)
+
+
+def set_workspace_password_hash(
+    conn: sqlite3.Connection, *, org_id: str, password_hash: str
+) -> bool:
+    """Replace the hash. The old password stops working with this statement."""
+    with conn:
+        cursor = conn.execute(
+            "UPDATE workspace_access SET password_hash = ?, "
+            "password_changed_at_utc = ? WHERE org_id = ?",
+            (password_hash, _now().isoformat(), org_id),
         )
     return cursor.rowcount == 1
 

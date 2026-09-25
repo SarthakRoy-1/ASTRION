@@ -177,6 +177,29 @@
         "title": "ChangeRoleRequest",
         "type": "object"
       },
+      "ChangeWorkspacePasswordRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "confirm_new_password": {
+            "maxLength": 1024,
+            "minLength": 1,
+            "title": "Confirm New Password",
+            "type": "string"
+          },
+          "new_password": {
+            "maxLength": 1024,
+            "minLength": 1,
+            "title": "New Password",
+            "type": "string"
+          }
+        },
+        "required": [
+          "new_password",
+          "confirm_new_password"
+        ],
+        "title": "ChangeWorkspacePasswordRequest",
+        "type": "object"
+      },
       "ChatRequest": {
         "additionalProperties": false,
         "description": "A natural-language request plus the identity it is made under.\n\n`user_id` establishes the authorization context; it is looked up in the\nmock principal directory server-side. It is *not* trusted to describe its\nown permissions, and nothing in `message` can alter them \u2014\nsee `app/backend/auth/principals.py`.",
@@ -392,15 +415,29 @@
       "CreateWorkspaceRequest": {
         "additionalProperties": false,
         "properties": {
+          "confirm_workspace_password": {
+            "maxLength": 1024,
+            "minLength": 1,
+            "title": "Confirm Workspace Password",
+            "type": "string"
+          },
           "name": {
             "maxLength": 120,
             "minLength": 1,
             "title": "Name",
             "type": "string"
+          },
+          "workspace_password": {
+            "maxLength": 1024,
+            "minLength": 1,
+            "title": "Workspace Password",
+            "type": "string"
           }
         },
         "required": [
-          "name"
+          "name",
+          "workspace_password",
+          "confirm_workspace_password"
         ],
         "title": "CreateWorkspaceRequest",
         "type": "object"
@@ -1079,6 +1116,29 @@
           "role"
         ],
         "title": "InviteRequest",
+        "type": "object"
+      },
+      "JoinWorkspaceRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "workspace_code": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Workspace Code",
+            "type": "string"
+          },
+          "workspace_password": {
+            "maxLength": 1024,
+            "minLength": 1,
+            "title": "Workspace Password",
+            "type": "string"
+          }
+        },
+        "required": [
+          "workspace_code",
+          "workspace_password"
+        ],
+        "title": "JoinWorkspaceRequest",
         "type": "object"
       },
       "LoginRequest": {
@@ -3556,7 +3616,7 @@
         ]
       },
       "post": {
-        "description": "Create a workspace. The caller becomes its owner.\n\nAny authenticated user may create one \u2014 this is the path out of the\nno-workspace onboarding state, so gating it on a permission would leave a\nnew account with no way forward. `MAX_WORKSPACES_PER_USER` is the ceiling.",
+        "description": "Create a workspace. The caller becomes its owner.\n\nAny authenticated user may create one \u2014 this is the path out of the\nno-workspace onboarding state, so gating it on a permission would leave a\nnew account with no way forward. `MAX_WORKSPACES_PER_USER` is the ceiling.\n\nThe body carries the password people will join with (twice, so a slip is\ncaught). The response carries the generated workspace code and never the\npassword or its hash.",
         "operationId": "create_workspace_api_workspaces_post",
         "requestBody": {
           "content": {
@@ -3593,6 +3653,50 @@
           }
         },
         "summary": "Create Workspace",
+        "tags": [
+          "workspaces"
+        ]
+      }
+    },
+    "/api/workspaces/join": {
+      "post": {
+        "description": "Join a workspace with its code and password.\n\nNeeds a signed-in account, like every route here; the code and password are\nwhat admit that account to *this* workspace and are never a substitute for\nthe session. Declared before the `{workspace_id}` routes so `join` is never\nread as an id.",
+        "operationId": "join_workspace_api_workspaces_join_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JoinWorkspaceRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Join Workspace Api Workspaces Join Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Join Workspace",
         "tags": [
           "workspaces"
         ]
@@ -4107,6 +4211,61 @@
           }
         },
         "summary": "Transfer Ownership",
+        "tags": [
+          "workspaces"
+        ]
+      }
+    },
+    "/api/workspaces/{workspace_id}/password": {
+      "post": {
+        "description": "Owner only: replace the password people join with.\n\nThe old password stops working immediately; existing members are untouched.\nNothing about the current password is returned -- only its hash is stored.",
+        "operationId": "change_workspace_password_api_workspaces__workspace_id__password_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChangeWorkspacePasswordRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Change Workspace Password Api Workspaces  Workspace Id  Password Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Change Workspace Password",
         "tags": [
           "workspaces"
         ]

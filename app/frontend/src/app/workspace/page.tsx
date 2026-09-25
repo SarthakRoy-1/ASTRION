@@ -3,6 +3,7 @@
 import Link from "next/link";
 
 import { MembersPanel } from "@/components/MembersPanel";
+import { WorkspaceAccessPanel } from "@/components/WorkspaceAccessPanel";
 import { StatusPill } from "@/components/StatusPill";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Panel } from "@/components/ui/Panel";
@@ -118,6 +119,12 @@ export default function WorkspacePage() {
             ))}
           </ul>
         </Panel>
+      ) : null}
+
+      {session.can("workspace.credentials") ? (
+        <div className={styles.section}>
+          <WorkspaceAccessPanel workspace={workspace} />
+        </div>
       ) : null}
 
       {session.can("members.read") ? (

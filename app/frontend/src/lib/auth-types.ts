@@ -46,6 +46,11 @@ export interface Workspace {
   /** Present whenever the caller is a member — which, in a listing, is always. */
   role?: WorkspaceRole;
   permissions?: string[];
+  /**
+   * The code people join with. Sent to **owners only**; it is not the
+   * credential (the workspace password is, and no response carries that).
+   */
+  workspace_code?: string;
 }
 
 export interface WorkspaceListing {

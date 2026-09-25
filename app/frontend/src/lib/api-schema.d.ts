@@ -859,8 +859,37 @@ export interface paths {
          *     Any authenticated user may create one — this is the path out of the
          *     no-workspace onboarding state, so gating it on a permission would leave a
          *     new account with no way forward. `MAX_WORKSPACES_PER_USER` is the ceiling.
+         *
+         *     The body carries the password people will join with (twice, so a slip is
+         *     caught). The response carries the generated workspace code and never the
+         *     password or its hash.
          */
         post: operations["create_workspace_api_workspaces_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/workspaces/join": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Join Workspace
+         * @description Join a workspace with its code and password.
+         *
+         *     Needs a signed-in account, like every route here; the code and password are
+         *     what admit that account to *this* workspace and are never a substitute for
+         *     the session. Declared before the `{workspace_id}` routes so `join` is never
+         *     read as an id.
+         */
+        post: operations["join_workspace_api_workspaces_join_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1005,6 +1034,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/workspaces/{workspace_id}/password": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Change Workspace Password
+         * @description Owner only: replace the password people join with.
+         *
+         *     The old password stops working immediately; existing members are untouched.
+         *     Nothing about the current password is returned -- only its hash is stored.
+         */
+        post: operations["change_workspace_password_api_workspaces__workspace_id__password_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health": {
         parameters: {
             query?: never;
@@ -1102,6 +1154,13 @@ export interface components {
             /** Role */
             role: string;
         };
+        /** ChangeWorkspacePasswordRequest */
+        ChangeWorkspacePasswordRequest: {
+            /** Confirm New Password */
+            confirm_new_password: string;
+            /** New Password */
+            new_password: string;
+        };
         /**
          * ChatRequest
          * @description A natural-language request plus the identity it is made under.
@@ -1195,8 +1254,12 @@ export interface components {
         ConfirmationDecision: "approve" | "reject";
         /** CreateWorkspaceRequest */
         CreateWorkspaceRequest: {
+            /** Confirm Workspace Password */
+            confirm_workspace_password: string;
             /** Name */
             name: string;
+            /** Workspace Password */
+            workspace_password: string;
         };
         /**
          * DocumentChunkResponse
@@ -1419,6 +1482,13 @@ export interface components {
             email: string;
             /** Role */
             role: string;
+        };
+        /** JoinWorkspaceRequest */
+        JoinWorkspaceRequest: {
+            /** Workspace Code */
+            workspace_code: string;
+            /** Workspace Password */
+            workspace_password: string;
         };
         /** LoginRequest */
         LoginRequest: {
@@ -3011,6 +3081,41 @@ export interface operations {
             };
         };
     };
+    join_workspace_api_workspaces_join_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["JoinWorkspaceRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     get_workspace_api_workspaces__workspace_id__get: {
         parameters: {
             query?: never;
@@ -3337,6 +3442,43 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["TransferOwnershipRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    change_workspace_password_api_workspaces__workspace_id__password_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChangeWorkspacePasswordRequest"];
             };
         };
         responses: {

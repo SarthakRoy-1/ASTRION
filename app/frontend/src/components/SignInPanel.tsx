@@ -81,7 +81,9 @@ const MIN_PASSWORD_LENGTH = 8;
  * the code), and the session moves to the code screen
  * (`auth/EmailCodeVerification`). Without that step a new user would be
  * registered, unable to sign in, and told only "Incorrect email address or
- * password."
+ * password." (A deployment with `REQUIRE_VERIFIED_EMAIL=false` answers with no
+ * verification at all, and this form then signs in with the password it just
+ * registered.)
  *
  * "Continue with Google / GitHub" (`auth/ProviderButtons`) sit above the form,
  * under an "or", wherever it wears the translucent card (`appearance="glass"`):
@@ -179,10 +181,19 @@ export function SignInPanel({
       // the API has no field for it. It exists so a mistyped password is
       // caught here rather than becoming an account nobody can sign in to.
       const result = await register({ email, password, displayName });
+      const submitted = password;
       // Neither copy of the password outlives the request that used it.
       setPassword("");
       setConfirmPassword("");
-      onRegistered(result.verification);
+      if (result.verification) {
+        onRegistered(result.verification);
+      } else {
+        // This deployment does not require a proven address, so there is no
+        // code to enter. Sign in with the credentials just chosen, through the
+        // ordinary sign-in path: the server checks them against the stored
+        // hash exactly as it would on any later visit.
+        onSignIn(email, submitted);
+      }
     } catch {
       // The hook surfaces the error; nothing useful to add here, and inventing
       // a message would risk contradicting the backend's careful wording.

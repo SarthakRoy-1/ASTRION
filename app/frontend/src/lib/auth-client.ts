@@ -122,7 +122,12 @@ export interface RegistrationResult {
   status: string;
   message: string;
   email_sent: boolean;
-  verification: VerificationStatus;
+  /**
+   * The verification the server started, or `null` when this deployment does
+   * not require a proven address (`REQUIRE_VERIFIED_EMAIL=false`): there is
+   * then no code to enter and the caller signs in with the password it holds.
+   */
+  verification: VerificationStatus | null;
 }
 
 export function register(input: {
@@ -284,8 +289,46 @@ export function listWorkspaces(): Promise<WorkspaceListing> {
   return request<WorkspaceListing>("/api/workspaces");
 }
 
-export function createWorkspace(name: string): Promise<Workspace> {
-  return post<Workspace>("/api/workspaces", { name });
+export interface CreateWorkspaceInput {
+  name: string;
+  workspacePassword: string;
+  confirmWorkspacePassword: string;
+}
+
+/**
+ * Create a workspace. The response carries the generated `workspace_code`; the
+ * password is sent once, hashed by the server, and never comes back.
+ */
+export function createWorkspace(input: CreateWorkspaceInput): Promise<Workspace> {
+  return post<Workspace>("/api/workspaces", {
+    name: input.name,
+    workspace_password: input.workspacePassword,
+    confirm_workspace_password: input.confirmWorkspacePassword,
+  });
+}
+
+export interface JoinWorkspaceInput {
+  workspaceCode: string;
+  workspacePassword: string;
+}
+
+/** Join a workspace with its code and password. Needs a signed-in session. */
+export function joinWorkspace(input: JoinWorkspaceInput): Promise<Workspace> {
+  return post<Workspace>("/api/workspaces/join", {
+    workspace_code: input.workspaceCode,
+    workspace_password: input.workspacePassword,
+  });
+}
+
+/** Owner only. Replaces the password people join with; members are unaffected. */
+export function changeWorkspacePassword(
+  workspaceId: string,
+  input: { newPassword: string; confirmNewPassword: string },
+): Promise<{ status: string; workspace_id: string; workspace_code: string }> {
+  return post(`/api/workspaces/${encodeURIComponent(workspaceId)}/password`, {
+    new_password: input.newPassword,
+    confirm_new_password: input.confirmNewPassword,
+  });
 }
 
 export function renameWorkspace(
@@ -351,7 +394,7 @@ export function transferOwnership(
 
 export function listInvitations(
   workspaceId: string,
-): Promise<{ invitations: Invitation[] }> {
+): Promise<{ invitations: Invitation[]; invitations_enabled?: boolean }> {
   return request(
     `/api/workspaces/${encodeURIComponent(workspaceId)}/invitations`,
   );

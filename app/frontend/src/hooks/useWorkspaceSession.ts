@@ -33,6 +33,9 @@ import {
   activateWorkspace as apiActivate,
   cancelVerification as apiCancelVerification,
   createWorkspace as apiCreate,
+  joinWorkspace as apiJoin,
+  type CreateWorkspaceInput,
+  type JoinWorkspaceInput,
   demoSignIn as apiDemoSignIn,
   fetchSessionState,
   listWorkspaces,
@@ -80,6 +83,13 @@ export interface WorkspaceSession {
   oauthProviders: OAuthProvider[];
   /** The address being proven, while `stage` is `verify-email`. */
   verification: VerificationStatus | null;
+  /**
+   * The workspace just created, with the code to share, until the owner has
+   * seen it. Held here rather than in the form so it survives the screen
+   * changing under it; the owner can always read the code again on the
+   * Workspace page.
+   */
+  createdWorkspace: { name: string; code: string } | null;
   error: string | null;
   busy: boolean;
 
@@ -94,7 +104,11 @@ export interface WorkspaceSession {
   /** Leave the code screen and return to signing in. */
   abandonVerification(): Promise<void>;
   signOut(): Promise<void>;
-  createWorkspace(name: string): Promise<void>;
+  createWorkspace(input: CreateWorkspaceInput): Promise<void>;
+  /** Join a workspace with its code and password. */
+  joinWorkspace(input: JoinWorkspaceInput): Promise<void>;
+  /** The owner has seen the code; carry on into the workspace. */
+  dismissCreatedWorkspace(): void;
   switchWorkspace(workspaceId: string): Promise<void>;
   refresh(): Promise<void>;
   clearError(): void;
@@ -140,6 +154,10 @@ export function useWorkspaceSession(
   const [activeId, setActiveId] = useState<string | null>(null);
   const [authMode, setAuthMode] = useState<AuthMode | null>(null);
   const [verification, setVerification] = useState<VerificationStatus | null>(null);
+  const [createdWorkspace, setCreatedWorkspace] = useState<{
+    name: string;
+    code: string;
+  } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -328,19 +346,34 @@ export function useWorkspaceSession(
         setUser(null);
         setWorkspaces([]);
         setActiveId(null);
+        setCreatedWorkspace(null);
         setStage("signed-out");
       }),
     [run],
   );
 
   const createWorkspace = useCallback(
-    (name: string) =>
+    (input: CreateWorkspaceInput) =>
       run(async () => {
-        await apiCreate(name);
+        const created = await apiCreate(input);
+        if (alive.current && created.workspace_code) {
+          setCreatedWorkspace({ name: created.name, code: created.workspace_code });
+        }
         await load("session");
       }),
     [load, run],
   );
+
+  const joinWorkspace = useCallback(
+    (input: JoinWorkspaceInput) =>
+      run(async () => {
+        await apiJoin(input);
+        await load("session");
+      }),
+    [load, run],
+  );
+
+  const dismissCreatedWorkspace = useCallback(() => setCreatedWorkspace(null), []);
 
   const switchWorkspace = useCallback(
     (workspaceId: string) =>
@@ -391,6 +424,7 @@ export function useWorkspaceSession(
       (p): p is OAuthProvider => p === "google" || p === "github",
     ),
     verification,
+    createdWorkspace,
     error,
     busy,
     signIn,
@@ -401,6 +435,8 @@ export function useWorkspaceSession(
     abandonVerification,
     signOut,
     createWorkspace,
+    joinWorkspace,
+    dismissCreatedWorkspace,
     switchWorkspace,
     refresh,
     clearError: () => setError(null),
