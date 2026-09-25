@@ -402,16 +402,15 @@ describe("registering with an email address", () => {
     const stub = stubBackend();
     renderApp(<GetStartedPage />);
 
-    // Account creation offers no provider controls: they belong to the sign-in page.
     await screen.findByLabelText(/your name/i);
-    expect(screen.queryByRole("button", { name: /continue with (google|github)/i })).toBeNull();
     await user.type(screen.getByLabelText(/your name/i), "Sam");
-    await user.type(screen.getByLabelText(/^email$/i), "sam@example.com");
+    await user.type(screen.getByLabelText(/^work email address$/i), "sam@example.com");
     await user.type(screen.getByLabelText(/^password$/i), "correct-horse-battery");
     await user.type(screen.getByLabelText(/confirm password/i), "correct-horse-battery");
     await user.click(screen.getByRole("button", { name: /^create account$/i }));
 
-    expect(await screen.findByRole("heading", { level: 1, name: /verify your email/i })).toBeInTheDocument();
+    // The code screen wears the same scene: the page's headline is the h1.
+    expect(await screen.findByRole("heading", { level: 2, name: /verify your email/i })).toBeInTheDocument();
     expect(screen.getByText("s••••@example.com")).toBeInTheDocument();
     // The response carried no code, and the page shows none.
     expect(document.body.textContent).not.toContain(CODE);
@@ -424,22 +423,108 @@ describe("registering with an email address", () => {
   });
 });
 
+/** The visible surface of the sign-in card that `/sign-in` and `/get-started` share. */
+function authSurface() {
+  const google = screen.getByRole("button", { name: /continue with google/i });
+  const github = screen.getByRole("button", { name: /continue with github/i });
+  const separator = screen.getByRole("separator", { name: /or/i });
+  return {
+    google,
+    github,
+    separator,
+    email: screen.getByLabelText(/^work email address$/i),
+    password: screen.getByLabelText(/^password$/i),
+    footer: screen.getByRole("list", { name: /site information/i }),
+    headline: screen.getByRole("heading", { level: 1 }).textContent,
+  };
+}
+
 describe("/get-started", () => {
-  it("has no Google or GitHub controls, on either tab, and no 'or' divider", async () => {
-    const user = userEvent.setup();
+  it("offers the same provider surface as /sign-in", async () => {
+    setTestRoute("/sign-in");
+    stubBackend({ providers: ["google", "github"] });
+    const signIn = renderApp(<SignInPage />);
+    await screen.findByRole("button", { name: /continue with google/i });
+    const onSignIn = authSurface();
+    const signInFooter = onSignIn.footer.textContent;
+    signIn.unmount();
+
     setTestRoute("/get-started");
     stubBackend({ providers: ["google", "github"] });
     renderApp(<GetStartedPage />);
-
     await screen.findByLabelText(/your name/i);
-    const providers = () => screen.queryAllByRole("button", { name: /continue with/i });
-    expect(providers()).toHaveLength(0);
-    expect(screen.queryByRole("separator")).toBeNull();
+    const onGetStarted = authSurface();
 
-    // The "Sign in" tab of the account form is still not the sign-in page.
-    await user.click(screen.getByRole("tab", { name: /^sign in$/i }));
-    expect(providers()).toHaveLength(0);
-    expect(screen.queryByRole("separator")).toBeNull();
+    expect(onGetStarted.google).toBeEnabled();
+    expect(onGetStarted.github).toBeEnabled();
+    expect(onGetStarted.separator).toBeInTheDocument();
+    expect(onGetStarted.email).toBeInTheDocument();
+    // Same scene — footer, skip link, header — with only the hero's wording
+    // following the route.
+    expect(onSignIn.headline).toBe("Welcome Back to Astrion");
+    expect(onGetStarted.headline).toBe("Welcome to Astrion");
+    expect(screen.getByRole("navigation", { name: /primary|main|site/i })).toBeInTheDocument();
+    // Not the old split-screen registration page.
+    expect(screen.queryByText(/grounded operations intelligence/i)).toBeNull();
+    expect(screen.queryByText(/build what.s next/i)).toBeNull();
+    expect(onGetStarted.footer.textContent).toBe(signInFooter);
+    expect(screen.getByRole("link", { name: /skip to main content/i })).toBeInTheDocument();
+  });
+
+  it("reads providers, the divider, then the account form, in that order", async () => {
+    setTestRoute("/get-started");
+    stubBackend({ providers: ["google", "github"] });
+    renderApp(<GetStartedPage />);
+    await screen.findByLabelText(/your name/i);
+    const { google, github, separator, email, password } = authSurface();
+
+    const order = [google, github, separator, screen.getByLabelText(/your name/i), email, password];
+    for (let i = 1; i < order.length; i += 1) {
+      expect(
+        order[i - 1]!.compareDocumentPosition(order[i]!) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+    }
+    // Account creation, not the sign-in form, and no tabs to switch it.
+    expect(screen.getByRole("heading", { level: 2, name: /create your account/i })).toBeInTheDocument();
+    expect(screen.getByLabelText(/confirm password/i)).toBeInTheDocument();
+    expect(screen.queryByRole("tablist")).toBeNull();
+    const switchLine = screen.getByText(/already have an account/i);
+    expect(within(switchLine).getByRole("link", { name: /^sign in$/i })).toHaveAttribute("href", "/sign-in");
+  });
+
+  it("shows an unconfigured provider as unavailable, as /sign-in does", async () => {
+    setTestRoute("/get-started");
+    stubBackend({ providers: ["github"] });
+    renderApp(<GetStartedPage />);
+    const google = await screen.findByRole("button", { name: /continue with google/i });
+    expect(google).toBeDisabled();
+    expect(google).toHaveAccessibleDescription(/google sign-in isn.t set up/i);
+    expect(screen.getByRole("button", { name: /continue with github/i })).toBeEnabled();
+  });
+
+  it("says why a provider sign-in came back, and clears it from the address bar", async () => {
+    window.history.replaceState(null, "", "/get-started?auth_error=oauth_cancelled");
+    setTestRoute("/get-started");
+    stubBackend();
+    renderApp(<GetStartedPage />);
+    expect(await screen.findByRole("alert")).toHaveTextContent(/sign-in was cancelled/i);
+    expect(window.location.search).toBe("");
+  });
+
+  it("keeps the registration validation", async () => {
+    const user = userEvent.setup();
+    setTestRoute("/get-started");
+    const stub = stubBackend();
+    renderApp(<GetStartedPage />);
+
+    await user.type(await screen.findByLabelText(/your name/i), "Sam");
+    await user.type(screen.getByLabelText(/^work email address$/i), "sam@example.com");
+    await user.type(screen.getByLabelText(/^password$/i), "short");
+    await user.type(screen.getByLabelText(/confirm password/i), "short");
+    await user.click(screen.getByRole("button", { name: /^create account$/i }));
+
+    expect(await screen.findByText("Password must be at least 8 characters.")).toBeInTheDocument();
+    expect(stub.calls.some((c) => c.url.includes("/api/auth/register"))).toBe(false);
   });
 });
 

@@ -83,17 +83,19 @@ const MIN_PASSWORD_LENGTH = 8;
  * registered, unable to sign in, and told only "Incorrect email address or
  * password."
  *
- * "Continue with Google / GitHub" (`auth/ProviderButtons`) sit above the form
- * on the sign-in page only (`appearance="glass"`); `/get-started` is the
- * account-creation form and offers no provider controls. A provider sign-in
- * that comes back with an error leaves a fixed code in the URL, which is read
- * once, mapped to wording written here, and removed from the address bar.
+ * "Continue with Google / GitHub" (`auth/ProviderButtons`) sit above the form,
+ * under an "or", wherever it wears the translucent card (`appearance="glass"`):
+ * both `/sign-in` and `/get-started`. A provider sign-in that comes back with
+ * an error leaves a fixed code in the URL, which is read once, mapped to
+ * wording written here, and removed from the address bar.
  *
- * `appearance="glass"` is the same form dressed for the sign-in page's
- * translucent card (`auth/SignInScene`): sign-in only — registration is the
- * "Create one" link to `/get-started` — with the page's headline as the
- * `h1` and the form's title as an `h2`. Every handler, validation and message
- * is shared; only the presentation differs.
+ * `appearance="glass"` is the same form dressed for the public site's
+ * translucent card (`auth/SignInScene`), with the page's headline as the `h1`
+ * and the form's title as an `h2`. `initialMode` picks what the card is:
+ * `/sign-in` opens it on sign-in, `/get-started` on account creation (name,
+ * password and confirmation), each with a link to the other instead of tabs.
+ * Every handler, validation and message is shared; only the presentation
+ * differs.
  */
 export function SignInPanel({
   stage,
@@ -232,8 +234,8 @@ export function SignInPanel({
     );
   }
 
-  // The glass form signs in only; registration has its own page.
-  const registering = !glass && mode === "register";
+  // On glass there are no tabs: `initialMode` alone says which form this is.
+  const registering = mode === "register";
 
   return (
     <div className={panelClass}>
@@ -390,7 +392,15 @@ export function SignInPanel({
 
       {glass ? (
         <p className={styles.switch}>
-          Don’t have an account? <Link href="/get-started">Create one</Link>
+          {registering ? (
+            <>
+              Already have an account? <Link href="/sign-in">Sign in</Link>
+            </>
+          ) : (
+            <>
+              Don’t have an account? <Link href="/get-started">Create one</Link>
+            </>
+          )}
         </p>
       ) : (
         <p className={styles.footnote}>
