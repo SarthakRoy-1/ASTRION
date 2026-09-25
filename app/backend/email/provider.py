@@ -18,6 +18,13 @@ from typing import Protocol
 logger = logging.getLogger("astrion.email")
 
 
+#: Logged at ERROR on every attempted send with no provider, because "the email
+#: didn't send" with nothing in the log is how a missing key goes unnoticed.
+NO_PROVIDER_LOG = (
+    "email.null_provider: cannot send, RESEND_API_KEY is not set on this deployment"
+)
+
+
 class EmailDeliveryError(RuntimeError):
     """Raised when the provider could not deliver (or is not configured)."""
 
@@ -65,9 +72,7 @@ class NullEmailProvider:
         display_name: str,
         verification_url: str,
     ) -> None:
-        logger.debug(
-            "email.null_provider: no delivery configured (to=%s)", to_address
-        )
+        logger.error(NO_PROVIDER_LOG)
         raise EmailDeliveryError(
             "No email provider is configured. Set RESEND_API_KEY to enable delivery."
         )
@@ -80,7 +85,7 @@ class NullEmailProvider:
         code: str,
         expires_minutes: int,
     ) -> None:
-        logger.debug("email.null_provider: no delivery configured for a code")
+        logger.error(NO_PROVIDER_LOG)
         raise EmailDeliveryError(
             "No email provider is configured. Set RESEND_API_KEY to enable delivery."
         )

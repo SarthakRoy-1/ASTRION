@@ -318,3 +318,12 @@ can be done from this repository:
    default, Chrome in some modes) affect every sign-in method equally on a
    split-site deployment. Serving the API under the frontend's site (for
    example `api.<your-domain>`) removes the dependency.
+6. **When a provider sign-in fails:** the application log says how each callback
+   ended (`oauth github callback: session started`, or `... no verified address`,
+   or `oauth github sign-in failed: <detail>`), and each failure is a
+   `login.oauth_failed` audit entry whose `detail` carries the status and the
+   provider's own error code (for example `redirect_uri_mismatch` for a callback
+   URL that is not the registered one, `incorrect_client_credentials` for a wrong
+   secret). Neither ever holds a code, token, secret or address. On startup a
+   production deployment that requires verified email but has no `RESEND_API_KEY`
+   (or still uses the placeholder `EMAIL_FROM`) logs a warning saying so.

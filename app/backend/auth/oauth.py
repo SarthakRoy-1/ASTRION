@@ -41,6 +41,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import logging
+import re
 import sqlite3
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -109,6 +110,24 @@ class ProviderProfile:
 
 def _now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+_PROVIDER_ERROR_CODE = re.compile(r"^[a-z][a-z0-9_]{0,63}$")
+
+
+def _provider_error(payload) -> str:
+    """The provider's own machine-readable reason for refusing, or "".
+
+    GitHub answers a rejected token exchange with HTTP 200 and `{"error": ...}`
+    (`redirect_uri_mismatch`, `incorrect_client_credentials`,
+    `bad_verification_code`), and Google with a 4xx carrying the same field. Those
+    are fixed lowercase codes, the difference between "the callback URL is not
+    the one registered" and "the secret is wrong", so they are kept. Anything
+    that does not look like such a code is dropped rather than trusted, and the
+    free-text `error_description` is never read.
+    """
+    error = payload.get("error") if isinstance(payload, dict) else None
+    return error if isinstance(error, str) and _PROVIDER_ERROR_CODE.match(error) else ""
 
 
 def _client_credentials(settings, provider: str) -> tuple[str, str]:
@@ -248,12 +267,24 @@ def fetch_profile(
             headers={"Accept": "application/json"},
         )
         if token_response.status_code != 200:
-            raise OAuthError("oauth_failed", f"token endpoint {token_response.status_code}")
+            try:
+                reason = _provider_error(token_response.json())
+            except ValueError:
+                reason = ""
+            raise OAuthError(
+                "oauth_failed",
+                f"token endpoint {token_response.status_code}"
+                + (f" ({reason})" if reason else ""),
+            )
         payload = token_response.json()
         access_token = payload.get("access_token") if isinstance(payload, dict) else None
         if not access_token:
             # GitHub answers a bad code with 200 and {"error": ...}.
-            raise OAuthError("oauth_failed", "no access token in token response")
+            reason = _provider_error(payload)
+            raise OAuthError(
+                "oauth_failed",
+                "no access token in token response" + (f" ({reason})" if reason else ""),
+            )
 
         headers = {"Authorization": f"Bearer {access_token}", "Accept": "application/json"}
         profile_response = client.get(endpoints.profile_url, headers=headers)

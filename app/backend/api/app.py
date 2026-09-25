@@ -150,6 +150,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # successfully — so it must not start at all.
     settings.validate_auth()
     settings.validate_cors()
+    for warning in settings.email_configuration_warnings():
+        logging.getLogger("astrion.email").warning(warning)
 
     logging.getLogger("astrion").setLevel(logging.INFO)
     access_log = logging.getLogger("uvicorn.access")

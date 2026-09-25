@@ -540,13 +540,20 @@ def oauth_callback(
     _known_provider(provider)
     ip = client_address(request)
 
-    def fail(reason: str) -> RedirectResponse:
+    def fail(reason: str, detail: str = "") -> RedirectResponse:
+        details = {"provider": provider, "reason": reason}
+        if detail:
+            # Only ever an `OAuthError`'s detail: a status code, an exception
+            # class or a provider's fixed error code, never a token, a code or
+            # anything the visitor typed. It is what tells "wrong secret" from
+            # "wrong callback URL" after the fact.
+            details["detail"] = detail[:200]
         record_event(
             conn,
             AuditEvent.OAUTH_FAILED,
             outcome=AuditOutcome.FAILURE,
             ip_hash=hash_identifier(ip),
-            details={"provider": provider, "reason": reason},
+            details=details,
         )
         response = _oauth_failure(settings, reason)
         response.delete_cookie(oauth_state_cookie_name(settings), path="/api/auth/oauth")
@@ -582,7 +589,7 @@ def oauth_callback(
     except oauth.OAuthError as exc:
         # The detail names a status code or exception class, never a token.
         logger.warning("oauth %s sign-in failed: %s", provider, exc)
-        return fail(exc.code)
+        return fail(exc.code, str(exc))
 
     if user is None:
         # No verified address from the provider: prove one by code first.
@@ -594,6 +601,7 @@ def oauth_callback(
             provider_subject=profile.subject,
             provider_display_name=profile.display_name,
         )
+        logger.info("oauth %s callback: no verified address; asking for one", provider)
         response = _frontend_redirect(settings, auth="verify_email")
         _set_verification_cookie(response, settings, token)
     else:
@@ -604,6 +612,7 @@ def oauth_callback(
             client_ip=ip,
             user_agent=request.headers.get("user-agent"),
         )
+        logger.info("oauth %s callback: session started", provider)
         response = _frontend_redirect(settings)
         _set_session_cookie(
             response, settings, result.session_token,

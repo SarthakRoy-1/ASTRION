@@ -11,6 +11,7 @@ key is never logged, never included in error messages.
 from __future__ import annotations
 
 import logging
+import re
 
 from app.backend.email.provider import EmailDeliveryError
 from app.backend.email.templates import (
@@ -22,6 +23,30 @@ from app.backend.email.templates import (
 )
 
 logger = logging.getLogger("astrion.email.resend")
+
+_DIGIT_RUN = re.compile(r"\d{4,}")
+
+
+def describe_failure(exc: BaseException) -> str:
+    """What to log about a failed send: the provider's own reason, and nothing else.
+
+    A Resend API rejection ("the domain is not verified", "you can only send to
+    your own address while testing", a bad key) carries its reason in the SDK's
+    error object, which comes from the API's *response*. That is the one thing
+    an operator needs and the old log line ("ResendError") discarded. Anything
+    that is not the provider's own error (a network failure, say) is reported
+    by class name only, because those messages can echo the request. Digit runs
+    are masked in any case, so a code could never reach a log.
+    """
+    name = type(exc).__name__
+    if not type(exc).__module__.startswith("resend"):
+        return name
+    parts = [name]
+    for attribute in ("code", "error_type", "message"):
+        value = getattr(exc, attribute, None)
+        if value not in (None, ""):
+            parts.append(f"{attribute}={_DIGIT_RUN.sub('#', str(value))[:300]}")
+    return " ".join(parts)
 
 
 class ResendEmailProvider:
@@ -69,7 +94,7 @@ class ResendEmailProvider:
             logger.error(
                 "email.resend: delivery failed to=%s reason=%s",
                 to_address,
-                type(exc).__name__,
+                describe_failure(exc),
             )
             raise EmailDeliveryError(
                 f"Email delivery failed ({type(exc).__name__}). "
@@ -113,10 +138,11 @@ class ResendEmailProvider:
                 to_address.rsplit("@", 1)[-1],
             )
         except Exception as exc:
-            # The exception text is not logged or re-raised: some SDK versions
-            # echo the request body, which carries the code.
+            # Only the provider's own reason is logged (see `describe_failure`);
+            # the raw exception text is not, because some SDK versions echo the
+            # request body, which carries the code.
             logger.error(
-                "email.resend: code delivery failed reason=%s", type(exc).__name__
+                "email.resend: code delivery failed reason=%s", describe_failure(exc)
             )
             raise EmailDeliveryError(
                 f"Email delivery failed ({type(exc).__name__})."

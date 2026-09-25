@@ -159,6 +159,11 @@ def _repo_relative(raw: str | None, default: Path) -> Path:
     return path if path.is_absolute() else (REPO_ROOT / path).resolve()
 
 
+#: The sender used when `EMAIL_FROM` is not set. Resend only sends from a domain
+#: verified on the account, so on a real deployment this is a placeholder.
+DEFAULT_EMAIL_FROM = "ASTRION <noreply@astrion.app>"
+
+
 class Settings(BaseModel):
     """Resolved runtime configuration. Frozen: nothing reconfigures mid-run."""
 
@@ -271,9 +276,9 @@ class Settings(BaseModel):
     #: Never serialised into a response; `repr=False` keeps it out of logs.
     resend_api_key: str | None = Field(default=None, repr=False)
     #: RFC 5322 "Name <address>" form, or just an address.
-    email_from: str = "ASTRION <noreply@astrion.app>"
+    email_from: str = DEFAULT_EMAIL_FROM
     #: Base URL for verification links — must be the frontend origin.
-    #: Example: https://parcelpilot-taupe.vercel.app (Vercel legacy URL during transition)
+    #: Example: https://astrion-app.vercel.app
     email_verification_url: str = "http://localhost:3000"
     #: Development only: write outgoing mail to this directory instead of
     #: sending it, so the verification code can be read without a provider.
@@ -373,6 +378,30 @@ class Settings(BaseModel):
         spelling of production is a control that silently does not apply.
         """
         return self.app_env.strip().lower() in {"prod", "production", "live"}
+
+    def email_configuration_warnings(self) -> list[str]:
+        """Problems that will make verification emails fail, for the startup log.
+
+        These are warnings, not errors: a deployment may deliberately run with
+        `REQUIRE_VERIFIED_EMAIL=false` and no mail. But when verification is
+        required and mail cannot go out, every registration ends at "the email
+        didn't send", and nothing else in the process says why.
+        """
+        if not self.is_production or not self.require_verified_email:
+            return []
+        warnings: list[str] = []
+        if not self.resend_api_key:
+            warnings.append(
+                "RESEND_API_KEY is not set: verification codes cannot be emailed, so "
+                "email registration and GitHub sign-in without a verified address "
+                "cannot complete."
+            )
+        elif self.email_from == DEFAULT_EMAIL_FROM:
+            warnings.append(
+                f"EMAIL_FROM is not set; mail is sent from the default {self.email_from!r}. "
+                "Resend rejects a sender whose domain is not verified on the account."
+            )
+        return warnings
 
     def validate_auth(self) -> None:
         """Refuse a configuration that would serve real users without a login.
@@ -597,7 +626,7 @@ def load_settings(*, env_file: Path | str | None = None) -> Settings:
         hsts_enabled=_env_bool("HSTS_ENABLED", False),
         hsts_max_age_seconds=_env_int("HSTS_MAX_AGE_SECONDS", 63_072_000),
         resend_api_key=_env("RESEND_API_KEY"),
-        email_from=_env("EMAIL_FROM", "ASTRION <noreply@astrion.app>") or "ASTRION <noreply@astrion.app>",
+        email_from=_env("EMAIL_FROM", DEFAULT_EMAIL_FROM) or DEFAULT_EMAIL_FROM,
         email_verification_url=_env("EMAIL_VERIFICATION_URL", "http://localhost:3000") or "http://localhost:3000",
         email_outbox_dir=(
             _repo_relative(_env("EMAIL_OUTBOX_DIR"), REPO_ROOT)

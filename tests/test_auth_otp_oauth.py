@@ -817,3 +817,81 @@ def test_codes_are_not_logged(env, caplog):
         verify(env, wrong_code(code))
         verify(env, code)
     assert code not in _application_log(caplog)
+
+
+# --- what a failed provider sign-in leaves behind ------------------------------------
+#
+# In production a GitHub sign-in ended at the sign-in page and the only record was
+# "oauth_failed": GitHub refuses a bad token exchange with HTTP 200 and an `error`
+# code, which was discarded, so "wrong callback URL" and "wrong secret" looked alike.
+
+
+def _last_oauth_failure(db) -> dict:
+    import json
+
+    row = db.execute(
+        "SELECT detail_json FROM audit_log WHERE event_type = 'login.oauth_failed' "
+        "ORDER BY seq DESC LIMIT 1"
+    ).fetchone()
+    assert row is not None, "no failure was recorded"
+    return json.loads(row["detail_json"])
+
+
+def test_a_github_refusal_recorded_with_the_providers_own_error_code(env, db, monkeypatch):
+    import httpx
+
+    def refuse(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "error": "redirect_uri_mismatch",
+                "error_description": "free text with a code 482913 in it",
+            },
+        )
+
+    env.app.state.oauth_http = httpx.Client(transport=httpx.MockTransport(refuse))
+    response = sign_in_with(env, "github", code="very-secret-authorization-code")
+
+    assert response.headers["location"] == f"{FRONTEND}/sign-in?auth_error=oauth_failed"
+    recorded = _last_oauth_failure(db)
+    assert recorded["provider"] == "github"
+    assert "redirect_uri_mismatch" in recorded["detail"]
+    blob = str(recorded)
+    for never in ("482913", "free text", "very-secret-authorization-code", "github-client-secret-value"):
+        assert never not in blob
+
+
+def test_a_provider_error_code_that_is_not_a_plain_code_is_not_trusted(env, db):
+    import httpx
+
+    def odd(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"error": "<script>alert(1)</script> ` SELECT"})
+
+    env.app.state.oauth_http = httpx.Client(transport=httpx.MockTransport(odd))
+    sign_in_with(env, "github")
+
+    recorded = _last_oauth_failure(db)
+    assert "script" not in recorded["detail"] and "SELECT" not in recorded["detail"]
+    assert recorded["detail"].startswith("no access token in token response")
+
+
+def test_a_non_200_token_response_records_its_status_and_code(env, db):
+    env.provider.token_status = 400
+    sign_in_with(env, "google")
+
+    recorded = _last_oauth_failure(db)
+    assert "token endpoint 400" in recorded["detail"]
+    assert "invalid_grant" in recorded["detail"]
+
+
+def test_a_successful_callback_says_so_in_the_log_without_naming_anyone(env, caplog):
+    env.provider.github_user = {"id": 4242, "name": "Gina Hub", "login": "ginahub"}
+    env.provider.github_emails = [
+        {"email": "gina@example.com", "primary": True, "verified": True}
+    ]
+    with caplog.at_level("INFO", logger="astrion.auth"):
+        sign_in_with(env, "github")
+
+    log = _application_log(caplog)
+    assert "oauth github callback: session started" in log
+    assert "gina@example.com" not in log and "ginahub" not in log
