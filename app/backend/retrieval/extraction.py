@@ -47,7 +47,12 @@ from app.backend.ingestion.safety import (
     check_expansion,
     detect_type,
 )
-from app.backend.models.documents import Document, DocumentChunk
+from app.backend.models.documents import (
+    Document,
+    DocumentChunk,
+    DocumentStatus,
+    DocumentType,
+)
 from app.backend.retrieval.authority import (
     UnknownAuthorityError,
     authority_tier_for,
@@ -193,6 +198,15 @@ def _page_text_and_spans(lines: list[_Line]) -> tuple[str, list[tuple[int, int]]
     return "\n".join(line.text for line in lines), spans
 
 
+def _is_known_type(title: str) -> bool:
+    """Whether a title marks a controlled document type (policy, SOP, guide)."""
+    try:
+        classify_document_type(title=title, has_account=False)
+    except UnknownAuthorityError:
+        return False
+    return True
+
+
 def _extract_preamble_metadata(lines: list[_Line]) -> tuple[str, dict[str, str]]:
     """Title and `Key: Value` pairs from the lines above the first section
     heading. Returns ("", {}) shapes rather than inventing defaults."""
@@ -299,17 +313,71 @@ def _open(pdf_path: Path) -> pymupdf.Document:
     return document
 
 
-def extract_document(pdf_path: Path, *, source_sha256: str | None = None) -> ExtractedDocument:
+_UUID_PREFIX_RE = re.compile(r"^[0-9a-f]{32}_")
+_GENERIC_TITLE_RE = re.compile(
+    r"^(untitled\b.*|microsoft word\s*-.*|.*\.(docx?|pdf|indd|pages|rtf|txt|xlsx?|pptx?))$",
+    re.IGNORECASE,
+)
+MAX_TITLE_CHARS = 200
+UNSTATED_STATUS_RAW = "(not stated)"
+
+
+def title_from_filename(filename: str) -> str:
+    """A readable title from a file name: extension and upload prefix removed,
+    separators turned into spaces. Nothing is invented; only what the name says."""
+    stem = _UUID_PREFIX_RE.sub("", Path(filename).stem)
+    title = re.sub(r"[\s_\-]+", " ", stem).strip()
+    return title[:MAX_TITLE_CHARS] or "Uploaded document"
+
+
+def _usable_embedded_title(raw: str | None) -> str | None:
+    """A PDF's own Title field, if it reads like a title.
+
+    Authoring tools fill this in carelessly ("Microsoft Word - draft.docx",
+    "Untitled"), so a value that is empty, a file name, or a placeholder is
+    treated as absent rather than trusted.
+    """
+    if not raw:
+        return None
+    title = _normalise(raw)
+    if len(title) < 3 or not any(ch.isalpha() for ch in title):
+        return None
+    if _GENERIC_TITLE_RE.match(title):
+        return None
+    return title[:MAX_TITLE_CHARS]
+
+
+def extract_document(
+    pdf_path: Path,
+    *,
+    source_sha256: str | None = None,
+    fallback_name: str | None = None,
+) -> ExtractedDocument:
     """Read one PDF into a Document plus its section-aware chunks.
 
     Raises DocumentIngestionError if the file is missing, unreadable, has no
     extractable text, or lacks the title/status the authority model needs.
+
+    By default this is strict: it is how the platform's own controlled pack is
+    read, and every document there must state its title and status.
+
+    `fallback_name` (the uploader's original file name) is passed for a
+    workspace's own upload and relaxes exactly two things, neither of which
+    touches authority:
+
+    - No title found: the PDF's own Title field, then the file name, names it.
+    - A document that states no `Status:`, names no `Account:` and matches no
+      known document type is kept as a non-authoritative *reference*: it can be
+      retrieved as context and can never govern an answer. A document that does
+      claim a type or an account but omits its status is still refused, because
+      that is a controlled document whose authority cannot be determined.
     """
     pdf_path = Path(pdf_path)
     doc = _open(pdf_path)
     try:
         pages_lines = _load_lines(doc)
         page_count = doc.page_count
+        embedded_title = (doc.metadata or {}).get("title")
     finally:
         doc.close()
 
@@ -331,22 +399,47 @@ def extract_document(pdf_path: Path, *, source_sha256: str | None = None) -> Ext
     except UnsafeFileError as exc:
         raise DocumentIngestionError(str(exc)) from exc
 
+    admit_reference = fallback_name is not None
     title, metadata = _extract_preamble_metadata(pages_lines[0])
+    # A title the document supplies itself may classify it; one taken from the
+    # file name never does (a renamed file must not change a document's
+    # authority, see authority.classify_document_type).
+    title_is_own = bool(title)
+    if not title and admit_reference:
+        embedded = _usable_embedded_title(embedded_title)
+        title = embedded or title_from_filename(fallback_name)
+        title_is_own = embedded is not None
     if not title:
         raise DocumentIngestionError(f"{source_file}: no document title found")
 
     status_raw = metadata.get("status")
-    if status_raw is None:
-        raise DocumentIngestionError(
-            f"{source_file}: preamble states no 'Status:' — authority cannot be determined"
-        )
-
     account_id = metadata.get("account")
-    try:
-        status = normalise_status(status_raw)
-        document_type = classify_document_type(title=title, has_account=account_id is not None)
-    except UnknownAuthorityError as exc:
-        raise DocumentIngestionError(f"{source_file}: {exc}") from exc
+    if (
+        status_raw is None
+        and admit_reference
+        and account_id is None
+        and not (title_is_own and _is_known_type(title))
+    ):
+        status_raw = UNSTATED_STATUS_RAW
+        status = DocumentStatus.UNSTATED
+        document_type = DocumentType.REFERENCE
+    else:
+        if not title_is_own and account_id is None:
+            raise DocumentIngestionError(
+                f"{source_file}: no document title found — a document that states "
+                "its authority must also state its title"
+            )
+        if status_raw is None:
+            raise DocumentIngestionError(
+                f"{source_file}: preamble states no 'Status:' — authority cannot be determined"
+            )
+        try:
+            status = normalise_status(status_raw)
+            document_type = classify_document_type(
+                title=title, has_account=account_id is not None
+            )
+        except UnknownAuthorityError as exc:
+            raise DocumentIngestionError(f"{source_file}: {exc}") from exc
 
     effective_raw = metadata.get("effective")
     updated_raw = metadata.get("updated")

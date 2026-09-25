@@ -50,9 +50,16 @@ def sha256_bytes(content: bytes) -> str:
 
 
 def extract_from_bytes(
-    content: bytes, *, source_file: str, expected_sha256: str | None = None
+    content: bytes,
+    *,
+    source_file: str,
+    expected_sha256: str | None = None,
+    fallback_name: str | None = None,
 ) -> ExtractedDocument:
     """Extract a document that is in memory, via a private temporary file.
+
+    `fallback_name` is the uploader's original file name; see `extract_document`
+    for what passing it allows.
 
     The parser wants a path; the file exists only for the duration of the call,
     in a directory nobody else can see, and is gone whether extraction succeeds
@@ -69,7 +76,7 @@ def extract_from_bytes(
     ) as directory:
         path = Path(directory) / source_file
         path.write_bytes(content)
-        return extract_document(path, source_sha256=digest)
+        return extract_document(path, source_sha256=digest, fallback_name=fallback_name)
 
 
 def _referenced(conn: sqlite3.Connection, key: str) -> bool:

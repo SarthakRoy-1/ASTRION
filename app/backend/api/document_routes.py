@@ -223,7 +223,9 @@ def upload_document(
     source_file = f"{uuid.uuid4().hex}_{safe_filename}"
 
     try:
-        extracted = extract_from_bytes(content_bytes, source_file=source_file)
+        extracted = extract_from_bytes(
+            content_bytes, source_file=source_file, fallback_name=safe_filename
+        )
         _require_account_in_workspace(conn, caller, extracted.document.account_id)
         result = store_and_ingest(
             conn,
@@ -302,7 +304,10 @@ def reindex_documents(request: Request, conn: sqlite3.Connection = DbDep) -> dic
         try:
             content = read_verified(store, doc.storage_key, doc.source_sha256)
             extracted = extract_from_bytes(
-                content, source_file=doc.source_file, expected_sha256=doc.source_sha256
+                content,
+                source_file=doc.source_file,
+                expected_sha256=doc.source_sha256,
+                fallback_name=doc.original_filename or doc.source_file,
             )
         except (ObjectNotFound, ChecksumMismatch, StorageError, DocumentIngestionError) as exc:
             logger.warning("reindex skipped %s: %s", doc.document_id, exc)

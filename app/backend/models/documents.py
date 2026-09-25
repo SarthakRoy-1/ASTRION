@@ -29,16 +29,24 @@ class DocumentType(StrEnum):
     SUPPORT_POLICY = "support_policy"
     SOP = "sop"
     PRODUCT_DOCUMENTATION = "product_documentation"
+    # A document that states no authority and matches no known type. Kept and
+    # searchable, but only ever context: see `DocumentStatus.UNSTATED`.
+    REFERENCE = "reference"
 
 
 class DocumentStatus(StrEnum):
     """The `Status:` value stated in the document preamble, normalised to its
     leading keyword (e.g. "DEPRECATED - DO NOT USE FOR CURRENT REQUESTS"
-    normalises to DEPRECATED). The full original string is kept alongside."""
+    normalises to DEPRECATED). The full original string is kept alongside.
+
+    `UNSTATED` is never read from a document: it is what a workspace's own
+    upload that says nothing about its authority is recorded as. It is not in
+    force, so it can inform an answer but never govern one."""
 
     CURRENT = "CURRENT"
     ACTIVE = "ACTIVE"
     DEPRECATED = "DEPRECATED"
+    UNSTATED = "UNSTATED"
 
 
 class AuthorityTier(IntEnum):

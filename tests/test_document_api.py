@@ -516,3 +516,78 @@ def test_a_tampered_original_is_skipped_by_reindex_not_trusted(session_client_fo
     # The document's extracted text is what it was; the swapped bytes were never parsed into it.
     document_id = next(d for d in ids(owner_a) if d.endswith("tamper_agreement"))
     assert owner_a.get(f"/api/documents/{document_id}/chunks").json()["chunks"]
+
+
+def plain_letter_pdf(path):
+    """An ordinary letter: no title, no headings, no Status."""
+    from conftest import write_pdf
+
+    write_pdf(
+        path,
+        [[
+            ("Dear Hiring Manager,", 11, False),
+            ("I am writing to apply for the Support Engineer role.", 11, False),
+            ("Sincerely, Sarthak Roy", 11, False),
+        ]],
+    )
+    return path
+
+
+def test_an_ordinary_pdf_with_no_title_or_status_is_kept_as_a_reference(
+    session_client_for, tmp_path, uploads_dir
+):
+    """The production failure: 'no document title found' for a cover letter."""
+    owner_a, owner_b = session_client_for("a"), session_client_for("b")
+    before_a, before_b = ids(owner_a), ids(owner_b)
+    pdf = plain_letter_pdf(tmp_path / "Sarthak_Roy_Rippling_Cover_Letter.pdf")
+
+    response = upload(owner_a, pdf)
+
+    assert response.status_code == 200, response.text
+    (document_id,) = ids(owner_a) - before_a
+    document = owner_a.get(f"/api/documents/{document_id}").json()
+    assert document["title"] == "Sarthak Roy Rippling Cover Letter"
+    assert document["original_filename"] == "Sarthak_Roy_Rippling_Cover_Letter.pdf"
+    assert document["document_type"] == "reference"
+    assert document["status"] == "UNSTATED"
+    assert document["is_authoritative"] is False
+    assert document["is_system_document"] is False
+    # Workspace isolation is unchanged: the other workspace sees nothing of it.
+    assert ids(owner_b) == before_b
+    assert owner_b.get(f"/api/documents/{document_id}").status_code == 404
+    assert len(stored_keys(uploads_dir)) == 1
+
+
+def test_a_reference_survives_reindex_and_can_be_deleted(session_client_for, tmp_path, uploads_dir):
+    owner_a = session_client_for("a")
+    before = ids(owner_a)
+    assert upload(owner_a, plain_letter_pdf(tmp_path / "Cover_Letter.pdf")).status_code == 200
+    (document_id,) = ids(owner_a) - before
+
+    reindexed = owner_a.post("/api/documents/reindex")
+    assert reindexed.status_code == 200, reindexed.text
+    # Exactly the reference was re-read from its stored original (the fixture's
+    # seeded agreement has no original, and is skipped as it always was).
+    assert reindexed.json()["counts"]["documents"] == 1
+    assert owner_a.get(f"/api/documents/{document_id}").json()["title"] == "Cover Letter"
+    assert owner_a.get(f"/api/documents/{document_id}").json()["document_type"] == "reference"
+
+    assert owner_a.delete(f"/api/documents/{document_id}").status_code == 200
+    assert stored_keys(uploads_dir) == []
+
+
+def test_a_controlled_looking_document_without_a_status_is_still_refused_by_the_api(
+    session_client_for, tmp_path, uploads_dir
+):
+    """Leniency for a letter is not leniency for a document that claims authority."""
+    from conftest import write_pdf
+
+    owner_a = session_client_for("a")
+    pdf = tmp_path / "Policy_No_Status.pdf"
+    write_pdf(pdf, [[("Acme Support Policy v9", 24, True), ("1. Escalation", 18, True), ("Escalate.", 11, False)]])
+
+    response = upload(owner_a, pdf)
+
+    assert response.status_code == 400
+    assert "Status" in response.json()["error"]["message"]
+    assert stored_keys(uploads_dir) == []

@@ -43,6 +43,11 @@ class UnknownAuthorityError(ValueError):
 # Statuses that mean "this document is in force".
 _CURRENT_STATUSES = frozenset({DocumentStatus.CURRENT, DocumentStatus.ACTIVE})
 
+# The statuses a document may state about itself.
+_STATED_STATUSES = frozenset(
+    {DocumentStatus.CURRENT, DocumentStatus.ACTIVE, DocumentStatus.DEPRECATED}
+)
+
 
 def normalise_status(raw: str) -> DocumentStatus:
     """Map a document's stated `Status:` value to a DocumentStatus.
@@ -55,12 +60,17 @@ def normalise_status(raw: str) -> DocumentStatus:
         raise UnknownAuthorityError("document states no Status")
     keyword = raw.strip().split()[0].strip(":-,.").upper()
     try:
-        return DocumentStatus(keyword)
-    except ValueError as exc:
+        status = DocumentStatus(keyword)
+    except ValueError:
+        status = None
+    if status is None or status is DocumentStatus.UNSTATED:
+        # UNSTATED is what ingestion records when a document says nothing; a
+        # document cannot claim it (or anything else unknown) for itself.
         raise UnknownAuthorityError(
             f"unrecognised document status {raw!r} (leading keyword {keyword!r}); "
-            f"expected one of {sorted(s.value for s in DocumentStatus)}"
-        ) from exc
+            f"expected one of {sorted(s.value for s in _STATED_STATUSES)}"
+        )
+    return status
 
 
 def classify_document_type(*, title: str, has_account: bool) -> DocumentType:

@@ -133,6 +133,22 @@ of operations (`services/document_files.py`), each rule tested:
 Extraction happens from a private temporary file that exists only for the call;
 nothing on the host's disk outlives the request.
 
+### Documents that state no title or status
+
+The controlled pack states its own title and `Status:`, and a document that claims
+a type (a policy, an SOP, an agreement naming an account) must state its status,
+because authority is read from the document and never guessed.
+
+A workspace may also upload an ordinary PDF (a letter, notes, a scan). Such a
+file is kept, indexed and retrievable, but as a **reference**: `document_type =
+reference`, `status = UNSTATED`, tier 4 (non-authoritative), so it can inform an
+answer and can never govern one. Its title comes from the page's own heading, then
+the PDF's Title field (when it reads like a title, not "Untitled" or a file name),
+then the original file name with its extension and upload prefix removed. A file
+name never classifies a document (`*_SOP_*.pdf` is not an SOP). Anything that does
+claim authority, a known type, an `Account:` or an unrecognised `Status:`, is still
+refused with the reason. The platform's own loader stays strict.
+
 ### Upload size
 
 `MAX_REQUEST_BYTES` (256 KB) is for ordinary API requests. The upload route
