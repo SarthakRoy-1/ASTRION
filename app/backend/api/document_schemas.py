@@ -16,6 +16,10 @@ class DocumentMetadataResponse(BaseModel):
     #: owning workspace's id is deliberately not part of the response.
     is_system_document: bool = False
     source_file: str
+    #: What the file was called when it was uploaded, and its size. Where it is
+    #: stored is internal and not part of the response.
+    original_filename: str | None = None
+    size_bytes: int | None = None
     title: str
     document_type: str
     status: str

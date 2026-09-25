@@ -678,11 +678,11 @@ export interface paths {
         put?: never;
         /**
          * Reindex Documents
-         * @description Re-extract the uploaded documents that belong to this workspace.
+         * @description Re-extract this workspace's own documents from their stored originals.
          *
-         *     Per file rather than a wholesale reload of the uploads directory: that
-         *     directory holds every workspace's uploads, and one workspace's reindex must
-         *     neither rewrite another's documents nor be stopped by another's file.
+         *     Driven by the workspace's own document rows, so another workspace's files are
+         *     never opened, and each original is read back from the store and checked
+         *     against its recorded checksum before it is trusted.
          */
         post: operations["reindex_documents_api_documents_reindex_post"];
         delete?: never;
@@ -1331,10 +1331,14 @@ export interface components {
              * @default false
              */
             is_system_document: boolean;
+            /** Original Filename */
+            original_filename?: string | null;
             /** Page Count */
             page_count: number;
             /** Plan */
             plan: string | null;
+            /** Size Bytes */
+            size_bytes?: number | null;
             /** Source File */
             source_file: string;
             /** Status */

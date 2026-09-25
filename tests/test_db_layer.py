@@ -139,7 +139,7 @@ def migrated(pgdb):
 class TestMigrations:
     def test_creates_every_table_and_records_the_version(self, pgdb):
         applied = pgdb.migrate()
-        assert applied == ["0001", "0002"]
+        assert applied == ["0001", "0002", "0003"]
         conn = pgdb.connect()
         try:
             tables = {
@@ -154,8 +154,8 @@ class TestMigrations:
             conn.close()
         assert {"users", "sessions", "audit_log", "documents", "agent_actions"} <= tables
         assert "schema_migrations" in tables
-        assert len(tables) == 29  # the 28 application tables, and the ledger
-        assert versions == ["0001", "0002"]
+        assert len(tables) == 30  # the 29 application tables, and the ledger
+        assert versions == ["0001", "0002", "0003"]
 
     def test_running_again_applies_nothing(self, pgdb):
         pgdb.migrate()
@@ -214,7 +214,7 @@ class TestMigrations:
         [t.start() for t in threads]
         [t.join() for t in threads]
         assert not errors
-        assert sorted(len(r) for r in results) == [0, 0, 0, 2]  # both migrations, once
+        assert sorted(len(r) for r in results) == [0, 0, 0, 3]  # every migration, once
 
     def test_request_handling_never_runs_ddl(self, migrated):
         # ensure_ready on a migrated database only reads.
@@ -225,7 +225,7 @@ class TestMigrations:
         finally:
             conn.close()
         migrated.ensure_ready()
-        assert before == 2
+        assert before == 3
 
 
 @pg
@@ -706,7 +706,7 @@ class TestOwnershipMigration:
 
     def test_existing_ownership_is_kept_and_unowned_rows_go_to_the_legacy_workspace(self, pgdb):
         self._legacy(pgdb)
-        assert pgdb.migrate() == ["0002"]
+        assert pgdb.migrate() == ["0002", "0003"]
         c = pgdb.connect()
         try:
             owner = {

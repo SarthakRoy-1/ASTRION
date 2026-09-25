@@ -75,10 +75,38 @@ def extract_all(source_dir: Path) -> list[ExtractedDocument]:
 
 
 
+def store_originals(conn, store, extracted, *, source_dir: Path, org_id: str | None) -> int:
+    """Put each source PDF in the document store and record where.
+
+    The object goes first, then the row learns its key, so a row never names an
+    object that is not there. Idempotent: an unchanged file has the same key and
+    is simply written again. General documents land under `system/`, agreements
+    under their workspace.
+    """
+    from app.backend.services.document_ingestion import owner_of
+    from app.backend.storage import document_key
+
+    stored = 0
+    for item in extracted:
+        document = item.document
+        data = (source_dir / document.source_file).read_bytes()
+        key = document_key(owner_of(document, org_id), document.document_id, document.source_sha256)
+        store.put(key, data, content_type="application/pdf")
+        with conn:
+            conn.execute(
+                "UPDATE documents SET storage_key = ?, original_filename = ?, "
+                "content_type = 'application/pdf', size_bytes = ? WHERE document_id = ?",
+                (key, document.source_file, len(data), document.document_id),
+            )
+        stored += 1
+    return stored
+
+
 def ingest(
     source_dir: Path = DEFAULT_SOURCE_DIR,
     db_path: Path | None = None,
     org_id: str | None = LEGACY_ORG_ID,
+    store=None,
 ) -> dict[str, Any]:
     """Load the source pack: general documents as system documents, agreements
     for `org_id`.
@@ -102,6 +130,10 @@ def ingest(
             )
         notes = validate_account_links(conn, [e.document for e in extracted], org_id)
         counts = load_into_db(conn, extracted, source_dir=source_dir, org_id=org_id)
+        if store is not None:
+            counts["objects_stored"] = store_originals(
+                conn, store, extracted, source_dir=source_dir, org_id=org_id
+            )
     finally:
         conn.close()
 
@@ -150,10 +182,19 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     try:
+        store = None
+        if args.db is None:
+            # Running against the configured database (production): keep the
+            # originals in the configured object store as well.
+            from app.backend.core.config import load_settings
+            from app.backend.storage import open_store
+
+            store = open_store(load_settings())
         result = ingest(
             source_dir=args.source_dir,
             db_path=args.db,
             org_id=None if args.system_only else args.org_id,
+            store=store,
         )
     except DocumentIngestionError as exc:
         if args.json:

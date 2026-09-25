@@ -164,6 +164,13 @@ def upload(client, path):
         )
 
 
+def stored_keys(uploads_dir) -> list[str]:
+    """Every object in the document store the tests configure (a local directory)."""
+    from app.backend.storage import LocalDocumentStore
+
+    return [o.key for o in LocalDocumentStore(uploads_dir).list()]
+
+
 def ids(client):
     return {d["document_id"] for d in client.get("/api/documents").json()["documents"]}
 
@@ -181,13 +188,15 @@ def test_a_workspace_uploads_reads_and_deletes_its_own_agreement(
 
     uploaded = [d for d in ids(owner_a) if d.endswith("own_agreement")]
     assert len(uploaded) == 1
-    stored = list(uploads_dir.glob("*.pdf"))
+    stored = stored_keys(uploads_dir)
     assert len(stored) == 1
+    assert stored[0].startswith("workspaces/ORG-")  # owned, by its key
+    assert stored[0].endswith(".pdf")
 
     assert owner_a.delete(f"/api/documents/{uploaded[0]}").status_code == 200
     assert owner_a.get(f"/api/documents/{uploaded[0]}").status_code == 404
     # The stored file goes with the record.
-    assert list(uploads_dir.glob("*.pdf")) == []
+    assert stored_keys(uploads_dir) == []
 
 
 def test_another_workspace_can_neither_see_nor_delete_that_upload(session_client_for, tmp_path):
@@ -214,7 +223,7 @@ def test_an_upload_for_another_workspaces_account_is_refused(session_client_for,
     response = upload(owner_a, pdf)
 
     assert response.status_code == 403
-    assert list(uploads_dir.glob("*.pdf")) == []
+    assert stored_keys(uploads_dir) == []
 
 
 def test_a_general_document_uploaded_by_a_workspace_is_that_workspaces_alone(
@@ -332,7 +341,7 @@ def test_a_role_without_manage_documents_cannot_upload(full_db, tenants, uploads
     pdf = agreement_pdf(tmp_path / "Support_Try.pdf", account="ACCT-001", title="ParcelPilot - Try Service Agreement")
 
     assert upload(client, pdf).status_code == 403
-    assert list(uploads_dir.glob("*.pdf")) == []
+    assert stored_keys(uploads_dir) == []
 
 
 def test_an_unreadable_upload_is_a_clean_400_that_names_no_server_path(session_client_for, tmp_path):
@@ -376,3 +385,134 @@ def test_reindex_touches_only_the_callers_workspace(session_client_for, tmp_path
     assert response.json()["counts"]["documents"] == 1
     assert any(d.endswith("reindex_b") for d in ids(owner_b))
     assert any(d.endswith("reindex_a") for d in ids(owner_a))
+
+
+# ===========================================================================
+# Size limits, and where the files go
+# ===========================================================================
+
+
+def big_agreement_pdf(path, *, account: str, padding_bytes: int):
+    """A valid agreement whose file is deliberately larger than an ordinary request."""
+    import os
+
+    import pymupdf
+
+    from conftest import valid_agreement_pages, write_pdf
+
+    write_pdf(path, valid_agreement_pages(title="ParcelPilot - Bulky Service Agreement",
+                                          account_line=f"Account: {account}"))
+    doc = pymupdf.open(str(path))
+    doc.embfile_add("attachment.bin", os.urandom(padding_bytes))
+    doc.saveIncr()
+    doc.close()
+    return path
+
+
+def test_a_document_larger_than_an_ordinary_request_can_be_uploaded(session_client_for, tmp_path):
+    """The global request cap is 256 KB; a real policy PDF is not a chat message."""
+    owner_a = session_client_for("a")
+    pdf = big_agreement_pdf(tmp_path / "Bulky_Agreement.pdf", account="ACCT-001", padding_bytes=600_000)
+    assert pdf.stat().st_size > 512 * 1024
+
+    response = upload(owner_a, pdf)
+
+    assert response.status_code == 200, response.text
+    assert any(d.endswith("bulky_agreement") for d in ids(owner_a))
+
+
+def test_a_body_past_the_upload_limit_is_refused_before_it_is_read(session_client_for):
+    owner_a = session_client_for("a")
+    huge = b"%PDF-1.4\n" + b"0" * (27 * 1024 * 1024)
+
+    response = owner_a.post(
+        "/api/documents/upload", files={"file": ("huge.pdf", huge, "application/pdf")}
+    )
+
+    assert response.status_code == 413
+    assert response.json()["error"]["code"] == "payload_too_large"
+
+
+def test_ordinary_routes_keep_the_small_request_limit(session_client_for):
+    """Raising the upload limit must not raise it for the endpoints that never needed it."""
+    owner_a = session_client_for("a")
+
+    response = owner_a.post(
+        "/api/chat", content=b"x" * 300_000, headers={"content-type": "application/json"}
+    )
+
+    assert response.status_code == 413
+
+
+def test_uploads_reach_an_s3_compatible_store_and_leave_when_deleted(
+    full_db, tenants, tmp_path
+):
+    """The whole lifecycle through the configured store, not the local disk."""
+    import os
+    import uuid
+
+    endpoint = os.environ.get("ASTRION_TEST_S3_ENDPOINT")
+    if not endpoint:
+        pytest.skip("set ASTRION_TEST_S3_ENDPOINT to run against an S3-compatible server")
+
+    from fastapi.testclient import TestClient
+
+    from app.backend.api.app import create_app
+    from app.backend.core.config import AuthMode, Settings
+    from app.backend.storage.s3 import S3DocumentStore
+
+    bucket = f"astrion-api-{uuid.uuid4().hex[:10]}"
+    settings = Settings(
+        database_path=full_db,
+        auth_mode=AuthMode.SESSION,
+        cors_allow_origins=(),
+        session_cookie_secure=False,
+        rate_limit_enabled=False,
+        storage_backend="s3",
+        storage_bucket=bucket,
+        storage_endpoint_url=endpoint,
+        storage_region="us-east-1",
+        storage_access_key_id="test-key",
+        storage_secret_access_key="test-secret",
+        storage_key_prefix="api-tests",
+    )
+    app = create_app(settings)
+    app.state.store.ensure_bucket()
+    client = TestClient(app)
+    assert client.post(
+        "/api/auth/login", json={"email": tenants["a"], "password": PASSWORD}
+    ).status_code == 200
+
+    pdf = agreement_pdf(tmp_path / "S3_Agreement.pdf", account="ACCT-001", title="ParcelPilot - S3 Service Agreement")
+    assert upload(client, pdf).status_code == 200
+    document_id = next(d for d in ids(client) if d.endswith("s3_agreement"))
+
+    objects = [o.key for o in app.state.store.list("workspaces/")]
+    assert len(objects) == 1 and objects[0].endswith(".pdf")
+
+    # Reindex reads the original back from the store, checked against its checksum.
+    reindexed = client.post("/api/documents/reindex")
+    assert reindexed.status_code == 200 and reindexed.json()["counts"]["documents"] >= 1
+    assert len([o.key for o in app.state.store.list("workspaces/")]) == 1
+
+    assert client.delete(f"/api/documents/{document_id}").status_code == 200
+    assert [o.key for o in app.state.store.list("workspaces/")] == []
+
+
+def test_a_tampered_original_is_skipped_by_reindex_not_trusted(session_client_for, tmp_path, uploads_dir):
+    from app.backend.storage import LocalDocumentStore
+
+    owner_a = session_client_for("a")
+    pdf = agreement_pdf(tmp_path / "Tamper_Agreement.pdf", account="ACCT-001", title="ParcelPilot - Tamper Service Agreement")
+    assert upload(owner_a, pdf).status_code == 200
+    store = LocalDocumentStore(uploads_dir)
+    (key,) = [o.key for o in store.list("workspaces/")]
+    store.put(key, b"%PDF-1.4 not the file that was uploaded")
+
+    reindexed = owner_a.post("/api/documents/reindex")
+
+    assert reindexed.status_code == 200
+    assert reindexed.json()["counts"]["skipped"] >= 1
+    # The document's extracted text is what it was; the swapped bytes were never parsed into it.
+    document_id = next(d for d in ids(owner_a) if d.endswith("tamper_agreement"))
+    assert owner_a.get(f"/api/documents/{document_id}/chunks").json()["chunks"]

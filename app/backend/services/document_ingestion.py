@@ -7,6 +7,7 @@ the API while preserving the ability to reload the entire corpus or specific dir
 from __future__ import annotations
 
 import sqlite3
+from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from pathlib import Path
 
@@ -18,6 +19,16 @@ from app.backend.retrieval.extraction import (
 )
 
 INGESTION_SCRIPT_VERSION = "1.0.0"
+
+
+@dataclass(frozen=True)
+class StorageInfo:
+    """Where a document's original file is, recorded on its row."""
+
+    storage_key: str
+    original_filename: str
+    content_type: str
+    size_bytes: int
 
 
 def validate_account_links(
@@ -61,7 +72,11 @@ def _iso(value: date | None) -> str | None:
 
 
 def _insert_document(
-    conn: sqlite3.Connection, document: Document, run_id: int, org_id: str | None
+    conn: sqlite3.Connection,
+    document: Document,
+    run_id: int,
+    org_id: str | None,
+    storage: StorageInfo | None = None,
 ) -> None:
     """Store one document under its owner. `org_id=None` is a system document."""
     conn.execute(
@@ -71,8 +86,10 @@ def _insert_document(
              status_raw, is_current, is_deprecated, is_authoritative, authority_tier,
              account_id, customer_name, plan, effective_date_raw, effective_date,
              updated_date_raw, updated_date, term_raw, term_start, term_end,
-             supersedes, superseded_by, page_count, ingestion_run_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             supersedes, superseded_by, page_count, ingestion_run_id,
+             storage_key, original_filename, content_type, size_bytes, created_at_utc)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                ?, ?, ?, ?, ?)
         """,
         (
             document.document_id, org_id, document.source_file, document.source_sha256,
@@ -84,6 +101,11 @@ def _insert_document(
             document.updated_date_raw, _iso(document.updated_date),
             document.term_raw, _iso(document.term_start), _iso(document.term_end),
             document.supersedes, document.superseded_by, int(document.page_count), int(run_id),
+            None if storage is None else storage.storage_key,
+            None if storage is None else storage.original_filename,
+            None if storage is None else storage.content_type,
+            None if storage is None else storage.size_bytes,
+            datetime.now(timezone.utc).isoformat(),
         ),
     )
 
@@ -113,7 +135,8 @@ def ingest_single_document(
     source_dir: str,
     *,
     org_id: str,
-) -> dict[str, int]:
+    storage: StorageInfo | None = None,
+) -> dict:
     """Ingest one document for a workspace, in a single transaction.
 
     Replaces the document if the workspace already has it. A document id that
@@ -127,7 +150,7 @@ def ingest_single_document(
 
     with conn:
         existing = conn.execute(
-            "SELECT org_id FROM documents WHERE document_id = ?",
+            "SELECT org_id, storage_key FROM documents WHERE document_id = ?",
             (extracted.document.document_id,),
         ).fetchone()
         if existing is not None and existing["org_id"] != org_id:
@@ -149,7 +172,7 @@ def ingest_single_document(
         conn.execute("DELETE FROM document_chunks WHERE document_id = ?", (extracted.document.document_id,))
         conn.execute("DELETE FROM documents WHERE document_id = ?", (extracted.document.document_id,))
 
-        _insert_document(conn, extracted.document, run_id, org_id)
+        _insert_document(conn, extracted.document, run_id, org_id, storage)
         for chunk in extracted.chunks:
             _insert_chunk(conn, chunk)
 
@@ -163,7 +186,13 @@ def ingest_single_document(
             (datetime.now(timezone.utc).isoformat(), 1, len(extracted.chunks), run_id),
         )
 
-    return {"documents": 1, "chunks": len(extracted.chunks)}
+    return {
+        "documents": 1,
+        "chunks": len(extracted.chunks),
+        # The object the replaced row pointed at, so the caller can remove it
+        # once this transaction is known to have committed -- never before.
+        "replaced_storage_key": None if existing is None else existing["storage_key"],
+    }
 
 
 def owner_of(document: Document, org_id: str | None) -> str | None:

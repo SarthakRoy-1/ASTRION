@@ -140,6 +140,17 @@ def _database_path(raw: str | None) -> Path:
     return path if path.is_absolute() else (REPO_ROOT / path).resolve()
 
 
+def _storage_backend(raw: str | None) -> str:
+    value = (raw or "local").strip().lower()
+    if value in {"s3", "supabase"}:
+        return "s3"
+    if value == "local":
+        return "local"
+    raise ConfigurationError(
+        f"STORAGE_BACKEND must be `local` or `s3` (or `supabase`), got {raw!r}"
+    )
+
+
 def _repo_relative(raw: str | None, default: Path) -> Path:
     """A plain path, resolved against the repository root when relative."""
     if not raw:
@@ -181,6 +192,26 @@ class Settings(BaseModel):
     #: put both on it, and a test must be able to put both in a temporary
     #: directory rather than writing into the repository.
     uploads_dir: Path = DEFAULT_UPLOADS_DIR
+
+    # --- object storage ------------------------------------------------------
+    #: Where documents' original files live. `local` is a directory (tests and
+    #: development); `s3` is any S3-compatible endpoint -- Supabase Storage in
+    #: production. `supabase` is accepted as a spelling of `s3`. Nothing
+    #: important may depend on the host's own disk, so production refuses
+    #: `local` (see `validate_persistence`).
+    storage_backend: str = "local"
+    storage_bucket: str | None = None
+    storage_endpoint_url: str | None = None
+    storage_region: str | None = None
+    storage_access_key_id: str | None = Field(default=None, repr=False)
+    storage_secret_access_key: str | None = Field(default=None, repr=False)
+    #: A prefix inside the bucket, so one bucket can serve several deployments.
+    storage_key_prefix: str = ""
+    #: The directory for the `local` backend. Defaults to `uploads_dir`.
+    storage_local_dir: Path | None = None
+    #: The largest request body the document-upload route accepts. Every other
+    #: route keeps `max_request_bytes`; a policy PDF is not a chat message.
+    max_upload_bytes: int = 26 * 1024 * 1024
     cors_allow_origins: tuple[str, ...] = ("http://localhost:3000",)
     enable_state_changing_actions: bool = True
 
@@ -396,6 +427,43 @@ class Settings(BaseModel):
                         f"Google or GitHub sign-in is configured; got {url!r}."
                     )
 
+    def validate_persistence(self) -> None:
+        """Refuse a production deployment whose data would not survive a restart.
+
+        Called when the process builds its own settings (not for the settings a
+        test passes in). On a host with an ephemeral disk, a SQLite file or a
+        local upload directory is not slow or inconvenient storage, it is
+        storage that disappears -- and everything appears to work until it does.
+        """
+        if self.storage_backend == "s3":
+            missing = [
+                name
+                for name, value in (
+                    ("STORAGE_BUCKET", self.storage_bucket),
+                    ("STORAGE_ACCESS_KEY_ID", self.storage_access_key_id),
+                    ("STORAGE_SECRET_ACCESS_KEY", self.storage_secret_access_key),
+                )
+                if not value
+            ]
+            if missing:
+                raise ConfigurationError(
+                    "STORAGE_BACKEND=s3 needs " + ", ".join(missing) + " to be set."
+                )
+        if not self.is_production:
+            return
+        if self.database_backend != "postgres":
+            raise ConfigurationError(
+                "Production requires PostgreSQL: DATABASE_URL must be a "
+                "postgresql:// URL. A SQLite file on the host's disk is lost on "
+                "every deploy and restart."
+            )
+        if self.storage_backend != "s3":
+            raise ConfigurationError(
+                "Production requires object storage: set STORAGE_BACKEND=s3 with "
+                "its bucket and credentials. Uploaded documents must not live on "
+                "the host's disk."
+            )
+
     def validate_cors(self) -> None:
         """Reject an origin list that cannot be honoured safely.
 
@@ -491,6 +559,19 @@ def load_settings(*, env_file: Path | str | None = None) -> Settings:
         db_pool_min=_env_int("DB_POOL_MIN", 1),
         db_pool_max=_env_int("DB_POOL_MAX", 10),
         uploads_dir=_repo_relative(_env("UPLOADS_DIR"), DEFAULT_UPLOADS_DIR),
+        storage_backend=_storage_backend(_env("STORAGE_BACKEND")),
+        storage_bucket=_env("STORAGE_BUCKET"),
+        storage_endpoint_url=_env("STORAGE_ENDPOINT_URL"),
+        storage_region=_env("STORAGE_REGION"),
+        storage_access_key_id=_env("STORAGE_ACCESS_KEY_ID"),
+        storage_secret_access_key=_env("STORAGE_SECRET_ACCESS_KEY"),
+        storage_key_prefix=(_env("STORAGE_KEY_PREFIX") or "").strip("/"),
+        storage_local_dir=(
+            _repo_relative(_env("STORAGE_LOCAL_DIR"), DEFAULT_UPLOADS_DIR)
+            if _env("STORAGE_LOCAL_DIR")
+            else None
+        ),
+        max_upload_bytes=_env_int("MAX_UPLOAD_BYTES", 26 * 1024 * 1024),
         cors_allow_origins=tuple(o.strip() for o in origins.split(",") if o.strip()),
         enable_state_changing_actions=_env_bool("ENABLE_STATE_CHANGING_ACTIONS", True),
         auth_mode=auth_mode,

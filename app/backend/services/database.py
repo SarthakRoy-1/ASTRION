@@ -195,6 +195,14 @@ SCHEMA_STATEMENTS: tuple[str, ...] = (
         supersedes TEXT,
         superseded_by TEXT,
         page_count INTEGER NOT NULL,
+        -- The original file is an object in the document store, found by
+        -- `storage_key`; `source_sha256` is its checksum and part of that key.
+        -- NULL for a document that was loaded from disk with no store (tests).
+        storage_key TEXT,
+        original_filename TEXT,
+        content_type TEXT,
+        size_bytes INTEGER,
+        created_at_utc TEXT,
         ingestion_run_id INTEGER NOT NULL
             REFERENCES document_ingestion_runs (id),
         CHECK (org_id IS NOT NULL OR account_id IS NULL)
@@ -307,6 +315,18 @@ SCHEMA_STATEMENTS: tuple[str, ...] = (
         created_at_utc TEXT NOT NULL
     ) STRICT
     """,
+    # Objects the application meant to remove and could not. Reconciliation
+    # retries them; see services/storage_reconcile.py.
+    """
+    CREATE TABLE IF NOT EXISTS storage_orphans (
+        orphan_id TEXT PRIMARY KEY,
+        storage_key TEXT NOT NULL UNIQUE,
+        org_id TEXT REFERENCES organizations (org_id),
+        reason TEXT NOT NULL,
+        recorded_at_utc TEXT NOT NULL,
+        resolved_at_utc TEXT
+    ) STRICT
+    """,
     "CREATE INDEX IF NOT EXISTS idx_orders_account ON orders (org_id, account_id)",
     "CREATE INDEX IF NOT EXISTS idx_tickets_account ON tickets (org_id, account_id)",
     "CREATE INDEX IF NOT EXISTS idx_documents_org ON documents (org_id, account_id)",
@@ -314,6 +334,7 @@ SCHEMA_STATEMENTS: tuple[str, ...] = (
     # system owner) never equals NULL in a unique index.
     "CREATE UNIQUE INDEX IF NOT EXISTS uq_documents_owner_file "
     "ON documents (COALESCE(org_id, ''), source_file)",
+    "CREATE INDEX IF NOT EXISTS idx_documents_storage_key ON documents (storage_key)",
     "CREATE INDEX IF NOT EXISTS idx_chunks_document_id ON document_chunks (document_id)",
     "CREATE INDEX IF NOT EXISTS idx_chunks_topic ON document_chunks (topic)",
     "CREATE INDEX IF NOT EXISTS idx_actions_status ON agent_actions (org_id, status)",

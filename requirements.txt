@@ -48,3 +48,9 @@ resend==2.43.0
 # until nothing needs it. `binary` bundles libpq so the slim image needs no
 # compiler; `pool` is the connection pool (app/backend/db/postgres.py).
 psycopg[binary,pool]==3.2.9
+
+# --- Object storage (documents' original files) --------------------------------
+# The S3-compatible store (Supabase Storage in production) is the only place
+# that imports boto3. Test-only tooling (a local S3 server) is in
+# requirements-test.txt so it is not installed in the production image.
+boto3==1.40.0

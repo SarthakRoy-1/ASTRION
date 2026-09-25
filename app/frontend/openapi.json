@@ -635,6 +635,17 @@
             "title": "Is System Document",
             "type": "boolean"
           },
+          "original_filename": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Original Filename"
+          },
           "page_count": {
             "title": "Page Count",
             "type": "integer"
@@ -649,6 +660,17 @@
               }
             ],
             "title": "Plan"
+          },
+          "size_bytes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Size Bytes"
           },
           "source_file": {
             "title": "Source File",
@@ -3249,7 +3271,7 @@
     },
     "/api/documents/reindex": {
       "post": {
-        "description": "Re-extract the uploaded documents that belong to this workspace.\n\nPer file rather than a wholesale reload of the uploads directory: that\ndirectory holds every workspace's uploads, and one workspace's reindex must\nneither rewrite another's documents nor be stopped by another's file.",
+        "description": "Re-extract this workspace's own documents from their stored originals.\n\nDriven by the workspace's own document rows, so another workspace's files are\nnever opened, and each original is read back from the store and checked\nagainst its recorded checksum before it is trusted.",
         "operationId": "reindex_documents_api_documents_reindex_post",
         "responses": {
           "200": {

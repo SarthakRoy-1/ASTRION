@@ -25,6 +25,7 @@ from app.backend.api.document_routes import router as document_router
 from app.backend.api.errors import register_error_handlers
 from app.backend.api.identity_routes import identity_router
 from app.backend.api.middleware import (
+    UPLOAD_PATH,
     BodySizeLimitMiddleware,
     CsrfOriginMiddleware,
     RateLimitMiddleware,
@@ -35,6 +36,7 @@ from app.backend.api.operations_routes import operations_router
 from app.backend.api.routes import router
 from app.backend.api.workspace_routes import workspace_router
 from app.backend.db import open_database
+from app.backend.storage import open_store
 from app.backend.core.config import DEFAULT_ENV_FILE, Settings, load_settings
 from app.backend.services.bootstrap import ensure_demo_environment
 
@@ -133,6 +135,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     """Build the application. Raises on invalid configuration."""
     if settings is None:
         settings = load_settings(env_file=DEFAULT_ENV_FILE)
+        # Only for the settings this process builds itself: a production
+        # deployment must not start on storage that will not survive it. Tests
+        # hand in their own Settings and are not held to it.
+        settings.validate_persistence()
 
     # Fail at startup, not at the first request: an operator should learn that
     # the model is unreachable before a user does.
@@ -158,6 +164,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     app.state.settings = settings
     app.state.database = open_database(settings)
+    app.state.store = open_store(settings)
     app.state.rate_limiter = RateLimiter()
     #: Whether `X-Forwarded-For` may be believed. False unless a proxy that
     #: sets it is known to be in front, because a client that can choose its
@@ -194,7 +201,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             CsrfOriginMiddleware, allowed_origins=settings.cors_allow_origins
         )
 
-    app.add_middleware(BodySizeLimitMiddleware, max_bytes=settings.max_request_bytes)
+    app.add_middleware(
+        BodySizeLimitMiddleware,
+        max_bytes=settings.max_request_bytes,
+        # Route-aware: only the upload route may carry a document-sized body.
+        overrides={UPLOAD_PATH: settings.max_upload_bytes},
+    )
 
     if settings.cors_allow_origins:
         # `allow_credentials=True` is required for the session cookie to travel

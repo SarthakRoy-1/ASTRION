@@ -25,12 +25,10 @@ from __future__ import annotations
 import logging
 import sqlite3
 import uuid
-from pathlib import Path
 
 from fastapi import APIRouter, File, Request, UploadFile
 
 from app.backend.api.authentication import AuthenticatedCaller, audit_denial, authenticate
-from app.backend.services.records import get_account
 from app.backend.api.dependencies import DbDep
 from app.backend.api.document_schemas import (
     DocumentChunksResponse,
@@ -41,12 +39,18 @@ from app.backend.api.document_schemas import (
 from app.backend.auth.permissions import Permission
 from app.backend.core.config import Settings
 from app.backend.core.errors import AuthorizationError, InvalidRequestError, NotFoundError
-from app.backend.ingestion.safety import UnsafeFileError, validate_upload
+from app.backend.ingestion.safety import UnsafeFileError, sanitize_filename, validate_upload
 from app.backend.retrieval.authority import UnknownAuthorityError
-from app.backend.retrieval.extraction import DocumentIngestionError, extract_document
+from app.backend.retrieval.extraction import DocumentIngestionError
 from app.backend.services import documents
-from app.backend.services.document_ingestion import ingest_single_document
-from scripts.verify_source_pack import sha256_of
+from app.backend.services.document_files import (
+    delete_document_and_object,
+    extract_from_bytes,
+    read_verified,
+    store_and_ingest,
+)
+from app.backend.services.records import get_account
+from app.backend.storage import ChecksumMismatch, DocumentStore, ObjectNotFound, StorageError
 
 logger = logging.getLogger("astrion.documents")
 
@@ -54,6 +58,10 @@ router = APIRouter(prefix="/api/documents", tags=["documents"])
 
 def _settings(request: Request) -> Settings:
     return request.app.state.settings
+
+
+def _store(request: Request) -> DocumentStore:
+    return request.app.state.store
 
 
 def _caller(request: Request, conn: sqlite3.Connection) -> AuthenticatedCaller:
@@ -144,13 +152,6 @@ def _public_ingestion_message(exc: DocumentIngestionError) -> str:
     return "the file could not be read as a PDF."
 
 
-def _remove(path: Path) -> None:
-    try:
-        path.unlink(missing_ok=True)
-    except OSError:
-        logger.warning("could not remove upload %s", path.name)
-
-
 @router.get("", response_model=DocumentListResponse)
 def list_documents(request: Request, conn: sqlite3.Connection = DbDep) -> DocumentListResponse:
     caller = _require(request, conn, Permission.READ_DOCUMENTS)
@@ -215,31 +216,39 @@ def upload_document(
     except ValueError as e:
         raise InvalidRequestError(str(e))
 
-    uploads_dir = _settings(request).uploads_dir
-    uploads_dir.mkdir(parents=True, exist_ok=True)
-
-    safe_filename = Path(file.filename or "upload.pdf").name
-    # Prepend uuid to prevent name collision and overwrites
-    dest_path = uploads_dir / f"{uuid.uuid4().hex}_{safe_filename}"
-    dest_path.write_bytes(content_bytes)
+    # Rebuilt from safe characters, never cleaned: the name is untrusted input.
+    safe_filename = sanitize_filename(file.filename or "upload.pdf", fallback="upload.pdf")
+    # The prefix keeps two uploads of one filename from colliding; it becomes
+    # part of the document's id.
+    source_file = f"{uuid.uuid4().hex}_{safe_filename}"
 
     try:
-        extracted = extract_document(dest_path, source_sha256=sha256_of(dest_path))
+        extracted = extract_from_bytes(content_bytes, source_file=source_file)
         _require_account_in_workspace(conn, caller, extracted.document.account_id)
-        result = ingest_single_document(
-            conn, extracted, str(uploads_dir), org_id=org_id
+        result = store_and_ingest(
+            conn,
+            _store(request),
+            org_id=org_id,
+            content=content_bytes,
+            original_filename=safe_filename,
+            content_type="application/pdf",
+            extracted=extracted,
+            source_dir="upload",
         )
     except AuthorizationError:
-        _remove(dest_path)
         raise
     except DocumentIngestionError as exc:
-        _remove(dest_path)
         logger.warning("document upload rejected: %s", exc)
         raise InvalidRequestError(
             f"Document ingestion failed: {_public_ingestion_message(exc)}"
         ) from exc
+    except StorageError as exc:
+        # The file could not be kept. Nothing was recorded (see document_files).
+        logger.error("document upload could not be stored: %s", exc)
+        raise InvalidRequestError(
+            "The document could not be stored right now. Try again."
+        ) from exc
     except Exception as exc:
-        _remove(dest_path)
         logger.exception("document upload failed")
         raise InvalidRequestError("Document ingestion failed.") from exc
 
@@ -257,47 +266,57 @@ def delete_document(request: Request, document_id: str, conn: sqlite3.Connection
     if doc.org_id is None:
         raise AuthorizationError("System documents cannot be deleted.")
 
-    deleted = documents.delete_document(conn, document_id, scope=caller.scope())
+    # The row first, the object only after that has committed; an object that
+    # cannot be removed is recorded for reconciliation rather than failing this.
+    deleted = delete_document_and_object(
+        conn,
+        _store(request),
+        delete_row=lambda: documents.delete_document(conn, document_id, scope=caller.scope()),
+        storage_key=doc.storage_key,
+        org_id=doc.org_id,
+    )
     if not deleted:
         raise NotFoundError(f"Document {document_id} not found")
-
-    _remove(_settings(request).uploads_dir / Path(doc.source_file).name)
     return {"ok": True}
 
 
 @router.post("/reindex")
 def reindex_documents(request: Request, conn: sqlite3.Connection = DbDep) -> dict:
-    """Re-extract the uploaded documents that belong to this workspace.
+    """Re-extract this workspace's own documents from their stored originals.
 
-    Per file rather than a wholesale reload of the uploads directory: that
-    directory holds every workspace's uploads, and one workspace's reindex must
-    neither rewrite another's documents nor be stopped by another's file.
+    Driven by the workspace's own document rows, so another workspace's files are
+    never opened, and each original is read back from the store and checked
+    against its recorded checksum before it is trusted.
     """
     caller = _require_management(request, conn)
     org_id = _require_workspace(caller)
-    uploads_dir = _settings(request).uploads_dir
+    store = _store(request)
 
     counts = {"documents": 0, "chunks": 0, "skipped": 0}
-    if not uploads_dir.exists():
-        return {"ok": True, "counts": counts}
-
-    # Driven by this workspace's own documents, not by whatever files happen to
-    # be in the directory: a file belonging to another workspace is never opened.
     for doc in documents.list_documents(conn, scope=caller.scope()):
         if doc.org_id != org_id:
             continue
-        path = uploads_dir / Path(doc.source_file).name
-        if not path.is_file():
-            counts["skipped"] += 1
+        if not doc.storage_key:
+            counts["skipped"] += 1  # no original was ever stored for this one
             continue
         try:
-            extracted = extract_document(path, source_sha256=sha256_of(path))
-        except DocumentIngestionError as exc:
-            logger.warning("reindex skipped %s: %s", path.name, exc)
+            content = read_verified(store, doc.storage_key, doc.source_sha256)
+            extracted = extract_from_bytes(
+                content, source_file=doc.source_file, expected_sha256=doc.source_sha256
+            )
+        except (ObjectNotFound, ChecksumMismatch, StorageError, DocumentIngestionError) as exc:
+            logger.warning("reindex skipped %s: %s", doc.document_id, exc)
             counts["skipped"] += 1
             continue
-        result = ingest_single_document(
-            conn, extracted, str(uploads_dir), org_id=org_id
+        result = store_and_ingest(
+            conn,
+            store,
+            org_id=org_id,
+            content=content,
+            original_filename=doc.original_filename or doc.source_file,
+            content_type=doc.content_type or "application/pdf",
+            extracted=extracted,
+            source_dir="upload",
         )
         counts["documents"] += result["documents"]
         counts["chunks"] += result["chunks"]

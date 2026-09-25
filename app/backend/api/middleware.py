@@ -42,6 +42,9 @@ _AGENT_PATHS = ("/api/chat",)
 #: endpoint that consumes a token is exactly what gets guessed against.
 _AUTH_PATHS = ("/api/auth/", "/api/invitations/")
 
+#: The one route whose request body is a document, not a message.
+UPLOAD_PATH = "/api/documents/upload"
+
 
 def request_path(request: Request) -> str:
     """The path the router actually dispatched on.
@@ -93,20 +96,27 @@ class BodySizeLimitMiddleware(BaseHTTPMiddleware):
     caps what it will read when the header is absent.
     """
 
-    def __init__(self, app, *, max_bytes: int) -> None:
+    def __init__(
+        self, app, *, max_bytes: int, overrides: dict[str, int] | None = None
+    ) -> None:
         super().__init__(app)
         self._max_bytes = max_bytes
+        # Exact paths that may carry more than an ordinary request: the
+        # document upload. Everything else stays at `max_bytes`, so a chat
+        # endpoint still refuses a megabyte body it has no use for.
+        self._overrides = dict(overrides or {})
 
     async def dispatch(self, request: Request, call_next):
+        limit = self._overrides.get(request_path(request), self._max_bytes)
         declared = request.headers.get("content-length")
         if declared is not None:
             try:
-                if int(declared) > self._max_bytes:
+                if int(declared) > limit:
                     return _error(
                         413,
                         "payload_too_large",
                         "The request body exceeds the maximum permitted size.",
-                        max_bytes=self._max_bytes,
+                        max_bytes=limit,
                     )
             except ValueError:
                 return _error(
@@ -118,12 +128,12 @@ class BodySizeLimitMiddleware(BaseHTTPMiddleware):
             body = b""
             async for chunk in request.stream():
                 body += chunk
-                if len(body) > self._max_bytes:
+                if len(body) > limit:
                     return _error(
                         413,
                         "payload_too_large",
                         "The request body exceeds the maximum permitted size.",
-                        max_bytes=self._max_bytes,
+                        max_bytes=limit,
                     )
 
             async def receive() -> dict:

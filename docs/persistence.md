@@ -95,6 +95,57 @@ The assessment workbook is a legacy import: `scripts/ingest_dataset.py --org-id
 <workspace>` loads it into a named workspace (default `ORG-legacy-assessment`),
 replacing only that workspace's rows.
 
+## Documents and object storage
+
+A document's **metadata and extracted text** are in PostgreSQL; its **original
+file** is an object in a store (`app/backend/storage`), found through
+`documents.storage_key`. The store is an interface -- `put`, `get`, `exists`,
+`delete` (and `list` for reconciliation) -- with a local-directory
+implementation for tests and an S3-compatible one (Supabase Storage in
+production, via boto3, imported nowhere else). No binary is ever in the database.
+
+Keys carry ownership and the checksum, so a file is immutable at its key:
+
+```
+workspaces/{org_id}/documents/{document_id}/{sha256}.pdf
+system/documents/{document_id}/{sha256}.pdf
+```
+
+Every component is validated against a strict pattern and every store re-checks
+every key, so nothing an upload can name reaches a path as a separator or `..`.
+
+The two systems share no transaction, so their consistency comes from the order
+of operations (`services/document_files.py`), each rule tested:
+
+1. The object is written **before** the row, so a row never points at nothing.
+2. A failed creation removes the object it just wrote (unless another row uses
+   that key).
+3. Nothing is removed before its replacement commits: a delete removes the row,
+   then the object; a replacement removes the old object only after the new row
+   commits.
+4. A cleanup that fails is **recorded** in `storage_orphans` and the request still
+   succeeds; `python scripts/reconcile_storage.py` retries them, and finds
+   objects nothing references (past a one-hour grace period, so an upload in
+   flight is left alone) and rows whose object has gone.
+5. Bytes are checked against the recorded sha256 whenever they are read back
+   (reindex skips a tampered original rather than trusting it).
+
+Extraction happens from a private temporary file that exists only for the call;
+nothing on the host's disk outlives the request.
+
+### Upload size
+
+`MAX_REQUEST_BYTES` (256 KB) is for ordinary API requests. The upload route
+alone has its own ceiling, `MAX_UPLOAD_BYTES` (26 MB), refused from the declared
+length before the body is read; the 25 MB document validation still applies
+inside it. Every other route keeps the small limit.
+
+### Production refuses ephemeral storage
+
+`create_app()` with no arguments (the process entry point) calls
+`Settings.validate_persistence()`: in production the database must be PostgreSQL
+and the store must be `s3`. A deployment configured otherwise does not start.
+
 ## Environment
 
 | Variable | Where | Purpose |
@@ -102,3 +153,10 @@ replacing only that workspace's rows.
 | `DATABASE_URL` | Render (secret) | `postgresql://…` in production. Use the pooler host on Supabase: the direct host is IPv6-only. Never in Vercel, never in Git, never `NEXT_PUBLIC_*`. |
 | `DB_POOL_MIN` / `DB_POOL_MAX` | Render | Pool bounds; each in-flight request holds one connection |
 | `DEMO_LOGIN_ENABLED` | Render | Must be `false` against PostgreSQL (refused otherwise) |
+| `STORAGE_BACKEND` | Render | `s3` (or `supabase`) in production; `local` only in development |
+| `STORAGE_BUCKET`, `STORAGE_ENDPOINT_URL`, `STORAGE_REGION` | Render | The S3-compatible endpoint; for Supabase, `https://<ref>.storage.supabase.co/storage/v1/s3` |
+| `STORAGE_ACCESS_KEY_ID`, `STORAGE_SECRET_ACCESS_KEY` | Render (secrets) | Created in the Supabase dashboard. Never Vercel, Git or `NEXT_PUBLIC_*` |
+| `STORAGE_KEY_PREFIX` | Render | Optional prefix inside the bucket |
+| `MAX_UPLOAD_BYTES` | Render | Upload-route body ceiling (default 26 MB) |
+
+The frontend needs only `NEXT_PUBLIC_API_BASE_URL`.

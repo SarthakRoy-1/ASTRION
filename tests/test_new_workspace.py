@@ -147,3 +147,24 @@ def test_two_new_workspaces_start_with_the_same_system_documents_and_nothing_sha
     assert {d["document_id"] for d in first.get("/api/documents").json()["documents"]} == {
         d["document_id"] for d in second.get("/api/documents").json()["documents"]
     }
+
+
+def test_system_documents_are_kept_as_objects_under_system_and_loading_is_idempotent(tmp_path):
+    from app.backend.storage import LocalDocumentStore
+
+    path = tmp_path / "sys.db"
+    store = LocalDocumentStore(tmp_path / "objects")
+    for _ in range(2):
+        result = ingest_documents.ingest(source_dir=SOURCE_DIR, db_path=path, org_id=None, store=store)
+        assert result["counts"]["objects_stored"] == SYSTEM_DOCUMENTS
+
+    keys = sorted(o.key for o in store.list(""))
+    assert len(keys) == SYSTEM_DOCUMENTS  # the same bytes land at the same keys
+    assert all(k.startswith("system/documents/") and k.endswith(".pdf") for k in keys)
+
+    conn = get_connection(path)
+    try:
+        recorded = sorted(r[0] for r in conn.execute("SELECT storage_key FROM documents"))
+        assert recorded == keys
+    finally:
+        conn.close()

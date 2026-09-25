@@ -84,6 +84,12 @@ class Document(BaseModel):
     org_id: str | None = None
     source_file: str
     source_sha256: str
+    #: Where the original file is in the document store, and what it was called
+    #: when uploaded. None for a document loaded with no store.
+    storage_key: str | None = None
+    original_filename: str | None = None
+    content_type: str | None = None
+    size_bytes: int | None = None
     title: str
     document_type: DocumentType
     status: DocumentStatus

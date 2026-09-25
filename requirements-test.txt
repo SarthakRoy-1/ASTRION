@@ -1,0 +1,8 @@
+# Everything the test suite needs beyond the runtime requirements.
+-r requirements.txt
+
+# A local S3-compatible server for the object-storage tests:
+#     python -m moto.server -p 59000
+#     ASTRION_TEST_S3_ENDPOINT=http://localhost:59000 pytest
+# Without it those tests are skipped.
+moto[s3,server]==5.1.12
