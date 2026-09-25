@@ -99,6 +99,31 @@ export interface LoginResult {
   org_id: string | null;
 }
 
+/** A sign-in provider this frontend knows how to offer. */
+export type OAuthProvider = "google" | "github";
+
+/**
+ * An email verification in progress, as the server describes it.
+ *
+ * Display state only. The code is never in it, and the address is masked
+ * (`s••••@example.com`): the full address stays on the server.
+ */
+export interface VerificationStatus {
+  purpose: "email_verification" | "oauth_signup";
+  email_hint: string | null;
+  /** A Google/GitHub sign-in that arrived without a verified address. */
+  needs_email: boolean;
+  provider: OAuthProvider | null;
+  code_expires_in_seconds: number | null;
+  code_ttl_seconds: number;
+  attempts_remaining: number | null;
+  resend_in_seconds: number;
+  sends_remaining: number;
+  expires_in_seconds: number;
+  /** Whether the latest send reached the mail provider. Absent: not re-sent. */
+  email_sent?: boolean;
+}
+
 /** Roles an inviter may choose. `owner` is absent by design — ownership moves
  *  only through the audited transfer path, never through an invitation. */
 export const ASSIGNABLE_ROLES: WorkspaceRole[] = [

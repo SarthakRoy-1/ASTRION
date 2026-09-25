@@ -97,6 +97,23 @@ class RegistrationError(AuthError):
     code = "registration_failed"
 
 
+class EmailVerificationRequired(AuthError):
+    """The password was right, but the address has never been proven.
+
+    Raised only *after* the password verifies, so it tells nobody anything
+    they did not already know: a stranger guessing at the account gets
+    `InvalidCredentials` exactly as before. The owner, instead of the old dead
+    end ("Incorrect email address or password" for the right password), is sent
+    a code and routed to the verification screen.
+    """
+
+    code = "email_verification_required"
+
+    def __init__(self, user: "repo.User") -> None:
+        super().__init__("Verify your email address to finish signing in.")
+        self.user = user
+
+
 def _now() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -194,14 +211,17 @@ def register_user(
     display_name: str,
     request_id: str | None = None,
     client_ip: str | None = None,
-) -> tuple[str, str | None]:
-    """Create an account. Returns (user_id, verification token or None).
+) -> tuple[str, bool]:
+    """Create an account. Returns (user_id, created).
 
     Raises `RegistrationError` only for a password that cannot be stored. An
-    address that is already registered does **not** raise: it returns a
-    synthetic result so the caller's response is identical either way, and the
-    real owner is the only party who learns anything (they would receive the
-    verification mail).
+    address that is already registered does **not** raise: it returns
+    `created=False`, and the route answers exactly as it would for a new
+    account — with a decoy verification that can never succeed — so the
+    response cannot be used to learn who is registered.
+
+    The address is proven afterwards with an emailed one-time code
+    (`auth/verification.py`); no verification link is issued any more.
     """
     normalized = repo.normalize_email(email)
     if "@" not in normalized or len(normalized) > 320:
@@ -227,19 +247,13 @@ def register_user(
             ip_hash=hash_identifier(client_ip),
             details={"reason": "email_already_registered"},
         )
-        return existing.user_id, None
+        return existing.user_id, False
 
     user = repo.create_user(
         conn,
         email=normalized,
         display_name=display_name.strip()[:200],
         password_hash=hash_password(password),
-    )
-    token = repo.issue_auth_token(
-        conn,
-        user_id=user.user_id,
-        purpose=VERIFICATION_PURPOSE,
-        ttl_minutes=repo.EMAIL_VERIFICATION_TTL_HOURS * 60,
     )
     record_event(
         conn,
@@ -249,7 +263,7 @@ def register_user(
         ip_hash=hash_identifier(client_ip),
         details={"email_domain": normalized.split("@")[-1]},
     )
-    return user.user_id, token
+    return user.user_id, True
 
 
 def verify_email(
@@ -259,6 +273,10 @@ def verify_email(
     if user_id is None:
         return False
     repo.mark_email_verified(conn, user_id)
+    # Any code still outstanding for this address is now moot.
+    from app.backend.auth.verification import close_for_user
+
+    close_for_user(conn, user_id)
     record_event(
         conn,
         AuditEvent.EMAIL_VERIFIED,
@@ -356,7 +374,7 @@ def login(
             ip_hash=ip_hash,
             details={"reason": "email_unverified"},
         )
-        raise InvalidCredentials("Incorrect email address or password.")
+        raise EmailVerificationRequired(user)
 
     # Opportunistically upgrade a hash derived under older parameters.
     if needs_rehash(user.password_hash):
@@ -402,6 +420,52 @@ def login(
         details={"stage": "complete", "mfa_pending": False},
     )
     return LoginResult(session_id, token, user.user_id, False, org_id)
+
+
+def start_session(
+    conn: sqlite3.Connection,
+    *,
+    user: repo.User,
+    method: str,
+    client_ip: str | None = None,
+    user_agent: str | None = None,
+    request_id: str | None = None,
+) -> LoginResult:
+    """Issue a session for an identity proven some other way than a password.
+
+    Used by provider sign-in and by a completed email verification, so every
+    way in ends in the same kind of session under the same rules: a fresh
+    session id, the user's first workspace, and — when the account has a
+    second factor — a half session that can reach the challenge and nothing
+    else. A provider sign-in is *one* factor, exactly as a password is.
+    """
+    ip_hash = hash_identifier(client_ip)
+    memberships = repo.list_memberships(conn, user.user_id)
+    org_id = memberships[0].org_id if memberships else None
+    session_id, token = repo.create_session(
+        conn,
+        user_id=user.user_id,
+        org_id=org_id,
+        mfa_satisfied=not user.mfa_enabled,
+        ip_hash=ip_hash,
+        user_agent_hash=hash_identifier(user_agent),
+    )
+    if not user.mfa_enabled:
+        repo.record_login(conn, user.user_id)
+    record_event(
+        conn,
+        AuditEvent.LOGIN_SUCCEEDED,
+        actor_user_id=user.user_id,
+        org_id=org_id,
+        request_id=request_id,
+        ip_hash=ip_hash,
+        details={
+            "stage": "password_only" if user.mfa_enabled else "complete",
+            "mfa_pending": user.mfa_enabled,
+            "method": method,
+        },
+    )
+    return LoginResult(session_id, token, user.user_id, user.mfa_enabled, org_id)
 
 
 def complete_mfa(
@@ -616,6 +680,9 @@ def complete_password_reset(
     revoked = repo.revoke_all_sessions(conn, user_id)
     # A reset also proves control of the mailbox, so it settles verification.
     repo.mark_email_verified(conn, user_id)
+    from app.backend.auth.verification import close_for_user
+
+    close_for_user(conn, user_id)
     record_event(
         conn,
         AuditEvent.PASSWORD_RESET_COMPLETED,

@@ -220,6 +220,12 @@ def build_services() -> list[Service]:
     # stops interleaving usefully with the frontend's.
     backend_env["PYTHONUNBUFFERED"] = "1"
     backend_env.setdefault("PYTHONPATH", str(ROOT))
+    # Local development has no mail provider, and a verification code must
+    # never travel in an API response or a log. The development outbox is the
+    # third place it can go: one JSON file per email under data/outbox/, on
+    # this machine only. Ignored when RESEND_API_KEY is configured (real mail
+    # wins), and refused by the backend when APP_ENV is production.
+    backend_env.setdefault("EMAIL_OUTBOX_DIR", str(ROOT / "data" / "outbox"))
 
     frontend_env = os.environ.copy()
     # Point the browser bundle at the backend this script actually started, on

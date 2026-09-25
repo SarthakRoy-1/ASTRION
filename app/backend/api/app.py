@@ -23,6 +23,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.backend.api.auth_routes import auth_router
 from app.backend.api.document_routes import router as document_router
 from app.backend.api.errors import register_error_handlers
+from app.backend.api.identity_routes import identity_router
 from app.backend.api.middleware import (
     BodySizeLimitMiddleware,
     CsrfOriginMiddleware,
@@ -96,6 +97,33 @@ def _demo_lifespan(settings: Settings):
     return lifespan
 
 
+class RedactOAuthQuery(logging.Filter):
+    """Keep provider authorization codes and state out of the access log.
+
+    uvicorn logs every request line, query string included, and the OAuth
+    callback carries the provider's single-use authorization code there. The
+    code is useless without the PKCE verifier held server-side, but a log is a
+    second copy of a credential retained far longer than the credential, so the
+    query is dropped from those lines entirely.
+    """
+
+    MARKER = "/api/auth/oauth/"
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        args = record.args
+        if isinstance(args, tuple):
+            record.args = tuple(
+                arg.split("?", 1)[0] + "?[redacted]"
+                if isinstance(arg, str) and self.MARKER in arg and "?" in arg
+                else arg
+                for arg in args
+            )
+        return True
+
+
+_REDACTOR = RedactOAuthQuery()
+
+
 def create_app(settings: Settings | None = None) -> FastAPI:
     """Build the application. Raises on invalid configuration."""
     if settings is None:
@@ -113,6 +141,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     settings.validate_cors()
 
     logging.getLogger("astrion").setLevel(logging.INFO)
+    access_log = logging.getLogger("uvicorn.access")
+    if _REDACTOR not in access_log.filters:
+        access_log.addFilter(_REDACTOR)
 
     app = FastAPI(
         title=API_TITLE,
@@ -181,6 +212,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     register_error_handlers(app)
     app.include_router(router)
     app.include_router(auth_router)
+    app.include_router(identity_router)
     app.include_router(workspace_router)
     app.include_router(operations_router)
     app.include_router(document_router)

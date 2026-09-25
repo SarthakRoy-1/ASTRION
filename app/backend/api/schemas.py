@@ -580,6 +580,9 @@ class HealthResponse(BaseModel):
     #: and nothing more: the frontend needs it to decide whether to render the
     #: demo button, and the credential behind it stays on the server.
     demo_login_enabled: bool = False
+    #: Which "Continue with …" buttons can work: provider names only, never a
+    #: client id or secret.
+    oauth_providers: list[str] = Field(default_factory=list)
 
     database_ready: bool
     documents_indexed: int

@@ -309,6 +309,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/auth/oauth/{provider}/callback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Oauth Callback
+         * @description Finish a provider sign-in and return the browser to the frontend.
+         */
+        get: operations["oauth_callback_api_auth_oauth__provider__callback_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/oauth/{provider}/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Oauth Start
+         * @description Send the browser to the provider. Reached by navigation, not by fetch.
+         */
+        get: operations["oauth_start_api_auth_oauth__provider__start_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/auth/password/change": {
         parameters: {
             query?: never;
@@ -377,16 +417,16 @@ export interface paths {
         put?: never;
         /**
          * Register
-         * @description Create an account and send a verification email.
+         * @description Create an account and email a one-time code to verify its address.
          *
          *     The response is identical whether or not the address was already
          *     registered, so this endpoint cannot be used to test which addresses have
-         *     accounts.
+         *     accounts: a taken address gets a *decoy* verification that looks and
+         *     behaves like a real one and can never succeed.
          *
-         *     Email delivery is attempted but does not gate account creation: if Resend
-         *     is not configured (or fails), registration still succeeds and the frontend
-         *     receives `email_sent: false` along with the token — but only in non-
-         *     production, where returning the token is acceptable for developer testing.
+         *     The code itself never appears in the response, in any environment. It goes
+         *     to the address, or — in local development with `EMAIL_OUTBOX_DIR` set — to
+         *     a file on the developer's own disk.
          */
         post: operations["register_api_auth_register_post"];
         delete?: never;
@@ -437,6 +477,114 @@ export interface paths {
         get: operations["list_sessions_api_auth_sessions_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/verification": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Verification Status
+         * @description The verification this browser is in the middle of, if any.
+         */
+        get: operations["verification_status_api_auth_verification_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/verification/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Verification Cancel
+         * @description Abandon the verification in this browser. Idempotent.
+         */
+        post: operations["verification_cancel_api_auth_verification_cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/verification/email": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Verification Address
+         * @description Choose the address a Google/GitHub sign-in will prove, and send it a code.
+         *
+         *     Only for a provider sign-in that arrived without a verified address. The
+         *     answer is the same whether or not the address belongs to an account:
+         *     which one it becomes is decided only once the code proves the mailbox.
+         */
+        post: operations["verification_address_api_auth_verification_email_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/verification/resend": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Verification Resend
+         * @description Send a fresh code. The previous one stops working immediately.
+         */
+        post: operations["verification_resend_api_auth_verification_resend_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/auth/verification/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Verification Verify
+         * @description Check a code. On success the address is verified and a session begins.
+         *
+         *     The session is the same kind a password sign-in issues, and it honours the
+         *     account's second factor: with MFA on, it is a half session and the answer
+         *     says `mfa_required`.
+         */
+        post: operations["verification_verify_api_auth_verification_verify_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -939,6 +1087,11 @@ export interface components {
          * @enum {string}
          */
         ActionState: "none" | "pending_confirmation" | "confirmed" | "executed" | "rejected" | "expired" | "failed";
+        /** AddressRequest */
+        AddressRequest: {
+            /** Email */
+            email: string;
+        };
         /** Body_upload_document_api_documents_upload_post */
         Body_upload_document_api_documents_upload_post: {
             /** File */
@@ -1028,6 +1181,11 @@ export interface components {
             uncertainties: string[];
             /** User Id */
             user_id: string;
+        };
+        /** CodeRequest */
+        CodeRequest: {
+            /** Code */
+            code: string;
         };
         /**
          * ConfirmationDecision
@@ -1226,6 +1384,8 @@ export interface components {
             max_tool_steps: number;
             /** Model */
             model?: string | null;
+            /** Oauth Providers */
+            oauth_providers?: string[];
             /** Provider Mode */
             provider_mode: string;
             /** State Changing Actions Enabled */
@@ -2012,6 +2172,72 @@ export interface operations {
             };
         };
     };
+    oauth_callback_api_auth_oauth__provider__callback_get: {
+        parameters: {
+            query?: {
+                code?: string | null;
+                state?: string | null;
+                error?: string | null;
+            };
+            header?: never;
+            path: {
+                provider: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    oauth_start_api_auth_oauth__provider__start_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                provider: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     password_change_api_auth_password_change_post: {
         parameters: {
             query?: never;
@@ -2205,6 +2431,142 @@ export interface operations {
                     "application/json": {
                         [key: string]: unknown;
                     };
+                };
+            };
+        };
+    };
+    verification_status_api_auth_verification_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    verification_cancel_api_auth_verification_cancel_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    verification_address_api_auth_verification_email_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AddressRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    verification_resend_api_auth_verification_resend_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+        };
+    };
+    verification_verify_api_auth_verification_verify_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CodeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
