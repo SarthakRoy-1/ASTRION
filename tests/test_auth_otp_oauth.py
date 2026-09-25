@@ -35,6 +35,7 @@ API = "https://api.example.com"
 class CapturingEmailProvider:
     def __init__(self) -> None:
         self.codes: list[tuple[str, str]] = []
+        self.notices: list[str] = []
         self.fail = False
 
     def send_verification_email(self, *, to_address, display_name, verification_url):
@@ -46,6 +47,13 @@ class CapturingEmailProvider:
         if self.fail:
             raise EmailDeliveryError("simulated outage")
         self.codes.append((to_address, code))
+
+    def send_existing_account_notice(self, *, to_address):
+        from app.backend.email.provider import EmailDeliveryError
+
+        if self.fail:
+            raise EmailDeliveryError("simulated outage")
+        self.notices.append(to_address)
 
     def codes_for(self, address: str) -> list[str]:
         return [code for to, code in self.codes if to == address]
@@ -351,12 +359,13 @@ def test_email_delivery_failure_is_reported_and_recoverable(full_db):
 # --- enumeration ------------------------------------------------------------------
 
 
-def test_registering_a_taken_address_emails_nobody_and_can_never_verify(env, db):
+def test_registering_a_taken_address_sends_no_code_and_can_never_verify(env, db):
     make_user(db, "taken@example.com")
     first = register(env, "taken@example.com")
     assert first.status_code == 200
-    assert first.json()["email_sent"] is True  # indistinguishable from a real send
-    assert env.mail.codes_for("taken@example.com") == []
+    assert first.json()["email_sent"] is True  # and true: a notice really was sent
+    assert env.mail.codes_for("taken@example.com") == []  # but never a code
+    assert env.mail.notices == ["taken@example.com"]
 
     # Whatever is guessed, the decoy refuses exactly as a real code would.
     outcomes = [verify(env, f"{n:06d}").json()["error"]["code"] for n in range(5)]

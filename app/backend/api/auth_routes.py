@@ -319,7 +319,10 @@ def register(
         "status": "registration_received",
         "email_sent": email_sent,
         "message": (
-            f"We've sent a verification code to {hint}."
+            # Worded to be true for a new address (it holds the code) and for
+            # one that already has an account (it says so), because the two
+            # must be answered alike.
+            f"We've emailed {hint}."
             if email_sent
             else "Your account is waiting for verification, but the code could "
             "not be emailed. Try sending it again."

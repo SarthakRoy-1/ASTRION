@@ -57,6 +57,15 @@ class EmailProvider(Protocol):
         """
         ...
 
+    def send_existing_account_notice(self, *, to_address: str) -> None:
+        """Tell an address that it already has an account. Raises `EmailDeliveryError`.
+
+        Sent when someone registers an address that is taken. It carries no code
+        and no link, so whoever asked learns nothing they could use, and the
+        mailbox owner learns that the request was made.
+        """
+        ...
+
 
 class NullEmailProvider:
     """Used when no API key is configured.
@@ -85,6 +94,12 @@ class NullEmailProvider:
         code: str,
         expires_minutes: int,
     ) -> None:
+        logger.error(NO_PROVIDER_LOG)
+        raise EmailDeliveryError(
+            "No email provider is configured. Set RESEND_API_KEY to enable delivery."
+        )
+
+    def send_existing_account_notice(self, *, to_address: str) -> None:
         logger.error(NO_PROVIDER_LOG)
         raise EmailDeliveryError(
             "No email provider is configured. Set RESEND_API_KEY to enable delivery."

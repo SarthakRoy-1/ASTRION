@@ -32,12 +32,16 @@ class CapturingEmailProvider:
 
     def __init__(self) -> None:
         self.codes: list[tuple[str, str]] = []
+        self.notices: list[str] = []
 
     def send_verification_email(self, *, to_address, display_name, verification_url):
         raise AssertionError("no verification links are sent any more")
 
     def send_verification_code(self, *, to_address, display_name, code, expires_minutes):
         self.codes.append((to_address, code))
+
+    def send_existing_account_notice(self, *, to_address):
+        self.notices.append(to_address)
 
 
 def _settings(full_db, **overrides) -> Settings:

@@ -133,3 +133,52 @@ def verification_code_email_html(
   </table>
 </body>
 </html>"""
+
+
+# --- notice to an address that already has an account -------------------------
+
+EXISTING_ACCOUNT_SUBJECT = "You already have an ASTRION account"
+
+
+def existing_account_email_text() -> str:
+    return (
+        "Hello,\n\n"
+        "Someone asked to create an ASTRION account with this email address, but "
+        "an account for it already exists, so no new one was made.\n\n"
+        "If that was you, sign in with the password you chose. If this address "
+        "was never verified, signing in will email you a new verification code.\n\n"
+        "If it was not you, you can ignore this message; nothing has changed and "
+        "nobody has been given access to your account.\n\n"
+        "\u2014 ASTRION"
+    )
+
+
+def existing_account_email_html() -> str:
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{EXISTING_ACCOUNT_SUBJECT}</title>
+</head>
+<body style="margin:0;padding:32px 16px;background:#04090e;font-family:system-ui,-apple-system,'Segoe UI',sans-serif;">
+  <table role="presentation" style="max-width:520px;margin:0 auto;background:#10161d;border:1px solid #26303a;border-radius:16px;padding:36px 32px;color:#f2eee7;">
+    <tr><td>
+      <p style="margin:0 0 28px;font-size:15px;font-weight:700;letter-spacing:.28em;color:#ebe2d6;">ASTRION</p>
+      <h1 style="margin:0 0 12px;font-size:22px;font-weight:600;color:#f2eee7;">You already have an account</h1>
+      <p style="margin:0 0 16px;color:#c9c4bc;line-height:1.55;">
+        Someone asked to create an ASTRION account with this email address, but
+        an account for it already exists, so no new one was made.
+      </p>
+      <p style="margin:0 0 16px;color:#c9c4bc;line-height:1.55;">
+        If that was you, sign in with the password you chose. If this address
+        was never verified, signing in will email you a new verification code.
+      </p>
+      <p style="margin:24px 0 0;color:#8d8a85;font-size:13px;line-height:1.5;">
+        If it was not you, you can ignore this message; nothing has changed and
+        nobody has been given access to your account.
+      </p>
+    </td></tr>
+  </table>
+</body>
+</html>"""

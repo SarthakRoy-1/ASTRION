@@ -72,11 +72,29 @@ address, against a space of a million codes.
 **No existence oracle.** Registering an address that is already taken returns
 exactly what a new registration returns, including a verification: a *decoy*.
 The decoy has real code rows, so it expires, counts attempts, enforces
-cooldowns and reports sends like a real one, and it can never succeed. Nothing
-is emailed to the real owner, and the decoy never counts against their sending
-allowance. The one difference a caller could observe is during a live mail
-provider outage: the real registration reports "not sent" and the decoy
-reports whatever the transport would normally do.
+cooldowns and reports sends like a real one, and it can never succeed: it is
+never given a code. What it *is* given is a real email, "you already have an
+account", that carries no code and no link, so the mailbox owner learns that
+somebody tried and the person who asked learns nothing. "Sent" is therefore true
+for both: it is reported only when the email provider accepted a message. The
+notices are capped per address (the same count and window as codes), separately
+from the real sending allowance, so a decoy never uses up the owner's codes and
+registration cannot be used to flood a mailbox.
+
+**"Sent" always means the provider accepted a message.** The Resend provider
+counts a send only when Resend answers with a message id; a rejection, a
+timeout, a response with no id and a missing key are all "not sent", and the
+interface then says the email did not send instead of "New code sent". Every
+failure is logged with the provider's own error code (addresses and digit runs
+masked), and every accepted send is logged with the recipient's domain only.
+
+**Testing sender.** With `EMAIL_FROM` on `onboarding@resend.dev` (Resend's
+shared testing sender), Resend delivers only to the address that owns the Resend
+account and rejects every other recipient with a 403 `validation_error`. To email
+anyone else, verify a domain in Resend and put a sender on it in `EMAIL_FROM`.
+Because the owner's own address is usually already registered from earlier
+testing, registering it again sends the "already have an account" notice, not a
+code; signing in with that account's password sends a real code.
 
 **Never exposed.** The code is not in any API response (in any environment),
 redirect, log line or audit entry. The email provider is the only place it

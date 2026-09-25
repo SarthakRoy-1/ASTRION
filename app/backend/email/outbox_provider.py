@@ -20,7 +20,9 @@ from pathlib import Path
 
 from app.backend.email.provider import EmailDeliveryError
 from app.backend.email.templates import (
+    EXISTING_ACCOUNT_SUBJECT,
     VERIFICATION_CODE_SUBJECT,
+    existing_account_email_text,
     verification_code_email_text,
     verification_email_text,
 )
@@ -68,5 +70,14 @@ class OutboxEmailProvider:
                 "text": verification_code_email_text(
                     display_name=display_name, code=code, expires_minutes=expires_minutes
                 ),
+            }
+        )
+
+    def send_existing_account_notice(self, *, to_address: str) -> None:
+        self._write(
+            {
+                "to": to_address,
+                "subject": EXISTING_ACCOUNT_SUBJECT,
+                "text": existing_account_email_text(),
             }
         )

@@ -4,6 +4,12 @@ Imported lazily (only when RESEND_API_KEY is present) so the entire test
 suite runs without the SDK installed or a network connection. The SDK itself
 is imported inside the method body for the same reason.
 
+**What "sent" means.** A send counts as delivered to the provider only when
+Resend has answered with an `id` for the message. The SDK raises on any HTTP
+status of 400 or more, and a response with no `id` is treated as a failure too:
+the caller turns this into "the email was sent", which the interface then tells
+a person, so it must not be true on a guess.
+
 Failure contract: any Resend API error becomes `EmailDeliveryError`. The API
 key is never logged, never included in error messages.
 """
@@ -15,7 +21,10 @@ import re
 
 from app.backend.email.provider import EmailDeliveryError
 from app.backend.email.templates import (
+    EXISTING_ACCOUNT_SUBJECT,
     VERIFICATION_CODE_SUBJECT,
+    existing_account_email_html,
+    existing_account_email_text,
     verification_code_email_html,
     verification_code_email_text,
     verification_email_html,
@@ -24,7 +33,17 @@ from app.backend.email.templates import (
 
 logger = logging.getLogger("astrion.email.resend")
 
+#: A single request must not hold a worker for the SDK's default half minute.
+REQUEST_TIMEOUT_SECONDS = 10
+
 _DIGIT_RUN = re.compile(r"\d{4,}")
+_ADDRESS = re.compile(r"[^\s<>\"'()\[\],;]+@[^\s<>\"'()\[\],;]+")
+
+
+def _sanitise(value: object) -> str:
+    """A provider's text, made safe for a log line: no addresses, no long numbers."""
+    text = _ADDRESS.sub("<address>", str(value))
+    return _DIGIT_RUN.sub("#", text)[:300]
 
 
 def describe_failure(exc: BaseException) -> str:
@@ -35,8 +54,9 @@ def describe_failure(exc: BaseException) -> str:
     error object, which comes from the API's *response*. That is the one thing
     an operator needs and the old log line ("ResendError") discarded. Anything
     that is not the provider's own error (a network failure, say) is reported
-    by class name only, because those messages can echo the request. Digit runs
-    are masked in any case, so a code could never reach a log.
+    by class name only, because those messages can echo the request. Addresses
+    (Resend's testing-mode refusal names the account owner's own) and digit runs
+    (a code) are masked in any case.
     """
     name = type(exc).__name__
     if not type(exc).__module__.startswith("resend"):
@@ -45,7 +65,7 @@ def describe_failure(exc: BaseException) -> str:
     for attribute in ("code", "error_type", "message"):
         value = getattr(exc, attribute, None)
         if value not in (None, ""):
-            parts.append(f"{attribute}={_DIGIT_RUN.sub('#', str(value))[:300]}")
+            parts.append(f"{attribute}={_sanitise(value)}")
     return " ".join(parts)
 
 
@@ -56,6 +76,55 @@ class ResendEmailProvider:
         self._api_key = api_key
         self._from_address = from_address
 
+    # -- the one place a request is made -----------------------------------------
+
+    def _deliver(
+        self, *, kind: str, to_address: str, subject: str, html: str, text: str
+    ) -> None:
+        """POST /emails, and return only if Resend accepted the message.
+
+        The exception text is not logged or re-raised as it stands: some SDK
+        versions echo the request body, which can carry a code. What is logged is
+        `describe_failure`'s sanitised reason.
+        """
+        try:
+            import resend
+        except ImportError as exc:
+            logger.error("email.resend: the resend package is not installed")
+            raise EmailDeliveryError(
+                "resend package is not installed. Add resend to requirements.txt."
+            ) from exc
+
+        resend.api_key = self._api_key  # type: ignore[attr-defined]
+        _bound_the_request_time(resend)
+
+        try:
+            response = resend.Emails.send(  # type: ignore[attr-defined]
+                {
+                    "from": self._from_address,
+                    "to": [to_address],
+                    "subject": subject,
+                    "html": html,
+                    "text": text,
+                }
+            )
+            message_id = response.get("id") if hasattr(response, "get") else None
+        except Exception as exc:
+            logger.error("email.resend: %s failed reason=%s", kind, describe_failure(exc))
+            raise EmailDeliveryError(f"Email delivery failed ({type(exc).__name__}).") from None
+
+        if not message_id:
+            logger.error("email.resend: %s failed reason=no message id in the response", kind)
+            raise EmailDeliveryError("Email delivery failed (no message id).")
+
+        # The address's domain only: the log is not a record of who signed up,
+        # and it must never hold a code.
+        logger.info(
+            "email.resend: %s accepted domain=%s", kind, to_address.rsplit("@", 1)[-1]
+        )
+
+    # -- the messages ---------------------------------------------------------------
+
     def send_verification_email(
         self,
         *,
@@ -63,44 +132,17 @@ class ResendEmailProvider:
         display_name: str,
         verification_url: str,
     ) -> None:
-        try:
-            import resend
-        except ImportError as exc:
-            raise EmailDeliveryError(
-                "resend package is not installed. Add resend to requirements.txt."
-            ) from exc
-
-        resend.api_key = self._api_key  # type: ignore[attr-defined]
-
-        try:
-            params: resend.Emails.SendParams = {  # type: ignore[attr-defined]
-                "from": self._from_address,
-                "to": [to_address],
-                "subject": "Confirm your ASTRION email address",
-                "html": verification_email_html(
-                    display_name=display_name,
-                    verification_url=verification_url,
-                ),
-                "text": verification_email_text(
-                    display_name=display_name,
-                    verification_url=verification_url,
-                ),
-            }
-            resend.Emails.send(params)  # type: ignore[attr-defined]
-            logger.info("email.resend: verification sent to=%s", to_address)
-        except Exception as exc:
-            # Never include the API key in the message; exc may contain it via
-            # the HTTP request body in some SDK versions.
-            logger.error(
-                "email.resend: delivery failed to=%s reason=%s",
-                to_address,
-                describe_failure(exc),
-            )
-            raise EmailDeliveryError(
-                f"Email delivery failed ({type(exc).__name__}). "
-                "The verification link will be returned in the response "
-                "if this is not a production deployment."
-            ) from exc
+        self._deliver(
+            kind="verification link",
+            to_address=to_address,
+            subject="Confirm your ASTRION email address",
+            html=verification_email_html(
+                display_name=display_name, verification_url=verification_url
+            ),
+            text=verification_email_text(
+                display_name=display_name, verification_url=verification_url
+            ),
+        )
 
     def send_verification_code(
         self,
@@ -110,40 +152,37 @@ class ResendEmailProvider:
         code: str,
         expires_minutes: int,
     ) -> None:
-        try:
-            import resend
-        except ImportError as exc:
-            raise EmailDeliveryError(
-                "resend package is not installed. Add resend to requirements.txt."
-            ) from exc
+        self._deliver(
+            kind="verification code",
+            to_address=to_address,
+            subject=VERIFICATION_CODE_SUBJECT,
+            html=verification_code_email_html(
+                display_name=display_name, code=code, expires_minutes=expires_minutes
+            ),
+            text=verification_code_email_text(
+                display_name=display_name, code=code, expires_minutes=expires_minutes
+            ),
+        )
 
-        resend.api_key = self._api_key  # type: ignore[attr-defined]
-        try:
-            params: resend.Emails.SendParams = {  # type: ignore[attr-defined]
-                "from": self._from_address,
-                "to": [to_address],
-                "subject": VERIFICATION_CODE_SUBJECT,
-                "html": verification_code_email_html(
-                    display_name=display_name, code=code, expires_minutes=expires_minutes
-                ),
-                "text": verification_code_email_text(
-                    display_name=display_name, code=code, expires_minutes=expires_minutes
-                ),
-            }
-            resend.Emails.send(params)  # type: ignore[attr-defined]
-            # The address's domain only: the log is not a record of who signed
-            # up, and it must never hold the code.
-            logger.info(
-                "email.resend: verification code sent domain=%s",
-                to_address.rsplit("@", 1)[-1],
-            )
-        except Exception as exc:
-            # Only the provider's own reason is logged (see `describe_failure`);
-            # the raw exception text is not, because some SDK versions echo the
-            # request body, which carries the code.
-            logger.error(
-                "email.resend: code delivery failed reason=%s", describe_failure(exc)
-            )
-            raise EmailDeliveryError(
-                f"Email delivery failed ({type(exc).__name__})."
-            ) from None
+    def send_existing_account_notice(self, *, to_address: str) -> None:
+        self._deliver(
+            kind="existing-account notice",
+            to_address=to_address,
+            subject=EXISTING_ACCOUNT_SUBJECT,
+            html=existing_account_email_html(),
+            text=existing_account_email_text(),
+        )
+
+
+def _bound_the_request_time(resend_module) -> None:
+    """Give the SDK's HTTP client a short timeout, where it lets us.
+
+    Best effort: the client class is the SDK's own, and a version that moves it
+    simply keeps its default rather than failing a send over a tuning detail.
+    """
+    try:
+        from resend.http_client_requests import RequestsClient
+
+        resend_module.default_http_client = RequestsClient(timeout=REQUEST_TIMEOUT_SECONDS)
+    except Exception:  # noqa: BLE001 - see docstring
+        pass

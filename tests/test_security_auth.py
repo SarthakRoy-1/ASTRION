@@ -58,6 +58,7 @@ class CapturingEmailProvider:
     def __init__(self) -> None:
         self.codes: list[tuple[str, str]] = []
         self.links: list[tuple[str, str]] = []
+        self.notices: list[str] = []
         self.fail = False
 
     def send_verification_email(self, *, to_address, display_name, verification_url):
@@ -73,6 +74,13 @@ class CapturingEmailProvider:
         if self.fail:
             raise EmailDeliveryError("simulated outage")
         self.codes.append((to_address, code))
+
+    def send_existing_account_notice(self, *, to_address):
+        from app.backend.email.provider import EmailDeliveryError
+
+        if self.fail:
+            raise EmailDeliveryError("simulated outage")
+        self.notices.append(to_address)
 
     def last_code(self, to_address: str) -> str:
         return [code for to, code in self.codes if to == to_address][-1]

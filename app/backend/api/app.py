@@ -153,7 +153,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     for warning in settings.email_configuration_warnings():
         logging.getLogger("astrion.email").warning(warning)
 
-    logging.getLogger("astrion").setLevel(logging.INFO)
+    astrion_log = logging.getLogger("astrion")
+    astrion_log.setLevel(logging.INFO)
+    if not astrion_log.handlers and not logging.getLogger().handlers:
+        # Without a handler Python prints only warnings and worse, so an INFO
+        # line ("verification code accepted by the provider") never reached the
+        # host's log and a send could not be told from no send at all.
+        handler = logging.StreamHandler()
+        handler.setFormatter(logging.Formatter("%(levelname)s:     %(name)s: %(message)s"))
+        astrion_log.addHandler(handler)
     access_log = logging.getLogger("uvicorn.access")
     if _REDACTOR not in access_log.filters:
         access_log.addFilter(_REDACTOR)

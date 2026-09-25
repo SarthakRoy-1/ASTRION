@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import logging
 import sqlite3
+from datetime import datetime, timedelta, timezone
 from http import HTTPStatus
 from urllib.parse import urlencode
 
@@ -44,7 +45,7 @@ from app.backend.auth import service as auth_service
 from app.backend.auth import verification as ver
 from app.backend.core.config import AuthMode, Settings, email_provider_for
 from app.backend.core.errors import AppError, InvalidRequestError, NotFoundError
-from app.backend.email.provider import EmailDeliveryError, NullEmailProvider
+from app.backend.email.provider import EmailDeliveryError
 from app.backend.services.audit import (
     AuditEvent,
     AuditOutcome,
@@ -146,23 +147,63 @@ def _display_name_for(conn: sqlite3.Connection, verification: ver.Verification) 
     return (verification.email or "there").split("@", 1)[0]
 
 
+def _send_existing_account_notice(
+    request: Request,
+    conn: sqlite3.Connection,
+    verification: ver.Verification,
+    issued: ver.IssuedCode,
+    policy: ver.OtpPolicy,
+) -> bool:
+    """Email an already-registered address to say so. Returns whether it was accepted.
+
+    Nothing in the message can be used to sign in or verify anything, so whoever
+    asked learns nothing and the mailbox owner learns that somebody tried.
+    Capped per address (the same number as real codes, over the same window), so
+    registering a stranger's address repeatedly cannot be used to flood it.
+    """
+    domain = (verification.email or "").rsplit("@", 1)[-1]
+    since = datetime.now(timezone.utc) - timedelta(minutes=policy.window_minutes)
+    if ver.notices_delivered_since(conn, verification.email, since) >= policy.max_sends_per_window:
+        logger.info("verification: existing-account notice withheld (address cap reached)")
+        return False
+    try:
+        _email_provider(request).send_existing_account_notice(to_address=verification.email)
+    except EmailDeliveryError:
+        record_event(
+            conn,
+            AuditEvent.EMAIL_CODE_FAILED,
+            outcome=AuditOutcome.FAILURE,
+            ip_hash=hash_identifier(client_address(request)),
+            details={"purpose": verification.purpose, "email_domain": domain, "kind": "existing_account_notice"},
+        )
+        return False
+    ver.mark_delivered(conn, issued.otp_id)
+    record_event(
+        conn,
+        AuditEvent.EMAIL_CODE_SENT,
+        ip_hash=hash_identifier(client_address(request)),
+        details={"purpose": verification.purpose, "email_domain": domain, "kind": "existing_account_notice"},
+    )
+    return True
+
+
 def send_code(
     request: Request, conn: sqlite3.Connection, verification: ver.Verification
 ) -> bool:
     """Issue a fresh code and email it. Returns whether it was delivered.
 
-    Raises `SendRefused` when a code was asked for too soon or too often. A
-    decoy's code is minted and counted but never sent, and it reports the
-    delivery the deployment *would* have managed, so it reads exactly like a
-    real one.
+    Raises `SendRefused` when a code was asked for too soon or too often.
+
+    "Delivered" is only ever true when the provider accepted a message. A decoy
+    (the address is already registered) never gets a code, but it does get a real
+    email, one that says the address already has an account, so the answer is
+    the same shape as for a new address and just as true.
     """
     policy = _policy(request)
     issued = ver.issue_code(conn, verification, policy)
 
     if verification.decoy:
-        # What a real send through this transport would report. Only a live
-        # provider outage could make the two differ.
-        return not isinstance(_email_provider(request), NullEmailProvider)
+        return _send_existing_account_notice(request, conn, verification, issued, policy)
 
     domain = (verification.email or "").rsplit("@", 1)[-1]
     try:

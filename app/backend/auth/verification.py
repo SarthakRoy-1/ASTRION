@@ -430,6 +430,30 @@ def issue_code(
     return IssuedCode(otp_id=otp_id, code=code, expires_at=expires_at)
 
 
+def notices_delivered_since(
+    conn: sqlite3.Connection, email: str, since: datetime
+) -> int:
+    """How many "you already have an account" notices this address has been sent.
+
+    A decoy verification (someone registered an address that is taken) sends a
+    notice instead of a code, and each notice is a decoy code marked delivered.
+    Counting those per address is what stops registration being used to mail a
+    stranger over and over. It is deliberately separate from the real sending
+    cap: a decoy must never use up the real owner's allowance for codes.
+    """
+    row = conn.execute(
+        """
+        SELECT COUNT(*) AS n
+          FROM email_otps o
+          JOIN email_verifications v ON v.verification_id = o.verification_id
+         WHERE v.decoy = 1 AND v.email = ? AND o.delivered = 1
+           AND o.created_at_utc >= ?
+        """,
+        (email, since.isoformat()),
+    ).fetchone()
+    return int(row["n"])
+
+
 def mark_delivered(conn: sqlite3.Connection, otp_id: str) -> None:
     with conn:
         conn.execute("UPDATE email_otps SET delivered = 1 WHERE otp_id = ?", (otp_id,))

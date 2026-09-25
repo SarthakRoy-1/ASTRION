@@ -106,7 +106,7 @@ chunks the caller is permitted to see (see §6).
 | Google / GitHub | OAuth 2.0 code flow with PKCE (S256); state bound to an `HttpOnly` cookie *and* a single-use server row; no user-controlled redirect; provider tokens never stored or logged; identities linked only on a verified address. See [authentication.md](authentication.md) |
 | Password reset | Single-use token, 30-minute TTL, digest stored; issuing a new one invalidates the old; completion revokes every session |
 | Brute force | 5 failures per account **and** 20 per client address, over a 15-minute rolling window |
-| Enumeration | Registration, login and reset-request are response- and timing-identical for existing and non-existing accounts. A taken address gets a *decoy* code verification that behaves like a real one and never succeeds; "verify your email" is only ever said after the correct password |
+| Enumeration | Registration, login and reset-request are response- and timing-identical for existing and non-existing accounts. A taken address gets a *decoy* code verification that behaves like a real one and never succeeds, and a real "you already have an account" email (no code, no link, capped per address); "verify your email" is only ever said after the correct password |
 
 **No custom cryptography.** scrypt, HMAC-SHA256, SHA-256 and RFC 6238 TOTP are
 standard primitives from the Python standard library. TOTP is written out
