@@ -199,7 +199,7 @@ class AgentOrchestrator:
             customer_agreement_applied=assessment.authority.customer_agreement_applied,
             authority_overrides=list(assessment.authority.overrides),
             authority_conflicts=list(assessment.authority.conflicts),
-            escalation_reason=assessment.escalation_reason,
+            escalation_reason=assessment.escalation_reason or _advised_escalation(history),
             intents=sorted(intent.value for intent in intents),
         )
 
@@ -229,6 +229,16 @@ class AgentOrchestrator:
                 f"role {context.role.value!r} may not confirm state-changing actions"
             )
 
+        # A confirmation must say what it reviewed. There is no default and no
+        # "skip the check" path: an approval that names no proposal state is an
+        # approval of whatever happens to be stored, which is not what a person
+        # confirming a preview agreed to.
+        if not expected_fingerprint or not expected_fingerprint.strip():
+            raise ActionStateError(
+                "a confirmation must carry the fingerprint of the proposal that was "
+                "reviewed; re-read the action and confirm again"
+            )
+
         scope = context.scope()
         action = get_action(self._conn, action_id, scope=scope)
         if action is None:
@@ -236,21 +246,19 @@ class AgentOrchestrator:
 
         self._check_session(action, context, require_matching_session)
 
+        # What the human reviewed must be what is about to run (or be rejected).
+        # A stored proposal whose parameters no longer digest to the fingerprint
+        # the confirmation dialog showed is refused.
+        if action.parameter_fingerprint() != expected_fingerprint:
+            raise ActionStateError(
+                f"action {action_id!r} no longer matches the reviewed proposal; "
+                f"re-read the action and confirm again"
+            )
+
         if not approve:
             return reject_action(
                 self._conn, action_id, rejected_by=context.user_id, scope=scope
             )
-
-        if expected_fingerprint is not None:
-            # What the human approved must be what is about to run. A stored
-            # proposal whose parameters no longer digest to the fingerprint the
-            # confirmation dialog showed is refused rather than executed.
-            actual = action.parameter_fingerprint()
-            if actual != expected_fingerprint:
-                raise ActionStateError(
-                    f"action {action_id!r} no longer matches the reviewed proposal; "
-                    f"re-read the action and confirm again"
-                )
 
         self._authorize_high_value(action, context)
 
@@ -398,16 +406,22 @@ def _should_escalate(history: list[StepRecord], uncertainties: list[str]) -> boo
     """Recommend escalation when the sources say to, not as a default.
 
     Triggers on a policy decision that demands verification, an unresolved
-    cross-source conflict, or a tool error — each of which the supplied
+    cross-source conflict, or a tool error, each of which the supplied
     documents treat as a reason to involve a human rather than proceed.
 
     A *settled* decision can also demand escalation. The current support
     policy directs that P1 incidents be escalated immediately and that a
     breached response target be stated and escalated rather than reported
-    quietly — neither of which is an uncertainty, so neither would be caught
-    by the checks above. Both are read from fields the policy engine set, so
+    quietly, neither of which is an uncertainty. So is a ticket whose text
+    matches the policy's P1 definition: severity is not yet verified, but the
+    instruction for a P1 is to escalate at once, so the advice is given while
+    it is checked. All of these are read from fields the policy engine set, so
     this stays a projection of a deterministic decision rather than a second
     opinion about it.
+
+    What is *not* a reason: a question the sources simply cannot answer (a
+    record not found, nothing relevant retrieved, an unrelated question). That
+    is reported as insufficient data; there is nothing to hand to a person.
     """
     for record in history:
         if record.result.status in (ToolStatus.UNCERTAIN, ToolStatus.ERROR):
@@ -420,4 +434,20 @@ def _should_escalate(history: list[StepRecord], uncertainties: list[str]) -> boo
                 return True
             if getattr(decision, "breached", None) is True:
                 return True
-    return bool(uncertainties)
+    return _advised_escalation(history) is not None
+
+
+def _advised_escalation(history: list[StepRecord]) -> str | None:
+    """Why escalation is advised for a ticket that resembles a P1, if one does."""
+    for record in history:
+        for decision in record.result.decisions:
+            if not getattr(decision, "indicates_p1", False):
+                continue
+            targets = getattr(decision, "targets", None)
+            if targets is not None and targets.escalate_p1_immediately:
+                return (
+                    f"{decision.ticket_id} matches the current policy's P1 definition, and "
+                    f"the policy directs that P1 incidents be escalated immediately; "
+                    f"severity still needs to be verified"
+                )
+    return None

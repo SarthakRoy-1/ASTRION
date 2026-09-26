@@ -49,6 +49,7 @@ from app.backend.models.policy import (
     PolicyOutcome,
     SlaDecision,
     Severity,
+    SeverityIndication,
 )
 from app.backend.policies.base import (
     PolicyLookupError,
@@ -56,6 +57,10 @@ from app.backend.policies.base import (
     gather_policy_evidence,
     load_evaluation_context,
     minutes_between,
+)
+from app.backend.policies.severity_indication import (
+    extract_definition_criteria,
+    indicate,
 )
 from app.backend.policies.terms import extract_response_targets
 from app.backend.services.records import get_account, get_ticket
@@ -68,8 +73,16 @@ def evaluate_sla(
     severity: str | None = None,
     scope: Scope,
     evaluation_context: PolicyEvaluationContext | None = None,
+    background: bool = False,
 ) -> SlaDecision:
-    """Decide the first-response target for `ticket_id` and whether it is breached."""
+    """Decide the first-response target for `ticket_id` and whether it is breached.
+
+    `background` marks a reading taken as context for a question that was not
+    about response times (an investigation of a ticket, say). It changes nothing
+    about the arithmetic. It only records that, with no severity and nothing in
+    the ticket resembling a severity definition, there is no open question to
+    put to the reader.
+    """
     ticket = get_ticket(conn, ticket_id, scope=scope)
     if ticket is None:
         raise PolicyLookupError(f"ticket {ticket_id!r} not found or not in scope")
@@ -92,6 +105,7 @@ def evaluate_sla(
     ]
 
     verification: list[str] = []
+    indications: list[SeverityIndication] = []
 
     # --- severity ---------------------------------------------------------
     #
@@ -155,6 +169,8 @@ def evaluate_sla(
             breached=breached,
             first_response_recorded=False,
             requires_immediate_escalation=escalate,
+            severity_indications=indications,
+            background=background,
             controlling_rule=rule,
             controlling_sources=sources,
             requires_verification=bool(verification),
@@ -176,6 +192,9 @@ def evaluate_sla(
         inputs["elapsed_minutes"] = str(elapsed)
 
     if resolved is None:
+        indications.extend(_indications(ticket, evidence, targets, elapsed))
+        if indications:
+            verification[0] = _indication_message(indications[0], targets, elapsed)
         return build(
             outcome=PolicyOutcome.REQUIRES_VERIFICATION,
             breached=None,
@@ -256,3 +275,56 @@ def evaluate_sla(
         calculation=calculation,
         escalate=escalate_now,
     )
+
+
+def _indications(ticket, evidence, targets, elapsed) -> list[SeverityIndication]:
+    """Where the ticket's own words resemble a severity definition in the policy.
+
+    Never sets a severity: see `severity_indication` for why, and for what it
+    will and will not match.
+    """
+    text = " ".join(filter(None, (ticket.subject, ticket.description)))
+    found: list[SeverityIndication] = []
+    for match in indicate(text, extract_definition_criteria(evidence)):
+        severity = match.criterion.severity
+        target = targets.for_severity(severity)
+        exceeds: bool | None = None
+        if target is not None and target.minutes is not None and elapsed is not None:
+            exceeds = elapsed > Decimal(target.minutes)
+        found.append(
+            SeverityIndication(
+                severity=severity,
+                criterion=match.criterion.text,
+                matched_terms=list(match.matched_terms),
+                source=match.criterion.evidence.citation,
+                chunk_id=match.criterion.evidence.chunk_id,
+                target_text=None if target is None else target.text,
+                target_minutes=None if target is None else target.minutes,
+                elapsed_exceeds_target=exceeds,
+            )
+        )
+    return found
+
+
+def _indication_message(indication: SeverityIndication, targets, elapsed) -> str:
+    message = (
+        f"No severity was supplied. The ticket's text matches the current policy's "
+        f"{indication.severity.value} definition (\"{indication.criterion}\", "
+        f"{indication.source}). That is an indication to verify, not a classification, "
+        f"and no breach is asserted. Confirm the severity against the policy, then "
+        f"re-evaluate."
+    )
+    if indication.target_text:
+        message += (
+            f" If it is {indication.severity.value}, the first-response target for this "
+            f"account is {indication.target_text}"
+        )
+        if indication.elapsed_exceeds_target is True:
+            message += f", and {elapsed} minutes have already elapsed, which exceeds it."
+        elif indication.elapsed_exceeds_target is False:
+            message += f", and {elapsed} minutes have elapsed, which is within it."
+        else:
+            message += "."
+    if indication.severity is Severity.P1 and targets.escalate_p1_immediately:
+        message += " The current policy directs that P1 incidents be escalated immediately."
+    return message

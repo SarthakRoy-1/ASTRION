@@ -15,6 +15,7 @@ import { vi } from "vitest";
 
 import actionExecuted from "./fixtures/action-executed.json";
 import chatCancellation from "./fixtures/chat-cancellation.json";
+import chatCancellationConflict from "./fixtures/chat-cancellation-conflict.json";
 import chatCrossAccountDenied from "./fixtures/chat-cross-account-denied.json";
 import chatKnownIssue from "./fixtures/chat-known-issue.json";
 import chatPendingAction from "./fixtures/chat-pending-action.json";
@@ -22,6 +23,7 @@ import chatServiceCredit from "./fixtures/chat-service-credit.json";
 import chatServiceCreditProvisional from "./fixtures/chat-service-credit-provisional.json";
 import chatSlaBreach from "./fixtures/chat-sla-breach.json";
 import chatSupersededPolicy from "./fixtures/chat-superseded-policy.json";
+import chatTicketInvestigation from "./fixtures/chat-ticket-investigation.json";
 import chatUncertain from "./fixtures/chat-uncertain.json";
 import errorActionNotPending from "./fixtures/error-action-not-pending.json";
 import errorUnknownIdentity from "./fixtures/error-unknown-identity.json";
@@ -45,6 +47,8 @@ export const fixtures = {
   principals: principals as PrincipalsResponse,
   health: health as HealthResponse,
   cancellation: chatCancellation as ChatResponse,
+  cancellationConflict: chatCancellationConflict as ChatResponse,
+  ticketInvestigation: chatTicketInvestigation as ChatResponse,
   serviceCredit: chatServiceCredit as ChatResponse,
   serviceCreditProvisional: chatServiceCreditProvisional as ChatResponse,
   slaBreach: chatSlaBreach as ChatResponse,

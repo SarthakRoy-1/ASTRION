@@ -275,7 +275,11 @@ def test_rejection_is_audited_and_writes_no_credit(settings, db, workspace):
 
         rejected = client.post(
             f"/api/actions/{proposal['action_id']}/confirm",
-            json={"decision": "reject", "session_id": body["session_id"]},
+            json={
+                "decision": "reject",
+                "session_id": body["session_id"],
+                "expected_fingerprint": proposal["parameter_fingerprint"],
+            },
         )
         assert rejected.status_code == 200
 
@@ -374,7 +378,11 @@ def test_a_support_user_cannot_confirm_at_all(settings, db, workspace):
     with client_for(settings, workspace["people"]["support"]) as support:
         refused = support.post(
             f"/api/actions/{proposal['action_id']}/confirm",
-            json={"decision": "approve", "session_id": body["session_id"]},
+            json={
+                "decision": "approve",
+                "session_id": body["session_id"],
+                "expected_fingerprint": proposal["parameter_fingerprint"],
+            },
         )
 
     assert refused.status_code == 403

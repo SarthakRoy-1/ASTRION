@@ -782,9 +782,10 @@ curl -X POST http://127.0.0.1:8000/api/actions/ACT-abc123/confirm \
 
 Confirmation re-validates under the *confirming* caller: the action must exist
 in their account scope, belong to that conversation, still be pending, not
-have expired, still have a live target, and — when `expected_fingerprint` is
-supplied — still describe exactly what was reviewed. It executes exactly once;
-a replay returns `409 action_not_pending`.
+have expired, still have a live target, and still describe exactly what was
+reviewed. `expected_fingerprint` (the `parameter_fingerprint` returned with the
+proposal) is **required**: a request without it is a `422`, and a stale one is a
+`409`. It executes exactly once; a replay returns `409 action_not_pending`.
 
 ### Errors
 

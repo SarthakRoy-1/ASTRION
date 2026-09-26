@@ -6,9 +6,9 @@
     "ACCT-004"
   ],
   "action_status": "none",
-  "answer": "Order ORD-1001 can be cancelled with no cancellation fee.\nRule applied: A signed customer agreement waives the cancellation fee for a BOOKED order before pickup, overriding the SOP's default fee.\nCalculation: fee waived by customer agreement -> 0\nSource: 05_Northstar_Logistics_Enterprise_Agreement.pdf p.1 \u00a72. Shipment cancellation\nPrecedence: 05_Northstar_Logistics_Enterprise_Agreement.pdf p.1 \u00a72. Shipment cancellation (tier 1 CUSTOMER_AGREEMENT) outranks 03_Cancellation_and_Service_Credit_SOP_v4.pdf p.1 \u00a71. Order cancellation (tier 3 CURRENT_OPERATIONAL_DOC) on topic 'cancellation'",
-  "escalation_recommended": false,
-  "outcome": "answered",
+  "answer": "Order ORD-1001 cannot be confirmed as cancellable yet: there is evidence that the shipment may already have been collected, and that has to be verified first.\nThe fee position is not what is in doubt: if the shipment is confirmed as not yet picked up, no cancellation fee applies.\nVerify: Open ticket TKT-504 (open, opened 2026-08-16T10:50:00+05:30, \"SwiftShip order still shows BOOKED after driver pickup\") reports that this shipment has already been collected, but the order still reads BOOKED with no pickup recorded. SwiftShip pickup confirmations are documented to arrive up to 20 minutes late (04_Product_Operations_Guide_and_Known_Issues.pdf), so a collected parcel can still read BOOKED. Confirm the carrier's pickup status before cancelling; a PICKED_UP order must not be cancelled.\nRule applied: A signed customer agreement waives the cancellation fee for a BOOKED order before pickup, overriding the SOP's default fee. Whether the shipment is still before pickup is in question.\nCalculation: fee waived by customer agreement -> 0\nSource: 05_Northstar_Logistics_Enterprise_Agreement.pdf p.1 \u00a72. Shipment cancellation\nSource: 04_Product_Operations_Guide_and_Known_Issues.pdf p.1 \u00a72. Current known issues > KI-211 - SwiftShip pickup webhook delay\nPrecedence: 05_Northstar_Logistics_Enterprise_Agreement.pdf p.1 \u00a72. Shipment cancellation (tier 1 CUSTOMER_AGREEMENT) outranks 03_Cancellation_and_Service_Credit_SOP_v4.pdf p.1 \u00a71. Order cancellation (tier 3 CURRENT_OPERATIONAL_DOC) on topic 'cancellation'\nThis cannot be answered definitively from the available data \u2014 verify the points listed before committing to an outcome.",
+  "escalation_recommended": true,
+  "outcome": "uncertain",
   "policy_decisions": [
     {
       "account_id": "ACCT-001",
@@ -17,36 +17,41 @@
       "applies": false,
       "breached": null,
       "calculation": "fee waived by customer agreement -> 0",
-      "controlling_rule": "A signed customer agreement waives the cancellation fee for a BOOKED order before pickup, overriding the SOP's default fee.",
+      "controlling_rule": "A signed customer agreement waives the cancellation fee for a BOOKED order before pickup, overriding the SOP's default fee. Whether the shipment is still before pickup is in question.",
       "controlling_sources": [
-        "05_Northstar_Logistics_Enterprise_Agreement.pdf p.1 \u00a72. Shipment cancellation"
+        "05_Northstar_Logistics_Enterprise_Agreement.pdf p.1 \u00a72. Shipment cancellation",
+        "04_Product_Operations_Guide_and_Known_Issues.pdf p.1 \u00a72. Current known issues > KI-211 - SwiftShip pickup webhook delay"
       ],
       "currency": "INR",
       "decision_type": "cancellation",
       "elapsed_minutes": null,
       "evidence_chunk_ids": [
-        "05_northstar_logistics_enterprise_agreement#p1#c02"
+        "05_northstar_logistics_enterprise_agreement#p1#c02",
+        "04_product_operations_guide_and_known_issues#p1#c04"
       ],
       "inputs": {
         "booked_at": "2026-08-16T09:00:00+05:30",
         "cancellation_requested_at": "2026-08-16T11:00:00+05:30",
+        "conflicting_tickets": "TKT-504",
         "evaluated_against": "2026-08-16T11:00:00+05:30",
         "order_status": "BOOKED",
         "pickup_actual_at": null,
-        "pickup_in_question": "false",
+        "pickup_in_question": "true",
         "reference_time_source": "order.cancellation_requested_at"
       },
       "order_id": "ORD-1001",
-      "outcome": "allowed",
+      "outcome": "requires_verification",
       "overrides": [
         "05_Northstar_Logistics_Enterprise_Agreement.pdf p.1 \u00a72. Shipment cancellation (tier 1 CUSTOMER_AGREEMENT) outranks 03_Cancellation_and_Service_Credit_SOP_v4.pdf p.1 \u00a71. Order cancellation (tier 3 CURRENT_OPERATIONAL_DOC) on topic 'cancellation'"
       ],
       "requires_immediate_escalation": false,
-      "requires_verification": false,
+      "requires_verification": true,
       "severity": null,
       "target_text": null,
       "ticket_id": null,
-      "verification_reasons": []
+      "verification_reasons": [
+        "Open ticket TKT-504 (open, opened 2026-08-16T10:50:00+05:30, \"SwiftShip order still shows BOOKED after driver pickup\") reports that this shipment has already been collected, but the order still reads BOOKED with no pickup recorded. SwiftShip pickup confirmations are documented to arrive up to 20 minutes late (04_Product_Operations_Guide_and_Known_Issues.pdf), so a collected parcel can still read BOOKED. Confirm the carrier's pickup status before cancelling; a PICKED_UP order must not be cancelled."
+      ]
     }
   ],
   "proposed_action": null,
@@ -187,10 +192,10 @@
       "tool_name": "lookup_record"
     },
     {
-      "message": null,
-      "status": "ok",
+      "message": "Open ticket TKT-504 (open, opened 2026-08-16T10:50:00+05:30, \"SwiftShip order still shows BOOKED after driver pickup\") reports that this shipment has already been collected, but the order still reads BOOKED with no pickup recorded. SwiftShip pickup confirmations are documented to arrive up to 20 minutes late (04_Product_Operations_Guide_and_Known_Issues.pdf), so a collected parcel can still read BOOKED. Confirm the carrier's pickup status before cancelling; a PICKED_UP order must not be cancelled.",
+      "status": "uncertain",
       "step": 2,
-      "summary": "cancellation=allowed",
+      "summary": "cancellation=requires_verification",
       "tool_name": "evaluate_cancellation"
     },
     {
@@ -214,9 +219,13 @@
       "05_Northstar_Logistics_Enterprise_Agreement.pdf p.1 (tier 1 CUSTOMER_AGREEMENT) outranks 03_Cancellation_and_Service_Credit_SOP_v4.pdf p.1 (tier 3 CURRENT_OPERATIONAL_DOC) on topic 'general'",
       "05_Northstar_Logistics_Enterprise_Agreement.pdf p.1 \u00a74. Account contact (tier 1 CUSTOMER_AGREEMENT) outranks 03_Cancellation_and_Service_Credit_SOP_v4.pdf p.1 (tier 3 CURRENT_OPERATIONAL_DOC) on topic 'general'"
     ],
-    "reasons": [],
-    "status": "confident"
+    "reasons": [
+      "Open ticket TKT-504 (open, opened 2026-08-16T10:50:00+05:30, \"SwiftShip order still shows BOOKED after driver pickup\") reports that this shipment has already been collected, but the order still reads BOOKED with no pickup recorded. SwiftShip pickup confirmations are documented to arrive up to 20 minutes late (04_Product_Operations_Guide_and_Known_Issues.pdf), so a collected parcel can still read BOOKED. Confirm the carrier's pickup status before cancelling; a PICKED_UP order must not be cancelled."
+    ],
+    "status": "conditional"
   },
-  "uncertainties": [],
+  "uncertainties": [
+    "Open ticket TKT-504 (open, opened 2026-08-16T10:50:00+05:30, \"SwiftShip order still shows BOOKED after driver pickup\") reports that this shipment has already been collected, but the order still reads BOOKED with no pickup recorded. SwiftShip pickup confirmations are documented to arrive up to 20 minutes late (04_Product_Operations_Guide_and_Known_Issues.pdf), so a collected parcel can still read BOOKED. Confirm the carrier's pickup status before cancelling; a PICKED_UP order must not be cancelled."
+  ],
   "user_id": "support.agent"
 }

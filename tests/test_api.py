@@ -31,8 +31,27 @@ def escalate(client, ticket_id="TKT-501", user_id=SUPPORT_AGENT):
     return response.json()
 
 
+_REVIEWED: dict[str, str] = {}
+
+
+def reviewed_fingerprint(client, action_id):
+    """The fingerprint the operator was shown for a proposal, as the UI would echo it.
+
+    Read from the pending list while the proposal is pending and remembered, so a
+    replay of an already-settled action still carries the fingerprint it was
+    reviewed under.
+    """
+    if action_id not in _REVIEWED:
+        pending = client.get(f"/api/actions/pending?user_id={SUPPORT_MANAGER}")
+        if pending.status_code == 200:
+            for action in pending.json()["actions"]:
+                _REVIEWED[action["action_id"]] = action["parameter_fingerprint"]
+    return _REVIEWED.get(action_id, "f" * 64)  # unknown action: the refusal under test comes first
+
+
 def confirm(client, action_id, *, decision="approve", **extra):
     payload = {"decision": decision, "user_id": SUPPORT_MANAGER, **extra}
+    payload.setdefault("expected_fingerprint", reviewed_fingerprint(client, action_id))
     return client.post(f"/api/actions/{action_id}/confirm", json=payload)
 
 
@@ -485,7 +504,11 @@ def test_confirmation_with_no_session_is_refused_for_a_bound_action(client):
 
     response = client.post(
         f"/api/actions/{body['proposed_action']['action_id']}/confirm",
-        json={"decision": "approve", "user_id": SUPPORT_MANAGER},
+        json={
+            "decision": "approve",
+            "user_id": SUPPORT_MANAGER,
+            "expected_fingerprint": body["proposed_action"]["parameter_fingerprint"],
+        },
     )
 
     assert response.status_code == 409
@@ -544,6 +567,7 @@ def test_a_read_only_role_cannot_confirm(client):
             "decision": "approve",
             "user_id": SUPPORT_READONLY,
             "session_id": body["session_id"],
+            "expected_fingerprint": body["proposed_action"]["parameter_fingerprint"],
         },
     )
 
@@ -566,6 +590,7 @@ def test_a_customer_cannot_confirm_even_their_own_ticket(client):
             "decision": "approve",
             "user_id": CUSTOMER_NORTHSTAR,
             "session_id": body["session_id"],
+            "expected_fingerprint": body["proposed_action"]["parameter_fingerprint"],
         },
     )
 
@@ -599,6 +624,7 @@ def test_another_account_cannot_confirm_someone_elses_action(client):
             "decision": "approve",
             "user_id": CUSTOMER_LUMENWORKS,
             "session_id": body["session_id"],
+            "expected_fingerprint": body["proposed_action"]["parameter_fingerprint"],
         },
     )
 
@@ -660,7 +686,11 @@ def test_the_kill_switch_removes_the_preparation_tools(api_settings):
         body = post_chat(client, "Escalate TKT-501.").json()
         confirmation = client.post(
             "/api/actions/ACT-anything/confirm",
-            json={"decision": "approve", "user_id": SUPPORT_MANAGER},
+            json={
+                "decision": "approve",
+                "user_id": SUPPORT_MANAGER,
+                "expected_fingerprint": "f" * 64,
+            },
         )
 
     assert body["action_status"] == "none"

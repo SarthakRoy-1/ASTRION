@@ -20,6 +20,7 @@ stated document metadata, in code, before any model sees the evidence.
 
 from __future__ import annotations
 
+import re
 from collections import defaultdict
 
 from app.backend.models.documents import (
@@ -154,12 +155,31 @@ def classify_topic(section_title: str | None, parent_section_title: str | None =
     return Topic.GENERAL
 
 
+_RESOLVED_HEADING = re.compile(r"\bresolved\b", re.IGNORECASE)
+
+
+def _is_resolved_issue(item: Evidence) -> bool:
+    """A known-issue section the documentation itself marks as resolved.
+
+    The current product guide keeps resolved issues under their own heading with
+    the instruction not to use them to explain new incidents unless the evidence
+    specifically matches. It is in force, so it stays retrievable, but a section
+    whose whole purpose is "this is over" is background to an answer, never the
+    rule that decides one.
+    """
+    if item.topic is not Topic.PRODUCT_KNOWN_ISSUES:
+        return False
+    heading = " ".join(filter(None, (item.section_path, item.section_title, item.subsection_title)))
+    return bool(_RESOLVED_HEADING.search(heading))
+
+
 def _may_govern(item: Evidence, account_id: str | None) -> bool:
     """Whether a piece of evidence is *eligible* to govern this resolution.
 
     Two gates, both independent of how well it matched the query:
 
-    1. It must be in force. Deprecated/superseded material never governs.
+    1. It must be in force. Deprecated/superseded material never governs, and
+       neither does a known issue the documentation marks as resolved.
     2. A customer agreement may only govern a resolution scoped to *its own*
        account. An agreement is customer-scoped authority, not general
        authority — letting Northstar's terms outrank the standard support
@@ -173,6 +193,8 @@ def _may_govern(item: Evidence, account_id: str | None) -> bool:
     must say which account it is asking about.
     """
     if not item.is_authoritative:
+        return False
+    if _is_resolved_issue(item):
         return False
     if item.document_type is DocumentType.CUSTOMER_AGREEMENT:
         return account_id is not None and item.account_id == account_id

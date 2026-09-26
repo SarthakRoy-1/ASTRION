@@ -138,7 +138,13 @@ def test_every_extracted_term_names_its_source(conn):
 
 def test_agreement_waiver_overrides_the_sop_fee(conn):
     """ORD-1001 was cancelled 120 minutes after booking — well past the SOP's
-    30-minute window — but its account's agreement waives the fee."""
+    30-minute window — but its account's agreement waives the fee.
+
+    With no open ticket contradicting the order's status: TKT-504 says the
+    driver has already been, which is a different question (see
+    tests/test_ticket_investigation.py), so it is resolved here."""
+    conn.execute("UPDATE tickets SET status = 'closed' WHERE ticket_id = 'TKT-504'")
+    conn.commit()
     decision = evaluate_cancellation(conn, "ORD-1001", scope=LEGACY_SCOPE)
 
     assert decision.outcome is PolicyOutcome.ALLOWED

@@ -41,12 +41,31 @@ SUPPORT_AGENT = "support.agent"
 SUPPORT_MANAGER = "support.manager"
 CUSTOMER_NORTHSTAR = "customer.northstar"
 
+#: Recorded with the open ticket that says ORD-1001's driver has already been
+#: resolved, because this fixture is the clean "an agreement waives the fee"
+#: response. The same question *with* that ticket open is recorded separately as
+#: `chat-cancellation-conflict`: cancelling then needs verification first.
+RECORDED_WITH_PICKUP_TICKET_RESOLVED = frozenset({"chat-cancellation"})
+
 #: (filename, identity, message). One recorded chat response each.
 CHAT_SCENARIOS: tuple[tuple[str, str, str], ...] = (
     (
         "chat-cancellation",
         SUPPORT_AGENT,
         "Can Northstar cancel ORD-1001 without a cancellation fee? Explain why.",
+    ),
+    (
+        "chat-cancellation-conflict",
+        SUPPORT_AGENT,
+        "Can Northstar cancel ORD-1001 without a cancellation fee? Explain why.",
+    ),
+    # A ticket investigation that never says "SLA": the response clock is read
+    # anyway, and the ticket's text is indicated as matching a severity
+    # definition for a person to verify, not classified.
+    (
+        "chat-ticket-investigation",
+        SUPPORT_AGENT,
+        "Investigate TKT-501 and tell me what to do.",
     ),
     (
         "chat-service-credit",
@@ -118,6 +137,20 @@ def _build_database(workspace: Path) -> Path:
     return db_path
 
 
+def _set_ticket_status(db_path: Path, ticket_id: str, status: str) -> None:
+    """Change one ticket's status in the throwaway database, between recordings."""
+    import sqlite3
+
+    connection = sqlite3.connect(db_path)
+    try:
+        with connection:
+            connection.execute(
+                "UPDATE tickets SET status = ? WHERE ticket_id = ?", (status, ticket_id)
+            )
+    finally:
+        connection.close()
+
+
 def _record_provisional_credit(client) -> dict:
     """Record the response the UI must render for a credit it may not promise.
 
@@ -182,11 +215,17 @@ def record(db_path: Path | None = None) -> dict[str, dict]:
             recorded["health"] = _expect(client.get("/health"))
 
             for name, identity, message in CHAT_SCENARIOS:
-                recorded[name] = _expect(
-                    client.post(
-                        "/api/chat", json={"message": message, "user_id": identity}
+                if name in RECORDED_WITH_PICKUP_TICKET_RESOLVED:
+                    _set_ticket_status(settings.database_path, "TKT-504", "closed")
+                try:
+                    recorded[name] = _expect(
+                        client.post(
+                            "/api/chat", json={"message": message, "user_id": identity}
+                        )
                     )
-                )
+                finally:
+                    if name in RECORDED_WITH_PICKUP_TICKET_RESOLVED:
+                        _set_ticket_status(settings.database_path, "TKT-504", "open")
 
             recorded["chat-service-credit-provisional"] = _record_provisional_credit(
                 client
@@ -218,6 +257,7 @@ def record(db_path: Path | None = None) -> dict[str, dict]:
                             "decision": "approve",
                             "user_id": SUPPORT_MANAGER,
                             "session_id": pending["session_id"],
+                            "expected_fingerprint": proposal["parameter_fingerprint"],
                         },
                     ),
                     expect_ok=False,

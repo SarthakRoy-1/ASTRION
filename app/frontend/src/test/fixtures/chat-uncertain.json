@@ -6,8 +6,8 @@
     "ACCT-004"
   ],
   "action_status": "none",
-  "answer": "I cannot determine service-credit eligibility without knowing which order this concerns. Provide the order id (for example ORD-1001) and I will evaluate it against the governing policy and any applicable customer agreement.\nThis cannot be answered definitively from the available data \u2014 verify the points listed before committing to an outcome.",
-  "escalation_recommended": true,
+  "answer": "I cannot determine service-credit eligibility without knowing which order this concerns. Provide the order id and I will evaluate it against the governing policy and any applicable customer agreement.\nThis cannot be answered definitively from the available data \u2014 verify the points listed before committing to an outcome.",
+  "escalation_recommended": false,
   "outcome": "uncertain",
   "policy_decisions": [],
   "proposed_action": null,

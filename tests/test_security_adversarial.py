@@ -472,7 +472,7 @@ def test_an_unknown_action_id_is_reported_as_absent(secure_settings, tenants):
     client = client_for(secure_settings, tenants["people"]["alpha_operations"])
     response = client.post(
         "/api/actions/ACT-does-not-exist/confirm",
-        json={"decision": "approve", "session_id": "SES-x"},
+        json={"decision": "approve", "session_id": "SES-x", "expected_fingerprint": "f" * 64},
     )
     assert response.status_code == 404
 

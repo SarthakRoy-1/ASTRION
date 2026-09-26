@@ -281,17 +281,30 @@ class DeterministicPlanner:
                 if ("evaluate_service_credit", _key(call.arguments)) not in called:
                     return PlannerStep([call])
 
-        if Intent.SLA in intents:
-            # A severity the request states is passed through; one it does not
-            # state is left absent, and the tool declines to assert a breach.
-            # The planner has no basis for judging severity itself.
-            stated = severity_stated_in(message)
-            for ticket_id in resolved_tickets:
-                arguments: dict = {"ticket_id": ticket_id}
-                if stated is not None:
-                    arguments["severity"] = stated.value
-                if ("evaluate_sla", _key(arguments)) not in called:
-                    return PlannerStep([ToolCall("evaluate_sla", arguments)])
+        # The response clock is part of any ticket investigation, so it is read
+        # whenever a ticket resolves, not only when the request uses a word like
+        # "SLA". A severity the request states is passed through; one it does not
+        # state is left absent, and the tool declines to assert a breach (the
+        # planner has no basis for judging severity). When the request is not
+        # itself about response times the reading is marked as background, so a
+        # missing severity is not presented as an open question about, say, a
+        # billing-contact ticket. A closed ticket has no first-response clock
+        # running, so it is only evaluated when the request asks.
+        stated = severity_stated_in(message)
+        about_response_time = bool({Intent.SLA, Intent.ESCALATION} & intents)
+        for record in _resolved_records(history, "ticket"):
+            ticket_id = record.get("ticket_id")
+            if not ticket_id:
+                continue
+            if Intent.SLA not in intents and _is_closed(record.get("status")):
+                continue
+            arguments = {"ticket_id": ticket_id}
+            if stated is not None:
+                arguments["severity"] = stated.value
+            if not about_response_time:
+                arguments["background"] = True
+            if ("evaluate_sla", _key(arguments)) not in called:
+                return PlannerStep([ToolCall("evaluate_sla", arguments)])
 
         # --- 3b. the reference clock, when the question is about it --------
         #
@@ -328,7 +341,13 @@ class DeterministicPlanner:
                 return PlannerStep([ToolCall("get_operational_signals", arguments)])
 
         # --- 4. supporting documentation ----------------------------------
-        search_args: dict = {"query": message}
+        #
+        # Once a ticket has resolved, what it says is what the documentation
+        # question is about ("Investigate TKT-502" names no feature at all), so
+        # its subject and description join the request in the query. Only those
+        # two fields: a historical resolution is context that may be wrong, and
+        # searching on it would go looking for the documentation it contradicts.
+        search_args: dict = {"query": _search_query(message, history)}
         if account_id:
             search_args["account_id"] = account_id
         if ("search_documents", _key(search_args)) not in called:
@@ -337,11 +356,16 @@ class DeterministicPlanner:
         # --- 5. explicitly requested action preparation --------------------
         if Intent.ESCALATION in intents and resolved_tickets:
             for ticket_id in resolved_tickets:
+                reason, evidence_ids, severity = _grounded_escalation(
+                    ticket_id, message, history
+                )
                 arguments = {
                     "ticket_id": ticket_id,
-                    "reason": _escalation_reason(message, history),
-                    "evidence_chunk_ids": _evidence_ids(history),
+                    "reason": reason,
+                    "evidence_chunk_ids": evidence_ids,
                 }
+                if severity is not None:
+                    arguments["severity"] = severity
                 if ("prepare_escalation", _key(arguments)) not in called:
                     return PlannerStep([ToolCall("prepare_escalation", arguments)])
 
@@ -430,14 +454,118 @@ def _evidence_ids(history: list[StepRecord]) -> list[str]:
     return seen[:10]
 
 
-def _escalation_reason(message: str, history: list[StepRecord]) -> str:
-    """A reason grounded in the request and any uncertainty already surfaced."""
-    reasons = [
-        step.result.message
+_CLOSED_STATUSES = frozenset({"closed", "resolved", "solved", "done", "cancelled", "canceled"})
+
+
+def _is_closed(status: str | None) -> bool:
+    return (status or "").strip().lower() in _CLOSED_STATUSES
+
+
+def _resolved_records(history: list[StepRecord], entity: str) -> list[dict]:
+    """The records a successful lookup of `entity` returned, in the order found."""
+    records: list[dict] = []
+    for step in history:
+        if step.tool_name != "lookup_record" or not step.result.ok:
+            continue
+        if step.result.data.get("entity") != entity:
+            continue
+        record = step.result.data.get("record")
+        if isinstance(record, dict) and record not in records:
+            records.append(record)
+    return records
+
+
+def _search_query(message: str, history: list[StepRecord]) -> str:
+    """The request, plus the subject and description of every ticket it resolved."""
+    parts = [message]
+    for record in _resolved_records(history, "ticket"):
+        text = " ".join(
+            str(record[field]).strip()
+            for field in ("subject", "description")
+            if record.get(field)
+        )
+        if text:
+            parts.append(text)
+    return " ".join(parts)
+
+
+def _sla_decisions(history: list[StepRecord], ticket_id: str) -> list:
+    return [
+        decision
         for step in history
-        if step.result.status is ToolStatus.UNCERTAIN and step.result.message
+        if step.tool_name == "evaluate_sla"
+        for decision in step.result.decisions
+        if getattr(decision, "ticket_id", None) == ticket_id
     ]
-    base = f"Escalation requested via support agent: {message.strip()}"
-    if reasons:
-        return f"{base} | Outstanding verification: {'; '.join(reasons)}"
-    return base
+
+
+def _grounded_escalation(
+    ticket_id: str, message: str, history: list[StepRecord]
+) -> tuple[str, list[str], str | None]:
+    """An escalation's reason, evidence and severity, taken from what was found.
+
+    A reviewer confirming an escalation is entitled to see *why*, in terms of the
+    policy and the records, not the operator's own sentence handed back to them.
+    So the reason is assembled from the ticket's response-clock decision (a
+    breach, or a policy definition the ticket resembles), the evidence cited is
+    what that decision rested on, and the severity is recorded only when a person
+    supplied it. The request is kept as context at the end, never as the ground.
+    """
+    ticket = next(
+        (r for r in _resolved_records(history, "ticket") if r.get("ticket_id") == ticket_id),
+        {},
+    )
+    facts: list[str] = []
+    evidence: list[str] = []
+    severity: str | None = None
+
+    for decision in _sla_decisions(history, ticket_id):
+        for chunk_id in decision.evidence_chunk_ids:
+            if chunk_id not in evidence:
+                evidence.append(chunk_id)
+        if decision.breached is True:
+            facts.append(
+                f"{decision.severity.value} first-response target breached: "
+                f"{decision.calculation}"
+            )
+        elif decision.severity_indications:
+            indication = decision.severity_indications[0]
+            fact = (
+                f"the ticket's text matches the current policy's "
+                f"{indication.severity.value} definition (\"{indication.criterion}\", "
+                f"{indication.source}); severity is not yet verified"
+            )
+            if indication.target_text and decision.elapsed_minutes is not None:
+                fact += (
+                    f". If {indication.severity.value}, the account's target is "
+                    f"{indication.target_text} and {decision.elapsed_minutes} minutes "
+                    f"have elapsed"
+                )
+            facts.append(fact)
+            if indication.chunk_id not in evidence:
+                evidence.append(indication.chunk_id)
+        elif decision.target_text is not None and decision.elapsed_minutes is not None:
+            facts.append(
+                f"first-response target {decision.target_text}, "
+                f"{decision.elapsed_minutes} minutes elapsed"
+            )
+        if decision.severity is not None and decision.severity_source == "supplied by caller":
+            severity = decision.severity.value
+        if decision.requires_immediate_escalation:
+            facts.append("the current policy requires P1 incidents to be escalated immediately")
+
+    subject = ticket.get("subject")
+    label = f"{ticket_id} ({subject})" if subject else ticket_id
+    if facts:
+        reason = f"Escalating {label}: " + "; ".join(facts) + "."
+    else:
+        status = ticket.get("status") or "unknown status"
+        reason = (
+            f"Escalating {label} ({status}). No response-clock finding supports it; "
+            f"it rests on the operator's request alone."
+        )
+    reason += f" Requested: {message.strip()[:200]}"
+
+    if not evidence:
+        evidence = _evidence_ids(history)
+    return reason, evidence, severity

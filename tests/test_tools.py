@@ -334,7 +334,7 @@ def test_get_document_evidence_respects_scope(conn, registry, northstar_context)
 
 def test_policy_tool_returns_a_decision_not_prose(conn, registry, agent_context):
     result = registry.execute(
-        conn, agent_context, "evaluate_cancellation", {"order_id": "ORD-1001"}
+        conn, agent_context, "evaluate_cancellation", {"order_id": "ORD-2001"}
     )
 
     assert result.status is ToolStatus.OK

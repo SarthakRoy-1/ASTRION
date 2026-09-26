@@ -353,7 +353,7 @@ proposed ──> pending_confirmation ──> [separate authenticated request] �
 | Confirm without permission | `EXECUTE_ACTION` checked before the state machine is consulted |
 | Replay a confirmation | `UPDATE ... WHERE status = 'pending_confirmation'` — a replay changes 0 rows |
 | Duplicate execution | Same guard; single-use even under concurrent requests |
-| Alter parameters after review | `expected_fingerprint` — stored parameters must still digest to what was shown |
+| Alter parameters after review | `expected_fingerprint`, required on every confirmation — stored parameters must still digest to what was shown; a request without it is refused (422) |
 | Confirm from another conversation | Action bound to its conversation; conversation bound to its owner |
 | Hijack a conversation id | `claim_conversation` — a conversation id is a claim about a row this user owns |
 | Stale proposal | 30-minute TTL, re-checked at execution |

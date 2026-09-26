@@ -21,6 +21,7 @@ from app.backend.models.policy import (
     PolicyOutcome,
     ServiceCreditDecision,
     SlaDecision,
+    Severity,
 )
 
 # A policy question needs an order to evaluate. If one was asked and none was
@@ -56,6 +57,10 @@ def compose(
 ) -> tuple[str, ResponseOutcome, list[str]]:
     """Return (answer, outcome, uncertainties)."""
     lines: list[str] = []
+    # A background reading of a ticket's response clock accompanies an answer; it
+    # is not the answer, and must not stop the records and governing sources from
+    # being reported when nothing else has been.
+    background_lines: list[str] = []
     uncertainties: list[str] = []
     intents = intents or set()
 
@@ -71,10 +76,14 @@ def compose(
         elif isinstance(decision, ServiceCreditDecision):
             lines.extend(_service_credit_lines(decision))
         elif isinstance(decision, SlaDecision):
-            lines.extend(_sla_lines(decision))
-        uncertainties.extend(decision.verification_reasons)
+            target = background_lines if decision.informational else lines
+            target.extend(_sla_lines(decision))
+        if not getattr(decision, "informational", False):
+            uncertainties.extend(decision.verification_reasons)
         for override in decision.overrides:
-            lines.append(f"Precedence: {override}")
+            (background_lines if getattr(decision, "informational", False) else lines).append(
+                f"Precedence: {override}"
+            )
 
     # Surface retrieval and lookup failures rather than answering around them.
     for step in history:
@@ -111,8 +120,8 @@ def compose(
     for description in unmet_intents:
         gap = (
             f"I cannot determine {description} without knowing which order this concerns. "
-            f"Provide the order id (for example ORD-1001) and I will evaluate it against "
-            f"the governing policy and any applicable customer agreement."
+            f"Provide the order id and I will evaluate it against the governing policy "
+            f"and any applicable customer agreement."
         )
         lines.append(gap)
         uncertainties.append(f"no order identified, so {description} was not evaluated")
@@ -149,8 +158,9 @@ def compose(
             lines.extend(f"Source: {item.citation}" for item in governing)
         elif any(step.result.evidence for step in history):
             lines.append(
-                "Only non-authoritative material matched this question — see the "
-                "evidence list, and treat it as context rather than as policy."
+                "Only context-only material (deprecated, non-authoritative or resolved) "
+                "matched this question — see the evidence list, and treat it as "
+                "context rather than as policy."
             )
             uncertainties.append("no authoritative source matched this question")
         elif not record_lines:
@@ -161,6 +171,8 @@ def compose(
                 "I could not find enough information in the supplied sources to answer that."
             )
             uncertainties.append("no applicable records or document evidence were found")
+
+    lines.extend(background_lines)
 
     outcome = _outcome(decisions, uncertainties, bool(proposals), unmet_intents)
     if outcome is ResponseOutcome.UNCERTAIN:
@@ -244,7 +256,27 @@ def _signal_lines(history: list[StepRecord]) -> list[str]:
 
 def _cancellation_lines(decision: CancellationDecision) -> list[str]:
     lines: list[str] = []
-    if decision.can_cancel:
+    if (
+        decision.outcome is PolicyOutcome.REQUIRES_VERIFICATION
+        and decision.inputs.get("pickup_in_question") == "true"
+    ):
+        lines.append(
+            f"Order {decision.order_id} cannot be confirmed as cancellable yet: there is "
+            f"evidence that the shipment may already have been collected, and that has to "
+            f"be verified first."
+        )
+        if decision.fee_amount is not None:
+            position = (
+                f"a cancellation fee of {decision.currency} {decision.fee_amount} applies"
+                if decision.fee_applies
+                else "no cancellation fee applies"
+            )
+            lines.append(
+                f"The fee position is not what is in doubt: if the shipment is confirmed as "
+                f"not yet picked up, {position}."
+            )
+        lines.extend(f"Verify: {reason}" for reason in decision.verification_reasons)
+    elif decision.can_cancel:
         if decision.fee_applies:
             lines.append(
                 f"Order {decision.order_id} can be cancelled, and a cancellation fee of "
@@ -317,8 +349,28 @@ def _service_credit_lines(decision: ServiceCreditDecision) -> list[str]:
     return lines
 
 
+def _target_summary(decision: SlaDecision) -> str:
+    targets = decision.targets.targets if decision.targets else {}
+    return "; ".join(f"{sev.value} {t.text}" for sev, t in sorted(targets.items()))
+
+
 def _sla_lines(decision: SlaDecision) -> list[str]:
     lines: list[str] = []
+
+    if decision.informational:
+        # Reported as context for a question that was not about response times:
+        # the clock and the account's targets, with no verdict and no alarm.
+        if decision.elapsed_minutes is not None:
+            lines.append(
+                f"Response clock for {decision.ticket_id}: {decision.elapsed_minutes} minutes "
+                f"since it was opened, measured against the dataset snapshot. No severity is "
+                f"recorded on the ticket."
+            )
+        summary = _target_summary(decision)
+        if summary:
+            lines.append(f"First-response targets for this account: {summary}.")
+        lines.extend(_source_lines(decision.controlling_sources))
+        return lines
 
     if decision.breached is True:
         lines.append(
@@ -349,6 +401,33 @@ def _sla_lines(decision: SlaDecision) -> list[str]:
         )
     if decision.severity is not None and decision.severity_source:
         lines.append(f"Severity {decision.severity} — {decision.severity_source}.")
+    for indication in decision.severity_indications:
+        lines.append(
+            f"The ticket's text matches the current policy's {indication.severity.value} "
+            f"definition (\"{indication.criterion}\", {indication.source}). That is an "
+            f"indication for a person to verify, not a classification; no breach is asserted."
+        )
+        if indication.target_text:
+            projection = (
+                f"If it is {indication.severity.value}, the first-response target for this "
+                f"account is {indication.target_text}"
+            )
+            if indication.elapsed_exceeds_target is True:
+                projection += (
+                    f", and the {decision.elapsed_minutes} minutes already elapsed exceed it."
+                )
+            elif indication.elapsed_exceeds_target is False:
+                projection += f", and the {decision.elapsed_minutes} minutes elapsed are within it."
+            else:
+                projection += "."
+            lines.append(projection)
+        if indication.severity is Severity.P1 and decision.targets is not None and (
+            decision.targets.escalate_p1_immediately
+        ):
+            lines.append(
+                "The current policy directs that P1 incidents be escalated immediately, so "
+                "escalation is recommended while the severity is verified."
+            )
 
     lines.append(f"Rule applied: {decision.controlling_rule}")
     if decision.calculation:
@@ -433,7 +512,11 @@ def _outcome(
         return ResponseOutcome.NEEDS_CONFIRMATION
     if unmet_intents:
         return ResponseOutcome.UNCERTAIN
-    if any(d.outcome is PolicyOutcome.REQUIRES_VERIFICATION for d in decisions):
+    if any(
+        d.outcome is PolicyOutcome.REQUIRES_VERIFICATION
+        and not getattr(d, "informational", False)
+        for d in decisions
+    ):
         return ResponseOutcome.UNCERTAIN
     if uncertainties and not decisions:
         return ResponseOutcome.UNCERTAIN

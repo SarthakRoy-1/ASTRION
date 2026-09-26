@@ -4,7 +4,7 @@
   ],
   "action_status": "none",
   "answer": "Could not complete `lookup_record`: order 'ORD-2001' was not found within the caller's scope\nThis cannot be answered definitively from the available data \u2014 verify the points listed before committing to an outcome.",
-  "escalation_recommended": true,
+  "escalation_recommended": false,
   "outcome": "uncertain",
   "policy_decisions": [],
   "proposed_action": null,

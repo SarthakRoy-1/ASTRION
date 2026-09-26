@@ -7,16 +7,15 @@
     "confirmed_by": "support.manager",
     "evidence_chunk_ids": [
       "01_support_policy_v3_current#p1#c02",
-      "01_support_policy_v3_current#p1#c04",
-      "03_cancellation_and_service_credit_sop_v4#p1#c01"
+      "05_northstar_logistics_enterprise_agreement#p1#c01"
     ],
     "executed_at_utc": "2026-08-16T05:31:00+00:00",
     "failure_reason": null,
     "parameters": {
-      "reason": "Escalation requested via support agent: Investigate TKT-501 and escalate it if the outage warrants it."
+      "reason": "Escalating TKT-501 (All shipment creation is failing): the ticket's text matches the current policy's P1 definition (\"Complete production outage preventing all shipment creation for a customer\", 01_Support_Policy_v3_CURRENT.pdf p.1 \u00a72. Severity definitions); severity is not yet verified. If P1, the account's target is 15 minutes, 24x7 and 30.00 minutes have elapsed. Requested: Investigate TKT-501 and escalate it if the outage warrants it."
     },
     "prepared_at_utc": "2026-08-16T05:30:00+00:00",
-    "preview": "Create an escalation against ticket TKT-501. Reason: Escalation requested via support agent: Investigate TKT-501 and escalate it if the outage warrants it.",
+    "preview": "Create an escalation against ticket TKT-501. Reason: Escalating TKT-501 (All shipment creation is failing): the ticket's text matches the current policy's P1 definition (\"Complete production outage preventing all shipment creation for a customer\", 01_Support_Policy_v3_CURRENT.pdf p.1 \u00a72. Severity definitions); severity is not yet verified. If P1, the account's target is 15 minutes, 24x7 and 30.00 minutes have elapsed. Requested: Investigate TKT-501 and escalate it if the outage warrants it.",
     "rejected_at_utc": null,
     "requested_by": "support.agent",
     "requested_by_role": "support_agent",

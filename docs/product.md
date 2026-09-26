@@ -9,9 +9,16 @@ Nothing is illustrative. [architecture.md](architecture.md) covers the
 technical design; [demo-script.md](demo-script.md) walks through it in five
 minutes.
 
-- **Live:** <https://astrion-app.vercel.app/>. The one-click **Sign in to the
-  demo** button is hidden from the public UI (`PUBLIC_DEMO_SIGN_IN_ENABLED` in
-  `app/frontend/src/lib/features.ts`); the backend demo account is unchanged.
+- **Live:** <https://astrion-app.vercel.app/>. You register with an email
+  address and password, verify it with an emailed six-digit code (or continue
+  with Google or GitHub where configured), and create a workspace. There is no
+  shared demo login on the hosted deployment: its PostgreSQL database refuses it
+  (`/health` reports `demo_login_enabled: false`). The one-click demo remains
+  for local development.
+- **Data:** a new workspace holds the platform's four general documents and no
+  customer records. The assessment snapshot is loaded into a workspace by an
+  operator (see [persistence.md](persistence.md)); the examples below assume it
+  has been.
 - **Dataset snapshot:** all timing is measured against
   **2026-08-16 11:00 Asia/Kolkata**, never against today's date, so answers do
   not drift.
@@ -44,6 +51,8 @@ time pressure, or a summarising chatbot, could plausibly get wrong:
 | Northstar's agreement waives the SOP's cancellation fee for a `BOOKED` order before pickup | Charges the SOP's INR 250 fee | The signed agreement (tier 1) outranks the SOP for that account, and the answer names the override |
 | `TKT-450`'s historical resolution says an INR 250 fee applied after 30 minutes | Repeats a past mistake as if it were policy | Historical resolutions are context only and never justify an answer |
 | A SwiftShip order still reads `BOOKED` after collection (KI-211: webhooks up to 20 minutes late) | Tells the customer the pickup failed | Treats `BOOKED` inside the documented lag window as inconclusive, and says so |
+| `TKT-504` says the driver already collected the parcel while Northstar's `ORD-1001` still reads `BOOKED` and a cancellation is requested | Cancels a parcel that has already left, because the order row says it can | Reads the open ticket, names it and KI-211, and returns *requires verification*: the fee waiver stands, cancelling is not authorised until the carrier is checked |
+| `TKT-501` (every shipment creation fails) and `TKT-505` (a production API key posted publicly) never use the word "P1" | Treats them as ordinary tickets until someone asks about an SLA | Reads the response clock on every investigation and reports that each ticket matches a P1 clause in the current policy, as an indication for a person to verify, with escalation advised |
 
 What the team needs is fast answers they can defend to the customer. That
 means three things:
@@ -69,6 +78,11 @@ operational data. Today it provides the following:
   - first-response SLA targets, with breach detection.
 - **Agreement-aware precedence.** A customer's signed agreement is applied
   ahead of general policy for that account and topic only.
+- **Ticket investigation.** Opening a ticket reads its first-response clock
+  against the governing targets, indicates (never assigns) a severity when its
+  text matches a definition in the current policy, checks the customer's orders
+  for a pickup that may already have happened, and searches the documentation
+  for what the ticket says.
 - **Confirmation-gated actions.** The agent can prepare an escalation, a ticket
   note or a service credit. A person confirms or rejects it, and the outcome
   is audited.
@@ -79,15 +93,18 @@ operational data. Today it provides the following:
   - Admins can upload account-scoped documents and re-index them.
 - **Workspace.** Members, roles and a hash-chained audit trail.
 
-These are real results, taken from the live data:
+These are real results, taken from the assessment snapshot as loaded into a
+workspace:
 
 | Ask | Answer | Why |
 | --- | --- | --- |
-| Can Northstar cancel `ORD-1001` without a fee? | **Yes, INR 0** | Northstar agreement §2 waives the fee for a `BOOKED` order before pickup and outranks SOP §1, which would charge it. |
-| Can LumenWorks cancel `ORD-2001` without a fee? | **No, INR 250** | Same SOP rule, opposite result. LumenWorks' agreement §2 says no special waiver applies, so the SOP default stands. |
+| Can Northstar cancel `ORD-1001` without a fee? | **Fee waived (INR 0), but not yet confirmable** | Northstar agreement §2 waives the fee for a `BOOKED` order before pickup and outranks SOP §1. An open ticket, `TKT-504`, says the driver has already collected it, and KI-211 documents SwiftShip pickup confirmations up to 20 minutes late, so the answer is *requires verification*: confirm the carrier's status before cancelling. |
+| Can LumenWorks cancel `ORD-2001` without a fee? | **No, INR 250** | Same SOP rule, opposite result. LumenWorks' agreement §2 says no special waiver applies, so the SOP default stands (75 minutes after booking against a 30-minute window). |
 | Can `ORD-1002` be cancelled? | **No** | Status is `PICKED_UP`, so the SOP directs the return-to-origin workflow instead. |
 | Does `ORD-2002` qualify for a failed-pickup credit? | **Yes, INR 300** | 4.50h past the window end, carrier at fault. LumenWorks §3 sets a 4h threshold and a fixed INR 300, replacing the SOP default. |
-| Has `TKT-501` breached its first-response SLA? | **No verdict, conditional** | 30 minutes have elapsed. Northstar's agreement (tier 1) sets P1 15 minutes, P2 1 hour and P3 8 business hours, but the ticket has no severity. ASTRION lists the targets and asks for a severity instead of guessing one (see [Trust and reliability](#trust-and-reliability)). |
+| Investigate `TKT-501` | **Matches the P1 definition; not a verdict** | 30 minutes have elapsed. The ticket's text matches "complete production outage preventing all shipment creation". If it is P1, Northstar's target is 15 minutes and 30 have elapsed. Severity is not set, no breach is asserted, and escalation is advised while it is verified. |
+| `TKT-501` is a P1. Has it breached? | **Yes** | The stated severity is used: 30.00 minutes against Northstar's 15-minute P1 target. Escalate immediately (policy §4). |
+| Investigate `TKT-505` | **Matches the P1 definition; not a verdict** | "Suspected credential exposure". If it is P1, the Enterprise default is 30 minutes (v3, not v2's 1 hour) and 150 have elapsed. |
 
 ## User contexts
 
@@ -102,9 +119,11 @@ do comes from their **role in a workspace**:
 | `operations` | ✓ | ✓ | ✓ | |
 | `admin` / `owner` | ✓ | ✓ | ✓ | ✓ |
 
-**Which role the demo uses.** The one-click demo signs in as the **operations**
-member of the shared *ASTRION Demo* workspace. That identity can prepare an
-action, confirm it, and read the audit trail.
+**Which role you have.** Whoever creates a workspace is its **owner**, which
+holds every permission. Other members join with the workspace code and password
+or by invitation, at the role they are given. The local one-click demo signs in
+as the **operations** member of a seeded workspace: it can prepare an action,
+confirm it, and read the audit trail.
 
 - A proposal is bound to the conversation of the person who prepared it.
 - A support member can therefore prepare an action but not confirm one.
@@ -158,7 +177,7 @@ Two ranking rules keep the list honest:
   pattern cannot outrank a missed SLA.
 - **Unverified signals are ranked lower, never higher.**
 
-The live demo workspace currently shows six signals. The top one is
+On the assessment snapshot the workspace shows six signals. The top one is
 `TKT-505 has no first response after 150.00 minutes` (critical, priority 52).
 Next is `TKT-501` (conditional, because its severity is not recorded).
 
@@ -188,9 +207,24 @@ and the same confirmation gate as everything else.
 - **Uncertainty.** An answer that depends on something the data does not state
   is `conditional`, and names the premise to check.
   - Severity is the main case. Tickets carry no severity, and ASTRION never
-    infers one from ticket text.
-  - An earlier version tried to infer severity. It rated a billing question as
-    P1 on a single shared word, and was removed.
+    *sets* one from ticket text.
+  - An earlier version chose a severity by word overlap. It rated a billing
+    question as P1 on a single shared word, and was removed.
+  - What it does now is *indicate*: it parses the current policy's own P1
+    definition into its clauses and reports when the ticket's words cover enough
+    of one ("complete production outage preventing all shipment creation";
+    "suspected credential exposure"). The result says which clause and which
+    document, says it is an indication for a person to verify, shows what the
+    target would be if confirmed, and advises escalation because the policy
+    directs that P1 incidents be escalated immediately. A ticket that says the
+    affected thing still works, or matches too little, is not indicated.
+  - A `BOOKED` order contradicted by an open ticket from the same customer
+    (the driver has already been) is *requires verification*, not allowed. The
+    fee position is still computed and reported, because it is not what is in
+    doubt.
+  - A ticket's historical resolution lowers the answer's trust from
+    `confident`, because it is context that may be wrong and no answer may rest
+    on it.
 - **Insufficient data.** When a needed record is missing, out of scope, or
   nothing relevant is found, the answer is **Not enough information**
   (`insufficient_data`), never a plausible guess.
@@ -199,9 +233,16 @@ and the same confirmation gate as everything else.
 - **Citations.** Answers list their sources with file, page, section, tier and
   whether each is authoritative.
   - Every computed figure carries the rule and inputs that produced it.
-- **Escalation.** A breached SLA, an unresolvable conflict, a policy decision
-  that requires escalation, or a tool error recommends escalation.
-  - The agent can prepare that escalation as an action.
+- **Escalation.** A breached SLA, a ticket that matches the P1 definition, an
+  unresolvable conflict, a policy decision that requires verification, or a tool
+  error recommends escalation.
+  - The agent can prepare that escalation as an action, with a reason and
+    evidence taken from the finding behind it (the clause matched, the target,
+    the minutes elapsed, the sources cited), not the operator's own sentence.
+    The severity is recorded on it only if a person stated one.
+  - A question the sources simply cannot answer (a record not found, an
+    unrelated question) is reported as insufficient data and does **not**
+    recommend escalation: there is nothing to hand over.
   - Escalating is treated as a correct outcome, not a failure.
 
 The trust status is computed in code from tool results (`agent/trust.py`), not
@@ -227,7 +268,9 @@ request  →  proposed action  →  explicit confirmation  →  execution  →  
    separate API call. Before anything is written, the server checks:
    - the confirming user holds `execute_action`;
    - the proposal belongs to their conversation;
-   - the parameters still match the fingerprint they were shown;
+   - the request carries the fingerprint of the proposal that was reviewed
+     (required; a confirmation that cannot say what it reviewed is refused) and
+     the stored parameters still match it;
    - it has not expired and has not already been used, so a replay returns 409;
    - for credits, the decision is recomputed, and anything above INR 1,000
      requires `approve_high_value_action`.
@@ -243,32 +286,37 @@ request  →  proposed action  →  explicit confirmation  →  execution  →  
 
 *Future work. None of this is implemented.* Ordered by product value:
 
-1. **Persistent production storage.** The hosted backend is on an ephemeral
-   disk. The demo rebuilds itself after a cold start, but confirmed actions and
-   the audit trail do not survive one.
-   - A managed database is the prerequisite for any real team using this.
-2. **Action approval workflows.** A proposal is bound to the conversation that
+1. **Loading data without an operator.** Production is durable (PostgreSQL and
+   object storage), but a new workspace is empty and the assessment snapshot
+   goes in through an operator-run import.
+   - A workspace-scoped import, or a guided way to create accounts, orders and
+     tickets, would let a team use the product on day one.
+2. **A model behind the same tools.** The hosted planner is rule-based. The
+   OpenAI-backed planner exists and is tested with fakes; running it live needs
+   a key and an evaluation of how well it classifies severity from the policy's
+   definitions.
+3. **Action approval workflows.** A proposal is bound to the conversation that
    prepared it, so a support agent cannot hand a large credit to a manager for
    approval today.
    - A delegated approval queue would add assignment, notification and
      approve/reject, while keeping every existing check.
-3. **Citation relevance.** Sources are listed per document section retrieved,
+4. **Citation relevance.** Sources are listed per document section retrieved,
    so an answer can cite neighbouring sections that did not decide it.
    - The fix is to separate "decided the answer" from "retrieved alongside
      it", and cite the first prominently.
-4. **Evaluation and feedback loops.** A regression suite of real support
+5. **Evaluation and feedback loops.** A regression suite of real support
    questions with expected decisions and trust statuses, run on every change.
    - Add per-answer "this was wrong" feedback from agents, fed back into that
      suite.
-5. **Richer proactive detection.**
+6. **Richer proactive detection.**
    - Scheduled rather than on-demand detection, with notifications.
    - Semantic rather than lexical ticket clustering.
    - Aggregating issued credits against agreement monthly caps. Credits are
      recorded, but the cap is reported, not totalled.
-6. **Observability.** Traces across tool steps, latency and error dashboards,
+7. **Observability.** Traces across tool steps, latency and error dashboards,
    and alerting on trust-status distribution shifts. Today there is structured
    logging and audit events only.
-7. **Stronger customer-facing authentication.** A proper customer portal with
+8. **Stronger customer-facing authentication.** A proper customer portal with
    per-customer identity, if customer self-service is wanted, instead of the
    local-only demo personas.
 
@@ -276,8 +324,9 @@ request  →  proposed action  →  explicit confirmation  →  execution  →  
 
 - **Customer self-service in production.** ASTRION is an internal tool; the
   customer personas exist only locally to prove account isolation.
-- **Severity inference.** Deciding whether a ticket is P1 is a business-impact
-  judgement; ASTRION reports every candidate target instead of guessing.
+- **Severity assignment.** Deciding whether a ticket is P1 is a business-impact
+  judgement. ASTRION indicates where a ticket matches a definition and reports
+  every candidate target, and a person decides.
 - **Business-hours SLA breaches.** The pack defines no business calendar, so
   targets stated in business hours are reported but no breach is asserted.
 - **Statistical anomaly detection or forecasting.** Six orders and seven
@@ -289,9 +338,8 @@ request  →  proposed action  →  explicit confirmation  →  execution  →  
   tools and writes prose. Every fee, credit and deadline comes from code.
 - **Multi-turn conversation memory.** Each turn is answered from tools, and
   prior turns are not replayed to the model.
-- **Self-registration on the hosted deployment.** Verification requires email
-  and there is no mail transport. The one-click demo account still exists on
-  the backend, but its sign-in button is hidden from the public UI.
+- **A shared demo login on the hosted deployment.** Everyone registers and
+  gets a workspace of their own; PostgreSQL refuses the one-click demo.
 
 ## Success metric
 

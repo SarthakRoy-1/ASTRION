@@ -154,6 +154,34 @@ class ResponseTargets(BaseModel):
         return self.targets.get(severity)
 
 
+class SeverityIndication(BaseModel):
+    """A ticket's text lining up with a severity definition in the current policy.
+
+    An *indication*, never a classification: severity is a judgement about
+    business impact, and nothing here sets one. It records which clause of which
+    document the ticket's own words resemble, so a person can check that clause
+    rather than trust a label, and what the response target would be if they
+    confirm it.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    severity: Severity
+    #: The clause of the definition the ticket resembles, as the policy words it.
+    criterion: str
+    #: The ticket's words (normalised) that lined up with the clause.
+    matched_terms: list[str]
+    #: Citation of the policy section that states the definition.
+    source: str
+    chunk_id: str
+    #: What the account's target would be *if* this severity is confirmed.
+    target_text: str | None = None
+    target_minutes: int | None = None
+    #: Whether the time already elapsed would exceed that target. None when the
+    #: target is not stated in clock time or the elapsed time is unknown.
+    elapsed_exceeds_target: bool | None = None
+
+
 class SlaDecision(BaseModel):
     """Result of evaluating a ticket's first-response target and breach state."""
 
@@ -175,6 +203,14 @@ class SlaDecision(BaseModel):
     first_response_recorded: bool = False
     requires_immediate_escalation: bool = False
 
+    #: Where the ticket's text resembles a severity definition. Only ever an
+    #: indication for a person to verify; `severity` is not set from it.
+    severity_indications: list[SeverityIndication] = []
+    #: True when the clock was reported as background to a question that was not
+    #: about response times. With no severity and no indication there is then
+    #: nothing to verify, so it is not treated as an open question.
+    background: bool = False
+
     controlling_rule: str
     controlling_sources: list[str]
 
@@ -186,6 +222,15 @@ class SlaDecision(BaseModel):
     overrides: list[str] = []
     evidence_chunk_ids: list[str] = []
     targets: ResponseTargets | None = None
+
+    @property
+    def informational(self) -> bool:
+        """A background clock reading that leaves nothing to verify."""
+        return self.background and self.severity is None and not self.severity_indications
+
+    @property
+    def indicates_p1(self) -> bool:
+        return any(i.severity is Severity.P1 for i in self.severity_indications)
 
 
 class PickupConfirmationLag(BaseModel):

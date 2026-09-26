@@ -25,15 +25,10 @@
             "$ref": "#/components/schemas/ConfirmationDecision"
           },
           "expected_fingerprint": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Expected Fingerprint"
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Expected Fingerprint",
+            "type": "string"
           },
           "request_id": {
             "anyOf": [
@@ -70,7 +65,8 @@
           }
         },
         "required": [
-          "decision"
+          "decision",
+          "expected_fingerprint"
         ],
         "title": "ActionConfirmationRequest",
         "type": "object"
@@ -2184,7 +2180,7 @@
     },
     "/api/actions/{action_id}/confirm": {
       "post": {
-        "description": "Execute or reject one prepared action. The only path to a state change.\n\nEvery check the Phase 4 state machine offers is applied, under the\n*confirming* caller rather than the preparing one: the action must exist\nwithin this caller's account scope, belong to this conversation, still be\npending, not have expired, still have a live target, and \u2014 when a\nfingerprint is supplied \u2014 still describe exactly what was reviewed. The\nstatus guard inside the UPDATE makes execution single-use even if two\nconfirmations race.",
+        "description": "Execute or reject one prepared action. The only path to a state change.\n\nEvery check the Phase 4 state machine offers is applied, under the\n*confirming* caller rather than the preparing one: the action must exist\nwithin this caller's account scope, belong to this conversation, still be\npending, not have expired, still have a live target, and still describe\nexactly what was reviewed (the fingerprint is required). The\nstatus guard inside the UPDATE makes execution single-use even if two\nconfirmations race.",
         "operationId": "confirm_action_api_actions__action_id__confirm_post",
         "parameters": [
           {

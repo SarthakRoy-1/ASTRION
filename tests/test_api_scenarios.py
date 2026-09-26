@@ -58,8 +58,12 @@ def test_scenario_1_answers_from_a_computed_decision(client):
     decision = body["policy_decisions"][0]
     assert decision["decision_type"] == "cancellation"
     assert decision["order_id"] == "ORD-1001"
-    # The verdict, the amount and the arithmetic all come from the engine.
-    assert decision["outcome"] in {"allowed", "not_allowed"}
+    # The verdict, the amount and the arithmetic all come from the engine. ORD-1001
+    # is the subject of an open ticket (TKT-504) saying the driver has already
+    # been, so cancelling it needs verification first; the fee position (waived
+    # by the agreement) is still computed and reported.
+    assert decision["outcome"] == "requires_verification"
+    assert decision["inputs"]["conflicting_tickets"] == "TKT-504"
     assert decision["amount"] is not None
     assert decision["calculation"]
     assert decision["controlling_rule"]
@@ -240,7 +244,11 @@ def test_scenario_3_a_booked_status_is_not_treated_as_a_failed_pickup(client):
     confirmed". Nothing in the response may assert that the pickup failed."""
     body = ask(client, SCENARIO_3)
 
-    assert body["policy_decisions"] == []
+    # The ticket's response clock is read as background, but nothing decides a
+    # cancellation or a credit, and nothing is prepared.
+    assert [
+        d for d in body["policy_decisions"] if d["decision_type"] != "sla"
+    ] == []
     assert body["proposed_action"] is None
     lowered = body["answer"].lower()
     assert "pickup failed" not in lowered
@@ -525,6 +533,7 @@ def test_scenario_5_the_whole_flow_is_auditable_afterwards(client):
             "decision": "approve",
             "user_id": SUPPORT_MANAGER,
             "session_id": body["session_id"],
+            "expected_fingerprint": body["proposed_action"]["parameter_fingerprint"],
         },
     )
 

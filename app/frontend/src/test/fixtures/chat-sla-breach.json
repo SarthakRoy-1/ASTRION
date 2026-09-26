@@ -77,18 +77,48 @@
       "topic": "support_response"
     },
     {
-      "account_id": null,
-      "authority_tier": 2,
-      "chunk_id": "01_support_policy_v3_current#p1#c01",
-      "citation": "01_Support_Policy_v3_CURRENT.pdf p.1 \u00a71. Scope and source precedence",
-      "document_id": "01_support_policy_v3_current",
-      "document_title": "ParcelPilot Support Policy v3",
-      "excerpt": "1. Scope and source precedence\nThis policy defines default support severity and response targets. A signed customer agreement may override these\ndefaults. When sources conflict, use the signed customer agreement first, then the current support policy, then\ncurrent product documentation. Historical tickets and internal notes are context only and may contain incorrect past\nguidance.",
+      "account_id": "ACCT-001",
+      "authority_tier": 1,
+      "chunk_id": "05_northstar_logistics_enterprise_agreement#p1#c02",
+      "citation": "05_Northstar_Logistics_Enterprise_Agreement.pdf p.1 \u00a72. Shipment cancellation",
+      "document_id": "05_northstar_logistics_enterprise_agreement",
+      "document_title": "ParcelPilot - Northstar Logistics Enterprise Agreement",
+      "excerpt": "2. Shipment cancellation\nNorthstar may cancel any BOOKED shipment before pickup with no cancellation fee, regardless of how long ago the\nshipment was booked. Once a shipment is PICKED_UP, the standard return-to-origin process applies.",
       "is_authoritative": true,
       "is_deprecated": false,
       "page": 1,
-      "section": "1. Scope and source precedence",
-      "source_file": "01_Support_Policy_v3_CURRENT.pdf",
+      "section": "2. Shipment cancellation",
+      "source_file": "05_Northstar_Logistics_Enterprise_Agreement.pdf",
+      "topic": "cancellation"
+    },
+    {
+      "account_id": null,
+      "authority_tier": 3,
+      "chunk_id": "03_cancellation_and_service_credit_sop_v4#p1#c02",
+      "citation": "03_Cancellation_and_Service_Credit_SOP_v4.pdf p.1 \u00a72. Failed-pickup service credits",
+      "document_id": "03_cancellation_and_service_credit_sop_v4",
+      "document_title": "ParcelPilot Cancellation & Service Credit SOP v4",
+      "excerpt": "2. Failed-pickup service credits\nUnder the default policy, a customer is eligible for a service credit when the pickup is more than 2 hours past the end\nof the scheduled pickup window, the carrier is at fault, and there is no customer-caused issue. The default credit is\nthe lower of INR 500 or 10% of the shipment fee.\nA signed customer agreement may replace the default delay threshold, credit amou\u2026",
+      "is_authoritative": true,
+      "is_deprecated": false,
+      "page": 1,
+      "section": "2. Failed-pickup service credits",
+      "source_file": "03_Cancellation_and_Service_Credit_SOP_v4.pdf",
+      "topic": "service_credit"
+    },
+    {
+      "account_id": null,
+      "authority_tier": 3,
+      "chunk_id": "03_cancellation_and_service_credit_sop_v4#p1#c03",
+      "citation": "03_Cancellation_and_Service_Credit_SOP_v4.pdf p.1 \u00a73. Approval and uncertainty",
+      "document_id": "03_cancellation_and_service_credit_sop_v4",
+      "document_title": "ParcelPilot Cancellation & Service Credit SOP v4",
+      "excerpt": "3. Approval and uncertainty\n\u25cf Any individual credit above INR 1,000 requires manager approval.\n\u25cf Do not promise a credit when carrier fault, pickup timing, or customer fault is unknown.\n\u25cf When data conflicts, identify the conflict and request verification before a state-changing action.",
+      "is_authoritative": true,
+      "is_deprecated": false,
+      "page": 1,
+      "section": "3. Approval and uncertainty",
+      "source_file": "03_Cancellation_and_Service_Credit_SOP_v4.pdf",
       "topic": "general"
     },
     {
@@ -150,21 +180,6 @@
       "section": "4. Escalation",
       "source_file": "01_Support_Policy_v3_CURRENT.pdf",
       "topic": "support_response"
-    },
-    {
-      "account_id": null,
-      "authority_tier": 4,
-      "chunk_id": "02_support_policy_v2_deprecated#p1#c01",
-      "citation": "02_Support_Policy_v2_DEPRECATED.pdf p.1 \u00a7Severity and response targets",
-      "document_id": "02_support_policy_v2_deprecated",
-      "document_title": "ParcelPilot Support Policy v2",
-      "excerpt": "Severity and response targets\nP1 covers complete production outages and severe security incidents. P2 covers major feature degradation. P3\ncovers minor issues and questions.\nPlan\nP1\nP2\nP3\nEnterprise\n1 hour\n4 hours\n2 business days\nGrowth\n4 business hours\n1 business day\n3 business days\nStandard\n8 business hours\n2 business days\n3 business days\nNote: This file is intentionally retained for historical \u2026",
-      "is_authoritative": false,
-      "is_deprecated": true,
-      "page": 1,
-      "section": "Severity and response targets",
-      "source_file": "02_Support_Policy_v2_DEPRECATED.pdf",
-      "topic": "support_response"
     }
   ],
   "step_budget_exhausted": false,
@@ -194,7 +209,7 @@
       "message": null,
       "status": "ok",
       "step": 4,
-      "summary": "7 evidence item(s)",
+      "summary": "8 evidence item(s)",
       "tool_name": "search_documents"
     }
   ],

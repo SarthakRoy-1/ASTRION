@@ -122,10 +122,11 @@ class ActionConfirmationRequest(BaseModel):
     #: Must match the session the action was prepared in.
     session_id: str | None = None
 
-    #: The `parameter_fingerprint` shown alongside the preview. When supplied,
-    #: the action is executed only if its stored parameters still digest to
-    #: this value — so what was approved is what runs.
-    expected_fingerprint: str | None = None
+    #: The `parameter_fingerprint` shown alongside the preview. Required: the
+    #: action is executed only if its stored parameters still digest to this
+    #: value, so what was approved is what runs. A confirmation that cannot say
+    #: what it reviewed is refused, not assumed.
+    expected_fingerprint: str = Field(min_length=1, max_length=256)
 
     request_id: str | None = None
 

@@ -7,7 +7,7 @@
   ],
   "action_status": "none",
   "answer": "I could not find enough information in the supplied sources to answer that.\nThis cannot be answered definitively from the available data \u2014 verify the points listed before committing to an outcome.",
-  "escalation_recommended": true,
+  "escalation_recommended": false,
   "outcome": "uncertain",
   "policy_decisions": [],
   "proposed_action": null,

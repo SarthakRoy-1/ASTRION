@@ -147,6 +147,31 @@ describe("decision verdicts", () => {
     expect(decisionVerdict(decision).tone).toBe("ok");
   });
 
+  it("reads a cancellation blocked by conflicting ticket evidence as needing verification", () => {
+    // Same order and same waived fee as the recorded cancellation above, with an
+    // open ticket saying the driver has already been: the fee is not in doubt,
+    // the shipment's state is, so it must not read as a settled "Allowed".
+    const decision = fixtures.cancellationConflict.policy_decisions![0]!;
+
+    expect(decision.outcome).toBe("requires_verification");
+    expect(decisionVerdict(decision).label).toBe("Uncertain");
+    expect(decisionVerdict(decision).tone).toBe("caution");
+    expect(fixtures.cancellationConflict.answer).toContain("TKT-504");
+    expect(fixtures.cancellationConflict.proposed_action ?? null).toBeNull();
+  });
+
+  it("carries a ticket's severity indication as a verification, never as a breach", () => {
+    const response = fixtures.ticketInvestigation;
+    const sla = response.policy_decisions!.find((d) => d.decision_type === "sla")!;
+
+    expect(sla.breached ?? null).toBeNull();
+    expect(decisionVerdict(sla).label).toBe("Uncertain");
+    expect(response.answer).toMatch(/matches the current policy's P1 definition/);
+    expect(response.answer).toMatch(/not a classification/);
+    expect(response.trust?.status).toBe("conditional");
+    expect(response.escalation_recommended).toBe(true);
+  });
+
   it("still defers to verification on an unsettled cancellation", () => {
     const unsettled: PolicyDecisionView = {
       ...base,
@@ -398,11 +423,16 @@ describe("prepared-action prose", () => {
   it("removes the answer line that only restates the proposal", () => {
     const response = fixtures.pendingAction;
     const { lead } = parseAnswer(response.answer);
+    const actionId = response.proposed_action!.action_id;
 
-    expect(lead).toHaveLength(1);
-    expect(lead[0]).toContain(response.proposed_action!.action_id);
+    // The answer now carries the ticket's response-clock findings as well as the
+    // sentence restating the proposal; only that one sentence is redundant.
+    const restating = lead.filter((line) => line.includes(actionId));
+    expect(restating).toHaveLength(1);
 
-    expect(withoutActionRestatement(lead, response.proposed_action)).toEqual([]);
+    const rest = withoutActionRestatement(lead, response.proposed_action);
+    expect(rest).toHaveLength(lead.length - 1);
+    expect(rest.some((line) => line.includes(actionId))).toBe(false);
   });
 
   it("keeps answer lines that are not the restatement", () => {

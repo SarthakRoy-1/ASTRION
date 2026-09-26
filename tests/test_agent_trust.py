@@ -336,7 +336,7 @@ def test_a_question_no_document_answers_is_insufficient_data(client):
 
 
 def test_a_settled_evidence_backed_answer_stays_confident(client):
-    body = _trust(client, "Can Northstar cancel ORD-1001 without a cancellation fee? Explain why.")
+    body = _trust(client, "Can LumenWorks cancel ORD-2001 without a cancellation fee? Explain why.")
     assert body["outcome"] == "answered"
     assert body["trust"]["status"] == "confident"
 

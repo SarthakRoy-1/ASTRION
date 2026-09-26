@@ -161,6 +161,14 @@ def _assess_decisions(history, findings: _Findings) -> None:
             # settled verdicts and contribute no trust signal of their own —
             # a firm "not eligible" is exactly as trustworthy as a firm "yes".
             outcome = getattr(decision, "outcome", None)
+            # A background reading of a ticket's response clock, with no severity
+            # and nothing resembling one, leaves nothing to verify: the request
+            # was not about response times.
+            if getattr(decision, "informational", False):
+                findings.overrides.extend(
+                    o for o in decision.overrides if o not in findings.overrides
+                )
+                continue
             if outcome is PolicyOutcome.REQUIRES_VERIFICATION:
                 for reason in decision.verification_reasons:
                     findings.note(TrustStatus.CONDITIONAL, reason)
@@ -185,6 +193,31 @@ def _assess_decisions(history, findings: _Findings) -> None:
 
             findings.overrides.extend(
                 o for o in decision.overrides if o not in findings.overrides
+            )
+
+
+def _assess_historical(history, findings: _Findings) -> None:
+    """A ticket's historical resolution is a caution the answer must carry.
+
+    It is context that may be wrong (the workbook says so), so no answer is
+    allowed to rest on it. Saying that is not a verdict on the question, but an
+    answer that sat beside one and reported itself fully confident would be
+    telling the reader the caution did not matter.
+    """
+    for step in history:
+        if step.tool_name != "lookup_record":
+            continue
+        record = step.result.data.get("record")
+        if (
+            isinstance(record, dict)
+            and record.get("historical_resolution")
+            and record.get("historical_resolution_warning")
+        ):
+            ticket_id = record.get("ticket_id", "a ticket")
+            findings.note(
+                TrustStatus.CONDITIONAL,
+                f"{ticket_id} has a historical resolution on file; it is context only "
+                f"and may be wrong, so it has not been relied on",
             )
 
 
@@ -322,6 +355,7 @@ def assess(
     findings = _Findings()
 
     _assess_decisions(history, findings)
+    _assess_historical(history, findings)
     _assess_retrieval(history, findings)
     _assess_tool_failures(history, findings)
     _assess_support(history, findings)

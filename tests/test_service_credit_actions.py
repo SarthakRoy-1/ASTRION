@@ -171,6 +171,14 @@ def test_preparation_writes_no_credit(conn, lumenworks_context):
 
 
 def confirm(orchestrator, action_id, context, **kwargs):
+    """Confirm as the UI does: echoing the fingerprint of the proposal on screen."""
+    from app.backend.services.actions import get_action
+
+    if "expected_fingerprint" not in kwargs:
+        stored = get_action(orchestrator._conn, action_id, scope=context.scope())
+        kwargs["expected_fingerprint"] = (
+            stored.parameter_fingerprint() if stored is not None else "f" * 64
+        )
     return orchestrator.confirm_action(action_id, context, **kwargs)
 
 

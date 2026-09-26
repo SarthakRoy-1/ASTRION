@@ -107,7 +107,13 @@ def test_scenario_a_combines_lookup_policy_and_documents(orchestrator, agent_con
     assert len(response.tool_invocations) >= 3
 
 
-def test_scenario_a_answer_is_backed_by_a_policy_decision(orchestrator, agent_context):
+def test_scenario_a_answer_is_backed_by_a_policy_decision(conn, orchestrator, agent_context):
+    # ORD-1001 is also the subject of an open ticket saying the driver has
+    # already been (see tests/test_ticket_investigation.py). That conflict makes
+    # cancellation unconfirmable, so this test, which is about the agreement's
+    # fee waiver being backed by a decision, resolves the ticket first.
+    conn.execute("UPDATE tickets SET status = 'closed' WHERE ticket_id = 'TKT-504'")
+    conn.commit()
     response = ask(
         orchestrator,
         "Can Northstar cancel ORD-1001 without a cancellation fee? Explain why.",
@@ -289,7 +295,10 @@ def test_explicit_confirmation_executes(orchestrator, agent_context, manager_con
     response = ask(orchestrator, "Escalate TKT-501.", agent_context)
 
     executed = orchestrator.confirm_action(
-        response.pending_action.action_id, manager_context, approve=True
+        response.pending_action.action_id,
+        manager_context,
+        approve=True,
+        expected_fingerprint=response.pending_action.parameter_fingerprint(),
     )
 
     assert executed.status is ActionStatus.EXECUTED
@@ -301,7 +310,10 @@ def test_rejection_leaves_state_untouched(orchestrator, agent_context, manager_c
     response = ask(orchestrator, "Escalate TKT-501.", agent_context)
 
     rejected = orchestrator.confirm_action(
-        response.pending_action.action_id, manager_context, approve=False
+        response.pending_action.action_id,
+        manager_context,
+        approve=False,
+        expected_fingerprint=response.pending_action.parameter_fingerprint(),
     )
 
     assert rejected.status is ActionStatus.REJECTED

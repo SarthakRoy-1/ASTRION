@@ -14,50 +14,81 @@ so that it cannot: retrieval ranks sources by authority, policy arithmetic is
 code rather than generated text, every answer shows its evidence and its
 confidence, and every state change stops at a confirmation gate.
 
-## Live demo
+## Live application
 
-**<https://astrion-app.vercel.app/>** — opens on the public landing page, with
-**Sign in** and **Get Started** leading to the ordinary sign-in and
-registration forms.
+**<https://astrion-app.vercel.app/>** opens on the public landing page, with
+**Sign in** and **Get Started**. The API is <https://parcelpilot-api-7ro7.onrender.com>
+(`/health`).
 
-The one-click **Sign in to the demo** button is hidden from the public UI
-(`PUBLIC_DEMO_SIGN_IN_ENABLED` in `app/frontend/src/lib/features.ts`). The
-demo tenant, its seed and `POST /api/auth/demo-login` are unchanged on the
-backend; setting the flag to `true` restores the button on the sign-in page,
-where it still appears only when `/health` reports `demo_login_enabled`.
+**Getting in.** There is no shared demo login on the hosted deployment.
 
-With the button shown, you enter a shared workspace, **ASTRION Demo**, as its
-**operations** member: you can ask the agent anything, have it prepare an
-action, confirm that action yourself, and read the resulting audit trail. All
-data is the synthetic ParcelPilot assessment pack — six policy documents and a
-structured snapshot of accounts, orders and tickets. There is no real customer
-data anywhere.
+- **Get Started** registers an email address and password, emails a six-digit
+  code, and signs you in when you enter it. "Sent" is reported only when the
+  email provider accepted a message.
+- **Continue with Google** and **Continue with GitHub** appear when the
+  deployment has those providers configured (`/health` lists them under
+  `oauth_providers`).
+- A new account then creates its own workspace and is its owner.
+- The one-click **Sign in to the demo** still exists for local development
+  against SQLite. The hosted API runs on PostgreSQL, which refuses it, and
+  `/health` reports `demo_login_enabled: false`.
 
-The API sleeps when idle, so the first visit can take a few seconds while the
-backend wakes and, if its disk was recycled, rebuilds the demo database from
-the source pack by itself.
+**What a new workspace contains.** The platform's four general documents (the
+current and the deprecated support policy, the cancellation and credit SOP, the
+operations guide; `/health` reports `documents_indexed: 4`) and nothing else.
+Accounts, orders, tickets and customer agreements belong to the workspace. The
+supplied assessment snapshot (six documents and a workbook, no real customer
+data) is loaded into a workspace by an operator, deliberately, with the
+documented import:
 
-Try:
+```powershell
+python scripts/ingest_dataset.py   --org-id <workspace-id>   # accounts, orders, tickets
+python scripts/ingest_documents.py --org-id <workspace-id>   # the two customer agreements
+```
 
-- *Can Northstar cancel ORD-1001 without a cancellation fee? Explain why.* — a
-  signed agreement overrides the SOP, and the answer says so.
-- *Is ORD-2002 eligible for a failed pickup service credit?* — a calculated
-  INR 300 credit under the LumenWorks agreement.
-- *Investigate TKT-501 and escalate it if the outage warrants it.* — a prepared
-  escalation you then confirm or reject.
-- *What is the weather in Mumbai today?* — no evidence, reported as *Not enough
+Until that is done, a question about `ORD-1001` is answered *not found*: an
+empty workspace has no such record. The import replaces only the named
+workspace's rows. Details: [docs/persistence.md](docs/persistence.md).
+
+The API sleeps when idle on the hosting tier, so the first request after a quiet
+period can take a few seconds.
+
+With the assessment snapshot loaded, try:
+
+- *Can Northstar cancel ORD-1001 without a cancellation fee? Explain why.* The
+  signed agreement waives the fee and outranks the SOP, and the answer says so.
+  But an open ticket (TKT-504) says the driver has already collected the parcel
+  while the order still reads `BOOKED`, so the answer is that cancelling cannot
+  be confirmed yet, names the ticket and the documented carrier delay (KI-211),
+  and does not authorise it.
+- *Can LumenWorks cancel ORD-2001 without a fee?* INR 250. Their agreement
+  grants no waiver, so the SOP default stands.
+- *Is ORD-2002 eligible for a failed pickup service credit?* A calculated INR
+  300 credit under the LumenWorks agreement.
+- *Investigate TKT-501 and tell me what to do.* The response clock is read
+  without anyone saying "SLA". The ticket matches the current policy's P1
+  definition, which is reported as an indication to verify (never as a
+  classification), with what the Northstar target would mean if it is P1, and
+  escalation is advised.
+- *Investigate TKT-501 and escalate it if the outage warrants it.* A prepared
+  escalation, grounded in that finding, that you then confirm or reject.
+- *What is the weather in Mumbai today?* No evidence, reported as *Not enough
   information* rather than guessed.
 
 | | |
 | --- | --- |
-| ![Public demo sign-in](docs/screenshots/01-demo-sign-in.png) | ![Agreement precedence in an answer](docs/screenshots/02-agreement-precedence.png) |
-| **One click in** (now hidden from the public UI). The credential never reaches the browser. | **The contract wins, visibly.** Outcome, rule, calculation and the precedence decision. |
+| ![Agreement precedence in an answer](docs/screenshots/02-agreement-precedence.png) | ![Investigation steps and sources](docs/screenshots/03-investigation-and-sources.png) |
+| **The contract wins, visibly.** Outcome, rule, calculation and the precedence decision. | **What the agent actually did**, step by step. |
 | ![Proposed action awaiting confirmation](docs/screenshots/04-action-awaiting-confirmation.png) | ![Confirmed action](docs/screenshots/05-action-confirmed.png) |
 | **Prepared, not performed.** Nothing has changed yet. | **Confirmed, executed, receipted.** |
-| ![Investigation steps and sources](docs/screenshots/03-investigation-and-sources.png) | ![Audit trail](docs/screenshots/08-audit-trail.png) |
-| **What the agent actually did**, step by step. | **A hash-chained audit trail** the visitor can read. |
-| ![Operations intelligence](docs/screenshots/07-operations.png) | ![Documents](docs/screenshots/06-documents.png) |
-| **What needs attention**, ranked by a score you can read in full. | **The source pack**, with each document's stated status. |
+| ![Operations intelligence](docs/screenshots/07-operations.png) | ![Audit trail](docs/screenshots/08-audit-trail.png) |
+| **What needs attention**, ranked by a score you can read in full. | **A hash-chained audit trail.** |
+| ![Documents](docs/screenshots/06-documents.png) | ![Mobile layout](docs/screenshots/09-mobile.png) |
+| **The source pack**, with each document's stated status. | **The layout on a phone.** |
+
+The screenshots were captured at an earlier commit (`418a5d2`). Styling has been
+refreshed since, and the answers to ORD-1001 and to a ticket investigation
+changed as described above.
 
 ## What ASTRION demonstrates
 
@@ -69,22 +100,28 @@ Try:
 - **Authority-ranked document retrieval** — sources are ranked by what they are
   (signed agreement, current policy, current operational doc, deprecated),
   not only by how well they match.
-- **Structured data tools** — accounts, orders and tickets from a SQLite
-  snapshot, with record-level provenance back to the source workbook.
+- **Structured data tools** — a workspace's accounts, orders and tickets, with
+  record-level provenance back to the source workbook they were imported from.
 - **Customer-agreement precedence** — a signed contract overrides the general
   policy for that account only, and the answer records the override.
 - **Tenant-scoped access control** — workspaces, memberships and five roles;
   data scoping is compiled into the SQL, not filtered after the fact.
 - **Confirmation-gated actions** — escalations and service credits are
-  proposed by the agent and executed only by an explicit, fingerprinted,
-  single-use confirmation, with a manager-approval threshold.
+  proposed by the agent and executed only by an explicit, single-use
+  confirmation that must carry the fingerprint of the proposal that was
+  reviewed, with a manager-approval threshold.
 - **Trust and uncertainty handling** — every answer carries a trust status
   (confident, conditional, insufficient data, conflict, escalate) separate
   from its outcome.
 - **Proactive operations intelligence** — SLA risk, recurring and
   cross-customer issues and unusual patterns, detected by explainable rules.
-- **A self-healing public demo** — the backend rebuilds its own database,
-  document index and demo workspace after a cold start, idempotently.
+- **Ticket investigation** — opening a ticket reads its response clock, indicates
+  (never assigns) a matching severity for a person to verify, checks the
+  customer's orders for a pickup that may already have happened, and searches
+  the documentation for what the ticket actually says.
+- **Durable multi-workspace storage** — PostgreSQL with versioned migrations,
+  original files in S3-compatible object storage, and a production start-up
+  that refuses ephemeral storage.
 
 ## Architecture
 
@@ -146,10 +183,10 @@ a record outside the scope is *not found*, not *forbidden*.
 6. **Trust is separate from outcome.** "Answered" and "confident" are
    different claims. An answer can be complete and conditional, and an
    investigation that found nothing is reported as insufficient data.
-7. **The demo bootstrap is idempotent and self-healing.** Readiness is read
-   from the database on every demo sign-in, never remembered in memory; only
-   missing pieces are rebuilt, and concurrent cold starts converge on one
-   environment.
+7. **Doubt stops a state change, and severity is never guessed.** A BOOKED
+   order with contradicting evidence is *requires verification*, not "allowed".
+   A ticket that resembles a severity definition is an *indication*; a severity
+   is set only by a person, and no breach is asserted from an indication.
 
 The full design, including the reasoning behind each decision, is in
 [docs/architecture.md](docs/architecture.md).
@@ -193,9 +230,12 @@ is measured against that snapshot, not against today.
 - Workspaces with owner, admin, operations, support and viewer roles; every
   permission check reads one matrix, and records outside a caller's workspace
   answer 404.
-- The one-click demo endpoint takes no input and signs in through the ordinary
+- Registration verifies the address with an emailed one-time code (hashed at
+  rest, attempt-limited, single-use). Registering an address that already has an
+  account is answered exactly as a new one is, and emails the owner instead.
+- The local-only demo endpoint takes no input and signs in through the ordinary
   login path with a backend-held credential that no response, log line or
-  frontend file contains.
+  frontend file contains. It is refused against PostgreSQL.
 - Uploaded documents must belong to the uploader's own accounts; the supplied
   source pack cannot be deleted through the API.
 - Strict CSP and security headers, an Origin check on state-changing requests,
@@ -210,8 +250,8 @@ Details, the threat model and known limitations:
 
 | Suite | Result |
 | --- | --- |
-| Backend (pytest) | **1160 passed** |
-| Frontend (Vitest) | **247 passed** (18 files) |
+| Backend (pytest) | **1493 passed**, 47 skipped (SQLite) |
+| Frontend (Vitest) | **361 passed** (23 files) |
 | TypeScript | `tsc --noEmit` clean |
 | Production build | `next build` clean |
 | Dependencies | `pip-audit`: no known vulnerabilities |
@@ -273,9 +313,9 @@ built on first use. The UI opens on the landing page; **Get Started** registers
 an account and emails it a six-digit verification code (with no mail provider
 configured, `dev.py` writes the message to `data/outbox/` instead: open the
 newest file there to read the code), and **Sign in** opens the sign-in form.
-For the one-click demo account, set `PUBLIC_DEMO_SIGN_IN_ENABLED` in
-`app/frontend/src/lib/features.ts` to `true` and press **Sign in to the demo**
-on the sign-in page.
+For the one-click local demo account (SQLite only), set
+`PUBLIC_DEMO_SIGN_IN_ENABLED` in `app/frontend/src/lib/features.ts` to `true` and
+press **Sign in to the demo** on the sign-in page.
 
 ```powershell
 python -m pytest -q                         # backend
@@ -289,23 +329,36 @@ To run the agent on a real model, set `LLM_PROVIDER=real` and
 
 ## Limitations
 
-- **Synthetic, shared demo.** Everyone uses one workspace, so actions and audit
-  entries one visitor creates are visible to the next.
-- **Ephemeral hosted storage.** The hosted API runs on a free tier whose disk
-  does not persist: after a restart the demo rebuilds itself, and earlier
-  actions, uploads, sessions and audit entries are gone. Keeping them needs a
-  persistent disk or an external database.
-- **Deterministic hosted answers.** The live demo runs without a model, so
-  answers are reproducible and free to serve; questions answered purely from
-  documents are returned as cited sections rather than composed prose.
-- **The demo identity is operations, not a manager.** It can confirm ordinary
-  actions but not a credit above the SOP's manager threshold. With the supplied
-  data every eligible credit is below that threshold.
-- **Self-registration and provider sign-in need external setup on the hosted
-  deployment.** Registration verifies the address with an emailed code, which
-  needs a Resend key and a verified sending domain. "Continue with Google /
-  GitHub" needs OAuth apps registered with each provider. Until those exist
-  there, the buttons show as not set up and registration cannot complete. See
+- **Hosted workspaces start empty.** There is no in-app way to load the
+  assessment snapshot; an operator runs the import shown above. Until then the
+  agent can answer only from the platform's general documents.
+- **Deterministic hosted answers.** The hosted API reports
+  `provider_mode: deterministic`: a rule-based planner and a composer that
+  assembles sentences from tool results, with no model. Answers are reproducible
+  and free to serve, but a question is understood by keywords and identifiers,
+  and one answered purely from documents is returned as cited sections rather
+  than composed prose. `LLM_PROVIDER=real` with an `OPENAI_API_KEY` switches to
+  a model behind the same tools and the same limits; it has not been exercised
+  against the live service.
+- **Severity is indicated, not decided.** A ticket's text is matched against the
+  current policy's P1 definition with a small, general vocabulary. It can miss
+  an outage described in unusual words (that yields "severity not established"),
+  and it can flag something a person will decide is not P1. Either way a person
+  verifies it, and no breach is asserted from it.
+- **Pickup conflicts are found by reading tickets.** An open ticket that says the
+  driver has been is recognised by wording, in the order's own account only.
+- **Business-hours targets are reported, not judged.** The pack defines no
+  business calendar, so those breaches are never asserted.
+- **The demo identity is operations, not a manager** (local demo only). It can
+  confirm ordinary actions but not a credit above the SOP's manager threshold.
+- **Email and provider sign-in depend on external setup, and have not been
+  verified end to end on the hosted deployment.** Registration needs a Resend
+  key. With Resend's testing sender only the Resend account's own address
+  receives mail; other recipients need a verified sending domain in
+  `EMAIL_FROM`. "Continue with Google / GitHub" needs OAuth apps registered with
+  each provider. GitHub sign-in on the hosted deployment was failing when last
+  tested and has not been root-caused; the diagnostics added since are meant to
+  say why. See
   [docs/authentication.md](docs/authentication.md#production-checklist).
-- **Uploads are capped by the global request size limit** (256 KB), which the
-  supplied documents fit comfortably within.
+- **Uploads** are capped at 26 MB on the upload route (`MAX_UPLOAD_BYTES`);
+  every other request is capped at 256 KB.

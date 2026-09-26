@@ -1,9 +1,12 @@
 # Architecture
 
-This document has two parts. **Section 0** is a short overview of the system
+This document has three parts. **Section 0** is a short overview of the system
 as it runs today. **Sections 1–18** are the detailed design record. They were
 written phase by phase, so the phase numbers in their headings follow the build
-history. Where a later section refines an earlier one, the later section wins.
+history. **Sections 19–20** describe what runs in production now: how it is
+deployed and how people get in (§19), and how a ticket investigation reaches its
+answer (§20). Where a later section refines an earlier one, the later section
+wins, and §12 and §18 carry a note where production has since moved past them.
 
 ## 0. Overview
 
@@ -69,8 +72,10 @@ In practice:
                                        manager threshold · single use → execute → audit
                                    │
                                    ▼
-           SQLite: records · documents/chunks · workspaces · sessions · actions ·
-                   hash-chained audit log      ◄── ingestion + self-healing bootstrap
+   PostgreSQL (SQLite locally): records · documents/chunks · workspaces · sessions ·
+      actions · hash-chained audit log      + object storage for original files
+                                            ◄── system documents at deploy; a
+                                                workspace's own data by its members
 ```
 
 ### 0.3 Components at a glance
@@ -82,16 +87,16 @@ In practice:
 | **Agent orchestration** | `agent/orchestrator.py`, `agent/provider.py` | A bounded tool loop (`max_tool_steps`). Tools are dispatched through a registry, arguments are validated, and the response is assembled by `agent/composer.py`. |
 | **Document retrieval** | `retrieval/search.py`, `retrieval/authority.py` | BM25 relevance over chunks, then precedence by authority tier, resolved per topic. Returns evidence with document, page, section, tier and status. |
 | **Structured data tools** | `tools/record_tools.py`, `services/records.py` | Lookups for accounts, orders and tickets, plus their provenance. An out-of-scope record is reported exactly like a missing one. |
-| **Deterministic policy layer** | `policies/`, `tools/policy_tools.py` | Cancellation fee, failed-pickup service credit, and first-response SLA. Each result carries its rule, inputs and citations. A customer agreement's override is applied per topic. |
+| **Deterministic policy layer** | `policies/`, `tools/policy_tools.py` | Cancellation fee, failed-pickup service credit, and first-response SLA. Each result carries its rule, inputs and citations. A customer agreement's override is applied per topic. A ticket that resembles a severity definition is *indicated* and a cancellation contradicted by an open ticket is *requires verification* (§20). |
 | **Trust / reliability layer** | `agent/trust.py` | Gives each answer one of five statuses: `confident`, `conditional`, `conflict`→`escalate`, `insufficient_data` or `escalate`. The status is derived only from tool results, worst status wins, and a turn with no evidence cannot be `confident` (§15). |
 | **Action preparation** | `tools/action_tools.py` | `prepare_escalation`, `prepare_ticket_note` and `prepare_service_credit` write a proposal with a parameter fingerprint and expiry, and nothing else. |
-| **Explicit confirmation** | `POST /api/actions/{id}/confirm` | Checks the confirming user's `execute_action` permission, conversation ownership, fingerprint, expiry and the manager threshold. A replay returns 409. Only then does it execute and audit (§9.6, §10.7, §17). |
+| **Explicit confirmation** | `POST /api/actions/{id}/confirm` | Checks the confirming user's `execute_action` permission, conversation ownership, the reviewed proposal's fingerprint (required), expiry and the manager threshold. A replay returns 409. Only then does it execute and audit (§9.6, §10.7, §17). |
 | **Authorization** | `auth/permissions.py`, `api/authentication.py` | Session authentication with RBAC. Roles are `viewer` ⊂ `support` (propose) ⊂ `operations` (execute, read audit) ⊂ `admin` (approve high-value credits, manage documents and members) ⊂ `owner`. |
 | **Tenant / account scoping** | `auth/workspaces.py`, `services/*` | User → membership → workspace → `organization_accounts`. Each account belongs to at most one workspace. The scope reaches SQL and never comes from the model or the request body (§14). |
-| **Database** | SQLite (`STRICT` tables), `services/database.py` | Holds records, documents and chunks, users, sessions, workspaces, actions, service credits, and an append-only hash-chained audit log written under `BEGIN IMMEDIATE`. |
+| **Database** | PostgreSQL in production, SQLite for local development and tests (`app/backend/db`, `services/database.py`) | Holds records, documents and chunks, users, sessions, workspaces, actions, service credits, and an append-only hash-chained audit log written under a serialising lock. Original document files are objects in S3-compatible storage, never in the database ([persistence.md](persistence.md)). |
 | **Document ingestion** | `scripts/ingest_documents.py`, `services/document_ingestion.py`, `api/document_routes.py` | PyMuPDF extraction → section-aware chunks → status and type read from the document itself. Uploads need `manage_documents` and must name an account in the caller's scope. The canonical source pack cannot be deleted, and re-indexing is scoped to the caller ([SECURITY §7](SECURITY.md#7-file-and-document-security)). |
 | **Proactive operations** | `operations/detection.py`, `operations/ranking.py` | Four rule-based detectors (SLA risk, recurring issue, cross-customer issue, operational anomaly) with itemised, deterministic priority. No model is involved (§16). |
-| **Self-healing demo bootstrap** | `services/bootstrap.py` | `ensure_demo_environment` reads state from the database and ingests or seeds only what is missing. It is guarded by a thread lock and an `O_CREAT\|O_EXCL` lock file, and runs at startup and on every `POST /api/auth/demo-login` (§18). |
+| **Local demo bootstrap** | `services/bootstrap.py` | `ensure_demo_environment` reads state from the database and ingests or seeds only what is missing. It exists for the SQLite demo (§18) and is **refused against PostgreSQL**, so it does not run in production (§19). |
 
 ### 0.4 Source authority, and why it matters
 
@@ -1066,7 +1071,7 @@ intent correctly.
 | Still `PENDING_CONFIRMATION` | Phase 4 state machine |
 | Not expired | Phase 4 TTL |
 | Target still exists and is still visible | Re-read through the scoped repository |
-| Parameters unchanged since review | `parameter_fingerprint` (new in Phase 5) |
+| Parameters unchanged since review | `parameter_fingerprint`, **required on every confirmation** (§20.6) |
 | Executes exactly once | Status guard inside the `UPDATE` — holds under a race |
 
 Two additions were needed and both are additive:
@@ -1080,7 +1085,8 @@ Two additions were needed and both are additive:
   support agent are still two separate approvals.
 - **`parameter_fingerprint`.** A digest of what the action would do, returned
   with the preview and echoed on confirmation. It closes the gap between "the
-  operator approved a preview" and "the system executed a proposal".
+  operator approved a preview" and "the system executed a proposal". It began as
+  optional; it is now required (§20.6).
 
 `ActionSessionError` subclasses `ActionStateError`, so every existing handler
 still catches it while the API can report `action_session_mismatch` distinctly
@@ -1473,6 +1479,11 @@ first for no reason anyone chose. No behaviour, scope or permission changed.
 
 ## 12. Deployment configuration
 
+> **Historical.** This section records the original single-container design
+> (SQLite on a volume). Production has since moved to PostgreSQL and object
+> storage on Render, Supabase and Vercel; §19 describes that. The Docker Compose
+> arrangement below remains the local, portable baseline.
+
 Two containers and one persistent volume — the same "no infrastructure the
 application does not need" principle §11.9's dashboard-deferral and §9's
 SQLite choice already apply, extended to hosting. No queue, no cache, no
@@ -1557,6 +1568,12 @@ asserts nothing further. The deterministic planner passes through a severity the
 model-backed provider is instructed to classify against the definitions and pass
 its answer explicitly.
 
+**Since then, an indication (§20.1).** The classifier stayed deleted. What was
+added is narrower: when no severity is supplied, the ticket's text is compared
+with the clauses of the current policy's own P1 definition, and a match is
+reported as an *indication to verify*. `severity` is still `None`, no breach is
+asserted, and the result says what the target would be if it is confirmed.
+
 **Business time is not converted.** The corpus states targets such as
 "4 business hours" and defines no business calendar anywhere. Converting one
 into a deadline would invent the calendar and the verdict together, so those
@@ -1595,6 +1612,11 @@ in fact collected, and that mistake is made inside the documented window rather
 than hours later. A cancellation inside the window cites the issue by name; one
 well past it gets the generic caution instead, because the known issue no
 longer explains the missing confirmation.
+
+Since then the same caution reaches beyond the order's own row (§20.2): an open
+ticket from the same customer that says the driver has already been makes the
+cancellation *requires verification*, and cites the carrier's documented lag
+where there is one.
 
 ## 13. Deferred decisions
 
@@ -2188,6 +2210,15 @@ committing on their behalf would publish their unfinished work.
 
 ## 18. Phase 6 — public demonstrability
 
+> **Superseded in production.** This section records how the SQLite-era
+> deployment was made publicly usable with a seeded demo account. The hosted
+> deployment no longer works that way: it runs on PostgreSQL, which refuses the
+> demo login (`DEMO_LOGIN_ENABLED` must be `false`), registration and email
+> verification are real, and storage is durable. The demo seed, the one-click
+> endpoint and the self-healing bootstrap remain in the code for local
+> development. §19 describes production as it is. The limitations at the end of
+> this section are marked where they no longer hold.
+
 Phase 5 finished a product nobody could open. The hosted deployment runs
 `APP_ENV=production` with `AUTH_MODE=session`, which is correct — and left a
 visitor at a sign-in screen they could never get past, because registration
@@ -2319,13 +2350,13 @@ runtime stage so the bundle and the policy cannot disagree.
 
 ### Limitations
 
-- **The demo workspace is shared.** One visitor's confirmed action is the next
+- **The demo workspace is shared** *(local demo only)*. One visitor's confirmed action is the next
   visitor's history. Stated on the sign-in screen rather than engineered
   around, because per-visitor tenancy over one dataset is impossible under the
   account-uniqueness constraint that *is* the tenant boundary.
 - **Reset is by rebuilding.** There is no runtime reset endpoint, and the
   audit chain is never selectively deleted.
-- **On an ephemeral disk, demo history does not survive a cold start.** The
+- **On an ephemeral disk, demo history does not survive a cold start** *(no longer true in production, which uses PostgreSQL and object storage; still true of a SQLite demo)*. The
   environment rebuilds itself, but confirmed actions, audit entries and
   sessions from before the platform recycled the disk are gone. Keeping them
   would need a persistent disk or an external database — an infrastructure
@@ -2335,6 +2366,188 @@ runtime stage so the bundle and the policy cannot disagree.
   lock it, and the demo button then reports the lockout until the window
   passes. Clearing it from the demo endpoint would give the same attacker a way
   to clear it too.
-- **Self-registration still cannot complete on a hosted deployment.** Unchanged
-  and documented; the demo account is the answer, not a weakened verification
-  rule.
+- **Self-registration still cannot complete on a hosted deployment** *(no
+  longer true: registration verifies by emailed code, §19)*. It was unchanged
+  and documented at the time; the demo account was the answer, not a weakened
+  verification rule.
+
+
+## 19. Production as it runs now
+
+What is deployed, and how a person gets in. Where this disagrees with §12 or §18
+it is right and they are history.
+
+### Deployment
+
+| Piece | Where | Notes |
+| --- | --- | --- |
+| Frontend | Vercel, `https://astrion-app.vercel.app` | Next.js; needs only `NEXT_PUBLIC_API_BASE_URL`. Auto-deploys from `main`. |
+| API | Render, `https://parcelpilot-api-7ro7.onrender.com` | FastAPI in the repo's `Dockerfile.backend`. Auto-deploys from `main`. Sleeps when idle on the hosting tier. |
+| Database | Supabase PostgreSQL | psycopg 3 pool; versioned migrations applied at deploy by `docker-entrypoint.sh`, which then loads the system documents. |
+| Original files | Supabase Storage (S3-compatible) | Written before the row that references them; checksummed on read. |
+| Secrets | Render only | Never Vercel, never Git, never `NEXT_PUBLIC_*`. |
+
+`create_app()` refuses to start in production unless the database is PostgreSQL
+and the store is S3. That check exists so a misconfigured deployment fails
+loudly instead of appearing to work on a disk that is about to disappear.
+[persistence.md](persistence.md) has the tenancy model, the object-store rules
+and the migration contract.
+
+`/health` reports what is actually configured. At the time of writing:
+`app_env: production`, `auth_mode: session`, `provider_mode: deterministic`,
+`demo_login_enabled: false`, `database_ready: true`, `documents_indexed: 4`.
+
+### How a person gets in
+
+There is **no shared demo login** in production. The demo endpoint builds and
+seeds a local SQLite file, which PostgreSQL cannot host, so the configuration is
+refused (`Settings.validate_auth`). What remains is the ordinary flow
+([authentication.md](authentication.md)):
+
+1. **Register** with an email and password, or continue with Google or GitHub.
+2. **Verify the address** with a six-digit code (hashed at rest, attempt-limited,
+   single use, resend-throttled). Registering a taken address is answered as a new
+   one is and emails its owner instead, so the endpoint is not an existence
+   oracle. "Sent" means the provider accepted a message.
+3. **Create a workspace** (the creator is its owner), or join one with its code
+   and password or an invitation.
+
+### What a workspace contains
+
+The four **system documents** (support policy v3, the deprecated v2, the
+cancellation and credit SOP, the operations guide), visible to every workspace and
+deletable by none. Everything else is the workspace's own: accounts, orders,
+tickets, customer agreements, uploaded documents, prepared actions, audit trail.
+A new workspace has none of it, and a question about a record it does not have is
+answered *not found*, exactly as a record in another workspace would be.
+
+The supplied assessment snapshot is a **legacy import**, run by an operator
+against the target workspace:
+
+```text
+python scripts/ingest_dataset.py   --org-id <workspace-id>
+python scripts/ingest_documents.py --org-id <workspace-id>
+```
+
+It replaces only that workspace's rows. There is no in-app way to do this yet.
+
+### Agent
+
+The hosted planner is the deterministic one. The provider seam, the tool
+registry and every limit in §0.1 are the same under `LLM_PROVIDER=real`; that
+mode has not been exercised against the live service.
+
+### What has not been verified in production
+
+Email delivery (the sender on the testing domain delivers only to the Resend
+account owner), Google and GitHub sign-in (GitHub was failing when last tested
+and has not been root-caused; the failure diagnostics that were added record the
+provider's own error code), and an end-to-end reviewer path. The local
+equivalents (register, verify, sign in, create a workspace, import the snapshot,
+investigate, confirm) pass against a throwaway server with real session
+authentication.
+
+
+## 20. Ticket investigations
+
+Opening a ticket is the moment most support errors begin: a P1 read as routine,
+a cancellation approved on a status the customer's own ticket contradicts, a
+documentation search that never mentions what the ticket is about. Six rules
+close those, each a projection of deterministic code.
+
+### 20.1 The response clock is always read
+
+The deterministic planner runs `evaluate_sla` whenever a ticket resolves, not
+only when the request contains a word like "SLA" (`agent/provider.py`). A closed
+ticket has no clock running, so it is evaluated only if the request asks.
+
+Severity is still never set from ticket text. What `policies/severity_indication.py`
+does is *indicate*:
+
+- It parses the current policy's severity definitions from its own text
+  (`P1 - Critical: ...`) into clauses, and only from policy evidence, never from
+  a customer agreement (which states targets, not definitions).
+- It matches the ticket's subject and description against the P1 clauses using a
+  small general vocabulary (a failure is "fails", "errors", "unable"; an API key,
+  a password and a token are credentials), needing at least two of a clause's
+  concepts and half of them, and refusing a "complete outage" clause when the
+  ticket says something still works.
+- A match becomes a `SeverityIndication`: the clause, the ticket's matched words,
+  the policy citation, and what the account's target would be if confirmed and
+  whether the time already elapsed exceeds it.
+- The decision stays `REQUIRES_VERIFICATION`, `severity` stays `None`,
+  `breached` stays `None`. The answer says the ticket matches the definition, that
+  this is an indication and not a classification, and that escalation is advised
+  because the policy directs that P1 incidents be escalated immediately.
+
+Only P1 is indicated. The P2 and P3 definitions are contrasts ("but core
+operations remain possible") that a word match cannot read safely.
+
+When the request is not about response times, the reading is marked
+`background`. With no severity and no indication there is nothing to verify, so it
+does not lower trust or recommend escalation: a lookup of a billing-contact
+ticket reports the clock and the account's targets and stays `confident`.
+
+### 20.2 A BOOKED order is not proof the parcel is still there
+
+`policies/pickup_evidence.py` finds open tickets, in the order's own account and
+scope, that say the pickup already happened: they name the order (or, naming no
+order, its carrier), were opened after it was booked, and say a driver collected
+or picked up the shipment without negating it. `evaluate_cancellation` then:
+
+- returns `REQUIRES_VERIFICATION` with `can_cancel = false`, naming each ticket
+  by id, status, opening time and subject;
+- cites the carrier's documented pickup-confirmation lag where the known-issue
+  text states one for that carrier;
+- keeps computing the fee position, and reports it: a signed agreement's waiver
+  still applies, because the doubt is about the shipment's state, not the fee.
+
+The same rule covers the older cases (window closed with no pickup, a pickup
+timestamp on a BOOKED order): any doubt about pickup makes the outcome *requires
+verification*, never *allowed*. Another customer's ticket is never read.
+
+### 20.3 A ticket says what to look up
+
+Once a ticket resolves, its subject and description join the request in the
+document query. Its historical resolution does not: that is context which may be
+wrong, and searching on it would go looking for the documentation it contradicts.
+
+`retrieval/authority.py` also stops a **resolved** known issue from governing. The
+operations guide keeps such issues under their own heading with the instruction not
+to use them to explain new incidents unless the evidence specifically matches. It is
+in force and stays retrievable as context, but it is never presented as the rule that
+decides an answer. The precedence of agreement over policy over operational
+documentation is unchanged.
+
+### 20.4 Trust carries the caution
+
+A ticket with a historical resolution lowers the status from `confident` to
+`conditional` (`agent/trust.py`), because the answer sits beside a caution it must
+not rely on. Escalation is recommended for a breached target, a P1 indication, an
+unresolvable conflict, a policy decision that needs verification or a tool error, and
+**not** for a question the sources cannot answer.
+
+### 20.5 An escalation is grounded
+
+`prepare_escalation` is given a reason assembled from the ticket's response-clock
+decision (the breach and its arithmetic, or the clause matched, the target and the
+minutes elapsed), the evidence that decision rested on, and a severity only if a
+person supplied one. The operator's own sentence is appended as context.
+
+### 20.6 Confirmation must say what it reviewed
+
+`expected_fingerprint` is required by the API schema (a request without it is a
+422) and by `AgentOrchestrator.confirm_action`, for approval and rejection alike.
+The role check still comes first: a caller who may not confirm is refused as such,
+whatever they send. A confirmation with no fingerprint is then refused before the
+action is looked up; a wrong one is refused once scope and conversation binding have
+passed, before anything executes. Replay, expiry, account scope and the manager
+threshold apply as before.
+
+### Limits
+
+- The vocabulary is small and general on purpose; an outage described in unusual
+  words yields "severity not established", not a wrong label.
+- Pickup reports are recognised by wording. A ticket that says the parcel is gone
+  in words this does not know is not seen.
+- Business-hours targets are reported, never judged: the pack defines no calendar.

@@ -99,27 +99,43 @@ def _evaluate_sla(
             message="severity must be a string such as 'P1'",
         )
 
+    background = arguments.get("background", False)
+    if not isinstance(background, bool):
+        return ToolResult(
+            status=ToolStatus.INVALID_INPUT, message="background must be true or false"
+        )
+
     try:
         decision = evaluate_sla(
             conn,
             ticket_id,
             severity=severity,
             scope=context.scope(),
+            background=background,
         )
     except PolicyLookupError as exc:
         return ToolResult(status=ToolStatus.NOT_FOUND, message=str(exc))
     except PolicyDataError as exc:
         return ToolResult(status=ToolStatus.ERROR, message=str(exc))
 
+    # A background reading with nothing in the ticket resembling a severity
+    # definition leaves nothing to verify, so it is not reported as uncertain.
+    # Anything that does need a person (an indication, a stated severity that
+    # cannot be measured) still is.
     status = (
         ToolStatus.UNCERTAIN
         if decision.outcome is PolicyOutcome.REQUIRES_VERIFICATION
+        and not decision.informational
         else ToolStatus.OK
     )
     return ToolResult(
         status=status,
         decisions=[decision],
-        message="; ".join(decision.verification_reasons) or None,
+        message=(
+            None
+            if decision.informational
+            else "; ".join(decision.verification_reasons) or None
+        ),
         data={"decision": decision.model_dump(mode="json")},
     )
 
@@ -134,7 +150,9 @@ EVALUATE_SLA_SPEC = ToolSpec(
         "Pass `severity` when the severity is known or the user stated it: severity is a "
         "judgement about business impact and this tool will not infer one. Without it "
         "the tool returns the available targets and the elapsed time but asserts no "
-        "breach. Do not compute SLA deadlines or breaches yourself; call this."
+        "breach. If the ticket's text resembles a severity definition in the current policy "
+        "the result says so as an indication to verify, never as a classification. "
+        "Do not compute SLA deadlines or breaches yourself; call this."
     ),
     parameters={
         "type": "object",
@@ -146,6 +164,13 @@ EVALUATE_SLA_SPEC = ToolSpec(
                 "description": (
                     "Optional. The severity assessed against the current policy's "
                     "severity definitions."
+                ),
+            },
+            "background": {
+                "type": "boolean",
+                "description": (
+                    "Optional. True when the response clock is only context for a "
+                    "question that is not about response times."
                 ),
             },
         },

@@ -32,6 +32,7 @@ from app.backend.policies.base import (
     minutes_between,
     money,
 )
+from app.backend.policies.pickup_evidence import find_pickup_reports
 from app.backend.policies.terms import (
     extract_cancellation_terms,
     extract_pickup_confirmation_lag,
@@ -77,6 +78,10 @@ def evaluate_cancellation(
         item.chunk_id for item in evidence
     ]
 
+    # True when something says the shipment may already have been collected. Read
+    # by `build`, which then refuses to call the cancellation allowed.
+    pickup_in_question = False
+
     status = (order.status or "").upper()
     requested_at = order.cancellation_requested_at or context.reference_time
     inputs: dict[str, str | None] = {
@@ -109,6 +114,12 @@ def evaluate_cancellation(
         alternative: str | None = None,
         verification: list[str] | None = None,
     ) -> CancellationDecision:
+        if pickup_in_question and outcome is PolicyOutcome.ALLOWED:
+            # The fee position below is still worked out and reported (it is
+            # not what is in doubt), but cancelling is not authorised while
+            # there is reason to think the shipment has already been collected.
+            outcome = PolicyOutcome.REQUIRES_VERIFICATION
+            can_cancel = False
         return CancellationDecision(
             order_id=order.order_id,
             account_id=order.account_id,
@@ -182,6 +193,33 @@ def evaluate_cancellation(
     # the mistake this guards against, and unlike a credit decision it is a
     # mistake that is made *sooner* rather than later, so the documented lag
     # window is live here.
+    known_issues: list | None = None
+
+    def documented_lag():
+        """The documented pickup-confirmation lag for this carrier, if there is one."""
+        nonlocal known_issues, sources, evidence_ids
+        if known_issues is None:
+            known_issues = get_evidence_by_topic(
+                conn,
+                Topic.PRODUCT_KNOWN_ISSUES.value,
+                account_id=order.account_id,
+                scope=scope,
+            )
+        lag = extract_pickup_confirmation_lag(known_issues, order.carrier)
+        if lag is not None:
+            item = next((e for e in known_issues if e.chunk_id == lag.source.chunk_id), None)
+            if item is not None:
+                sources = [*sources, item.citation] if item.citation not in sources else sources
+                if item.chunk_id not in evidence_ids:
+                    evidence_ids = [*evidence_ids, item.chunk_id]
+        return lag
+
+    # A BOOKED order whose pickup window has already closed may simply be
+    # showing a stale status — the product documentation warns that pickup
+    # confirmation can lag. Cancelling a parcel that was in fact collected is
+    # the mistake this guards against, and unlike a credit decision it is a
+    # mistake that is made *sooner* rather than later, so the documented lag
+    # window is live here.
     if (
         order.pickup_actual_at is None
         and order.pickup_window_end is not None
@@ -190,15 +228,8 @@ def evaluate_cancellation(
         elapsed_since_window = minutes_between(
             order.pickup_window_end, context.reference_time
         )
-        lag = extract_pickup_confirmation_lag(
-            get_evidence_by_topic(
-                conn,
-                Topic.PRODUCT_KNOWN_ISSUES.value,
-                account_id=order.account_id,
-                scope=scope,
-            ),
-            order.carrier,
-        )
+        lag = documented_lag()
+        pickup_in_question = True
         if lag is not None and elapsed_since_window <= Decimal(lag.lag_minutes):
             # Squarely inside the window the documentation describes: a BOOKED
             # status here is not evidence that collection did not happen.
@@ -216,10 +247,41 @@ def evaluate_cancellation(
             )
 
     if order.pickup_actual_at is not None:
+        pickup_in_question = True
         verification.append(
             "Order status is BOOKED but a pickup timestamp is recorded; the data conflicts "
             "and must be verified before a state-changing action."
         )
+
+    # The conflict may not be in the order at all: an open ticket from the same
+    # customer can say the driver has already been. That is evidence about the
+    # shipment's state (not about the fee), and the SOP asks that a conflict be
+    # named and verified before anything changes.
+    if order.pickup_actual_at is None:
+        reports = find_pickup_reports(conn, order, scope=scope)
+        if reports:
+            pickup_in_question = True
+            lag = documented_lag()
+            inputs["conflicting_tickets"] = ", ".join(r.ticket_id for r in reports)
+            for report in reports:
+                reason = (
+                    f"Open ticket {report.ticket_id} ({report.status}, opened "
+                    f"{report.opened_at}, \"{report.subject}\") reports that this shipment "
+                    f"has already been collected, but the order still reads BOOKED with no "
+                    f"pickup recorded."
+                )
+                if lag is not None:
+                    reason += (
+                        f" {lag.carrier} pickup confirmations are documented to arrive up "
+                        f"to {lag.lag_minutes} minutes late ({lag.source.source_file}), so "
+                        f"a collected parcel can still read BOOKED."
+                    )
+                reason += (
+                    " Confirm the carrier's pickup status before cancelling; a PICKED_UP "
+                    "order must not be cancelled."
+                )
+                verification.append(reason)
+    inputs["pickup_in_question"] = "true" if pickup_in_question else "false"
 
     if terms.fee_waived:
         return build(
@@ -230,6 +292,11 @@ def evaluate_cancellation(
             rule=(
                 "A signed customer agreement waives the cancellation fee for a BOOKED order "
                 "before pickup, overriding the SOP's default fee."
+                + (
+                    " Whether the shipment is still before pickup is in question."
+                    if pickup_in_question
+                    else ""
+                )
             ),
             calculation="fee waived by customer agreement -> 0",
             verification=verification or None,

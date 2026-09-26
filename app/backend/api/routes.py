@@ -284,8 +284,8 @@ def confirm_action(
     Every check the Phase 4 state machine offers is applied, under the
     *confirming* caller rather than the preparing one: the action must exist
     within this caller's account scope, belong to this conversation, still be
-    pending, not have expired, still have a live target, and — when a
-    fingerprint is supplied — still describe exactly what was reviewed. The
+    pending, not have expired, still have a live target, and still describe
+    exactly what was reviewed (the fingerprint is required). The
     status guard inside the UPDATE makes execution single-use even if two
     confirmations race.
     """
